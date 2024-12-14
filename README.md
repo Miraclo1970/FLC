@@ -28,6 +28,25 @@ A macOS application for managing and validating AD (Active Directory) and HR dat
 - Detailed error reporting
 - Maintains original data context
 
+## Security Configuration
+
+Before running the application, you need to set up your environment configuration:
+
+1. Create a `.env` file in the root directory
+2. Copy the contents from `.env.example` to your `.env` file
+3. Replace the dummy values with your actual configuration:
+   - Database path
+   - AD server details
+   - Security settings
+   - File paths
+
+**Important Security Notes:**
+- Never commit your `.env` file to version control
+- Keep your AD credentials secure
+- Regularly update your access credentials
+- Monitor application logs for unauthorized access attempts
+- Set appropriate file permissions for exported data
+
 ## System Requirements
 
 - macOS 11.0 or later
@@ -94,4 +113,4 @@ Proprietary software. All rights reserved.
 
 ## Contact
 
-For support or inquiries, please contact the repository owner. 
+For support or inquiries, please contact the repository owner. # Test change
