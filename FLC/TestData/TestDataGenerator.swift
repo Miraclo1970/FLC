@@ -3,7 +3,7 @@ import Foundation
 class TestDataGenerator {
     static let shared = TestDataGenerator()
     
-    // Generate AD test data
+    // Generate AD test data with immutable array
     func generateADTestData() -> [String] {
         let csvLines = [
             "AD Group,System Account,Application,Suite,OTAP,Critical",
@@ -54,7 +54,7 @@ class TestDataGenerator {
         return csvLines
     }
     
-    // Generate HR test data
+    // Generate HR test data with immutable array
     func generateHRTestData() -> [String] {
         let csvLines = [
             "System Account,Department,Job Role,Division,Leave Date,Employee Number",
@@ -67,7 +67,7 @@ class TestDataGenerator {
             
             // HR-only records (no matching AD)
             "SZNEW01,SZW523818 Portefeuille SW - Cluster 1,nieuwe medewerker,SZW,,12360",
-            "SZOUT01,SZW005350 Informatiebeleid en Strategie,vertrekkende medewerker,SZW,2024-03-31,12361",
+            "SZOUT01,SZW005350 Informatiebeleid en Strategie,vertrekkende medewerker,SZW,31-03-2024,12361",
             
             // Multiple applications user
             "SOMULT1,SZW523818 Portefeuille SW - Cluster 1,projectmanager,SZW,,12370",
@@ -76,11 +76,11 @@ class TestDataGenerator {
             "SOOTAP1,SZW523818 Portefeuille SW - Cluster 1,ontwikkelaar,SZW,,12371",
             
             // Critical application user with leave date
-            "SZLEAV1,SZW523870 Centraal Beschut Werk,medewerker II,SZW,2024-05-31,12372",
+            "SZLEAV1,SZW523870 Centraal Beschut Werk,medewerker II,SZW,31-05-2024,12372",
             
             // Employees with leave date (matching AD)
-            "SOTEST1,SZW523818 Portefeuille SW - Cluster 1,algemeen ondersteunend medewerker,SZW,2024-06-30,12349",
-            "SOACC01,SZW005350 Informatiebeleid en Strategie,medewerker IV,SZW,2024-12-31,12350",
+            "SOTEST1,SZW523818 Portefeuille SW - Cluster 1,algemeen ondersteunend medewerker,SZW,30-06-2024,12349",
+            "SOACC01,SZW005350 Informatiebeleid en Strategie,medewerker IV,SZW,31-12-2024,12350",
             
             // Invalid records (missing required fields)
             ",SZW523818 Portefeuille SW - Cluster 1,algemeen ondersteunend medewerker,SZW,,12351",

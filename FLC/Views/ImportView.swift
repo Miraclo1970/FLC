@@ -546,6 +546,7 @@ struct ImportView: View {
                         case "division", "div":
                             standardHeader = "Division"
                         case "leave date", "leavedate", "leave-date", "leave_date":
+                            print("Found Leave Date column at index \(colIndex)")
                             standardHeader = "Leave Date"
                         case "employee number", "employeenumber", "employee-number", "employee_number", "empno":
                             standardHeader = "Employee Number"
@@ -553,6 +554,12 @@ struct ImportView: View {
                             standardHeader = normalizedHeader
                         }
                         columnMap[standardHeader] = colIndex
+                    }
+                    
+                    // Debug print column map
+                    print("Column Map after header processing:")
+                    for (header, index) in columnMap {
+                        print("\(header): \(index)")
                     }
                 }
             }
@@ -581,8 +588,6 @@ struct ImportView: View {
         var processedValidRows = 0
         var processedInvalidRows = 0
         var processedDuplicateRows = 0
-        
-        let dateFormatter = DateFormatter.hrDateFormatter
         
         for (index, row) in dataRows.enumerated() {
             if index % 50 == 0 {
@@ -640,12 +645,34 @@ struct ImportView: View {
             if index == 0 || index % 10000 == 0 {
                 print("Column Map: \(columnMap)")
                 print("Row \(index) values - System Account: \(systemAccount), Employee Number: \(employeeNumber)")
+                print("Leave Date Column Index: \(columnMap["Leave Date"] ?? -1)")
+                print("Leave Date Raw Value: \(leaveDateStr)")
             }
             
             // Parse leave date if present
             var leaveDate: Date? = nil
             if leaveDateStr != "N/A" {
-                leaveDate = dateFormatter.date(from: leaveDateStr)
+                print("Row \(index) - Attempting to parse leave date: '\(leaveDateStr)'")
+                // Try standard format first
+                if let date = DateFormatter.hrDateFormatter.date(from: leaveDateStr) {
+                    print("Row \(index) - Successfully parsed leave date with standard format: \(date)")
+                    leaveDate = date
+                } else if let date = DateFormatter.hrDateParser.date(from: leaveDateStr) {
+                    print("Row \(index) - Successfully parsed leave date with alternative format: \(date)")
+                    leaveDate = date
+                } else if let serialNumber = Double(leaveDateStr) {
+                    // Handle Excel serial date
+                    // Excel dates are number of days since 1900-01-01, but we need to adjust for Excel's leap year bug
+                    let excelEpoch = DateComponents(year: 1899, month: 12, day: 30)
+                    if let excelBaseDate = Calendar.current.date(from: excelEpoch) {
+                        leaveDate = Calendar.current.date(byAdding: .day, value: Int(serialNumber), to: excelBaseDate)
+                        if let parsedDate = leaveDate {
+                            print("Row \(index) - Successfully parsed Excel serial date: \(DateFormatter.hrDateFormatter.string(from: parsedDate))")
+                        }
+                    }
+                } else {
+                    print("Row \(index) - Failed to parse leave date: '\(leaveDateStr)' with all formats")
+                }
             }
             
             let record = HRData(

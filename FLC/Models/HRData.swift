@@ -41,6 +41,23 @@ extension DateFormatter {
     static let hrDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "dd-MM-yyyy"
+        formatter.isLenient = true  // Make parsing more lenient
         return formatter
     }()
+    
+    static let hrDateParser: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"  // Alternative format for parsing
+        formatter.isLenient = true
+        return formatter
+    }()
+    
+    static func parseHRDate(_ dateString: String) -> Date? {
+        // Try the standard format first
+        if let date = hrDateFormatter.date(from: dateString) {
+            return date
+        }
+        // Try the alternative format
+        return hrDateParser.date(from: dateString)
+    }
 } 
