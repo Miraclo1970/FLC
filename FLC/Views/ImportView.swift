@@ -14,6 +14,52 @@ struct ImportView: View {
         case ad
     }
     
+    private enum DataTypeValidationError: Error {
+        case mismatch(expected: ImportType, detected: ImportType)
+        
+        var description: String {
+            switch self {
+            case .mismatch(let expected, let detected):
+                return "Data type mismatch: You selected to import \(expected) data but the file appears to contain \(detected) data. Please select the correct import type."
+            }
+        }
+    }
+    
+    private func detectDataType(_ headers: [String]) -> ImportType? {
+        // Check first row for explicit type marker
+        let firstRow = headers.joined(separator: " ").lowercased().trimmingCharacters(in: .whitespaces)
+        
+        if firstRow.contains("hr") {
+            return .hr
+        } else if firstRow.contains("ad") {
+            return .ad
+        }
+        
+        return nil
+    }
+
+    private func validateDataType(_ headers: [String], expected: ImportType) throws {
+        guard let detectedType = detectDataType(headers) else {
+            // Instead of proceeding with caution, we should throw an error if we can't detect the type
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not determine data type from headers. Please check if the file contains the correct headers."])
+        }
+        
+        if detectedType != expected {
+            throw DataTypeValidationError.mismatch(expected: expected, detected: detectedType)
+        }
+    }
+    
+    private func openTemplate(type: ImportType) {
+        let fileName = type == .ad ? "AD_template" : "HR_template"
+        
+        if let templateURL = Bundle.main.url(forResource: fileName, withExtension: "xlsx") {
+            NSWorkspace.shared.open(templateURL)
+        } else {
+            print("Template file not found: \(fileName).xlsx")
+            message = "Error: Template file not found"
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 20) {
             Text(message)
@@ -49,18 +95,34 @@ struct ImportView: View {
                 .frame(width: 300)
                 .padding()
             } else {
-                HStack(spacing: 20) {
-                    Button("Import HR Data") {
-                        importType = .hr
-                        showFileImporter = true
+                VStack(spacing: 20) {
+                    // Template buttons
+                    HStack(spacing: 20) {
+                        Button("Open AD Template") {
+                            openTemplate(type: .ad)
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button("Open HR Template") {
+                            openTemplate(type: .hr)
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
                     
-                    Button("Import AD Data") {
-                        importType = .ad
-                        showFileImporter = true
+                    // Import buttons
+                    HStack(spacing: 20) {
+                        Button("Import HR Data") {
+                            importType = .hr
+                            showFileImporter = true
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button("Import AD Data") {
+                            importType = .ad
+                            showFileImporter = true
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
                 }
             }
         }
@@ -154,7 +216,11 @@ struct ImportView: View {
             }
         } catch {
             await MainActor.run {
-                message = "Error: \(error.localizedDescription)"
+                if let dataTypeError = error as? DataTypeValidationError {
+                    message = "Warning: \(dataTypeError.description)"
+                } else {
+                    message = "Error: \(error.localizedDescription)"
+                }
                 progress.isProcessing = false
             }
         }
@@ -166,30 +232,35 @@ struct ImportView: View {
             progress.update(operation: "Phase 1/5: Initializing...", progress: 0.05)
         }
         
-        // Get worksheets
-        await MainActor.run {
-            progress.update(operation: "Phase 1/5: Opening Excel file...", progress: 0.10)
-        }
-        
-        await MainActor.run {
-            progress.update(operation: "Phase 1/5: Reading Excel structure...", progress: 0.20)
-        }
         let worksheetPaths = try xlsx.parseWorksheetPaths()
         guard let path = worksheetPaths.first else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheets found"])
+        }
+        
+        let worksheet = try xlsx.parseWorksheet(at: path)
+        let sharedStrings = try xlsx.parseSharedStrings()
+        
+        // Get headers for validation
+        if let firstRow = worksheet.data?.rows.first {
+            let headers = firstRow.cells.map { cell -> String in
+                if let sharedStrings = sharedStrings,
+                   case .sharedString = cell.type,
+                   let value = cell.value,
+                   let stringIndex = Int(value),
+                   stringIndex < sharedStrings.items.count {
+                    return sharedStrings.items[stringIndex].text ?? ""
+                }
+                return cell.value ?? ""
+            }
+            
+            // Validate data type
+            try validateDataType(headers, expected: .ad)
         }
         
         // Worksheet loading phase (40-60%)
         await MainActor.run {
             progress.update(operation: "Phase 2/5: Loading worksheet data...", progress: 0.40)
         }
-        
-        // Parse worksheet
-        let worksheet = try xlsx.parseWorksheet(at: path)
-        await MainActor.run {
-            progress.update(operation: "Phase 2/5: Loading shared strings...", progress: 0.50)
-        }
-        let sharedStrings = try xlsx.parseSharedStrings()
         
         await MainActor.run {
             progress.update(operation: "Phase 2/5: Preparing data structures...", progress: 0.55)
@@ -466,6 +537,24 @@ struct ImportView: View {
         let worksheet = try xlsx.parseWorksheet(at: path)
         let sharedStrings = try xlsx.parseSharedStrings()
         
+        // Get headers for validation
+        if let firstRow = worksheet.data?.rows.first {
+            let headers = firstRow.cells.map { cell -> String in
+                if let sharedStrings = sharedStrings,
+                   case .sharedString = cell.type,
+                   let value = cell.value,
+                   let stringIndex = Int(value),
+                   stringIndex < sharedStrings.items.count {
+                    return sharedStrings.items[stringIndex].text ?? ""
+                }
+                return cell.value ?? ""
+            }
+            
+            print("HR Import - Headers found: \(headers)")
+            // Validate data type using the same method as AD validation
+            try validateDataType(headers, expected: .hr)
+        }
+        
         await MainActor.run {
             progress.update(operation: "Phase 2/5: Preparing data structures...", progress: 0.55)
         }
@@ -548,7 +637,7 @@ struct ImportView: View {
                         case "leave date", "leavedate", "leave-date", "leave_date":
                             print("Found Leave Date column at index \(colIndex)")
                             standardHeader = "Leave Date"
-                        case "employee number", "employeenumber", "employee-number", "employee_number", "empno":
+                        case "employee nr", "employeenr", "employee-nr", "employee_nr":
                             standardHeader = "Employee Number"
                         default:
                             standardHeader = normalizedHeader

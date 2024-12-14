@@ -10,10 +10,6 @@ struct AdminDashboardView: View {
         NavigationSplitView {
             // Sidebar
             List(selection: $selectedItem) {
-                NavigationLink(value: "templates") {
-                    Label("Templates", systemImage: "doc")
-                }
-                
                 NavigationLink(value: "import") {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
@@ -23,7 +19,7 @@ struct AdminDashboardView: View {
                 }
                 
                 NavigationLink(value: "content") {
-                    Label("Database Content", systemImage: "cylinder")
+                    Label("Database", systemImage: "cylinder")
                 }
                 
                 NavigationLink(value: "query") {
@@ -60,8 +56,6 @@ struct AdminDashboardView: View {
             NavigationStack {
                 if let selectedItem {
                     switch selectedItem {
-                    case "templates":
-                        TemplatesView()
                     case "import":
                         ImportView()
                             .environmentObject(progress)

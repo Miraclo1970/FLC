@@ -35,14 +35,18 @@ struct LoginView: View {
             }
             .padding(.horizontal)
             
-            Image(systemName: "person.circle")
+            Image("falc_logo")
                 .resizable()
-                .frame(width: 100, height: 100)
-                .foregroundColor(.blue)
+                .scaledToFit()
+                .frame(width: 180, height: 180)
+                .clipShape(Circle())
+                .shadow(color: .gray.opacity(0.1), radius: 2, x: 0, y: 2)
+                .padding(.bottom, 10)
             
-            Text(isEnglish ? "Welcome to FLC" : "Welkom bij FLC")
+            Text(isEnglish ? "Welcome to FALC" : "Welkom bij FALC")
                 .font(.largeTitle)
                 .fontWeight(.bold)
+                .padding(.vertical, 20)
             
             VStack(spacing: 15) {
                 TextField(isEnglish ? "Username" : "Gebruikersnaam", text: $username)
