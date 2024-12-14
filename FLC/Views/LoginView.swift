@@ -1,153 +1,99 @@
 import SwiftUI
 
 struct LoginView: View {
-    @Environment(\.dismiss) var dismiss
-    @Environment(\.colorScheme) var colorScheme
-    @State private var username = ""
-    @State private var password = ""
+    @Binding var isLoggedIn: Bool
+    @Binding var userType: String?
+    @State private var username: String = ""
+    @State private var password: String = ""
     @State private var showingError = false
     @State private var errorMessage = ""
-    @Binding var showingAdminDashboard: Bool
-    @State private var showingManagerDashboard = false
-    @State private var showingUserDashboard = false
-    @State private var userType: String? = nil
-    @FocusState private var focusedField: Field?
-    let isEnglish: Bool
-    
-    enum Field {
-        case username
-        case password
-    }
+    @State private var isEnglish = true
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            // User Input
-            VStack(alignment: .leading, spacing: 8) {
-                Text(isEnglish ? "User" : "Gebruiker")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: 14))
-                
-                HStack {
-                    Image(systemName: "person")
-                        .foregroundColor(.secondary)
-                    TextField("", text: $username)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .focused($focusedField, equals: .username)
-                        .onSubmit {
-                            print("Username submitted: \(username)")
-                            focusedField = .password
-                        }
-                }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(NSColor.textBackgroundColor))
-                )
-            }
+        ZStack {
+            Color.gray.opacity(0.1)
+                .ignoresSafeArea()
             
-            // Password Input
-            VStack(alignment: .leading, spacing: 8) {
-                Text(isEnglish ? "Password" : "Wachtwoord")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: 14))
-                
-                HStack {
-                    Image(systemName: "lock")
-                        .foregroundColor(.secondary)
-                    SecureField("", text: $password)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .focused($focusedField, equals: .password)
-                        .onSubmit {
-                            print("Password submitted, attempting login...")
-                            authenticateUser()
-                        }
+            VStack {
+                // Language Selection
+                HStack(spacing: 20) {
+                    Button(action: { isEnglish = true }) {
+                        Text("🇬🇧 English")
+                            .foregroundColor(isEnglish ? .blue : .gray)
+                            .bold(isEnglish)
+                    }
+                    
+                    Button(action: { isEnglish = false }) {
+                        Text("🇳🇱 Nederlands")
+                            .foregroundColor(!isEnglish ? .blue : .gray)
+                            .bold(!isEnglish)
+                    }
                 }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(NSColor.textBackgroundColor))
-                )
-            }
-            
-            // Login Button
-            Button(action: {
-                print("Login button clicked, attempting login...")
-                authenticateUser()
-            }) {
-                HStack {
-                    Spacer()
+                .padding()
+                
+                Spacer()
+                
+                // Login Form
+                VStack(spacing: 20) {
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .frame(width: 80, height: 80)
+                        .foregroundColor(.blue)
+                    
                     Text(isEnglish ? "Login" : "Inloggen")
-                        .foregroundColor(.white)
-                    Spacer()
+                        .font(.title)
+                        .bold()
+                    
+                    VStack(spacing: 15) {
+                        TextField(isEnglish ? "Username" : "Gebruikersnaam", text: $username)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .frame(width: 250)
+                        
+                        SecureField(isEnglish ? "Password" : "Wachtwoord", text: $password)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .frame(width: 250)
+                    }
+                    
+                    Button(action: login) {
+                        Text(isEnglish ? "Login" : "Inloggen")
+                            .foregroundColor(.white)
+                            .frame(width: 250, height: 40)
+                            .background(Color.blue)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    if showingError {
+                        Text(errorMessage)
+                            .foregroundColor(.red)
+                            .font(.caption)
+                    }
                 }
-                .padding(.vertical, 12)
-                .background(Color.blue)
-                .cornerRadius(12)
+                .padding(40)
+                .background(Color.white)
+                .cornerRadius(20)
+                .shadow(radius: 10)
+                
+                Spacer()
             }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.top, 8)
         }
-        .padding(24)
-        .frame(width: 280)
-        .background(Color(NSColor.windowBackgroundColor))
-        .cornerRadius(16)
-        .alert(errorMessage, 
-               isPresented: $showingError) {
-            Button("OK", role: .cancel) { }
-        }
-        .onAppear {
-            print("LoginView appeared")
-            DatabaseManager.shared.ensureInitialData()
-            focusedField = .username
-        }
-        .sheet(isPresented: $showingManagerDashboard) {
-            ManagerDashboardView(isEnglish: isEnglish)
-                .frame(minWidth: 800, minHeight: 600)
-        }
-        .sheet(isPresented: $showingUserDashboard) {
-            UserDashboardView(isEnglish: isEnglish, username: username)
-                .frame(minWidth: 800, minHeight: 600)
-        }
+        .frame(minWidth: 600, minHeight: 400)
     }
     
-    private func authenticateUser() {
-        print("Authenticating with username: \(username)")
-        
-        // Don't attempt login if fields are empty
-        guard !username.isEmpty && !password.isEmpty else {
-            print("Empty fields detected")
-            errorMessage = isEnglish ? "Please fill in all fields" : "Vul alle velden in"
-            showingError = true
-            return
-        }
-        
+    private func login() {
         let result = DatabaseManager.shared.validateUser(username: username, password: password)
-        print("Authentication result: \(result)")
         
         if result.success {
-            print("Login successful, user type: \(result.userType ?? "unknown")")
             userType = result.userType
-            switch result.userType {
-            case "admin":
-                print("Showing admin dashboard")
-                DispatchQueue.main.async {
-                    showingAdminDashboard = true
-                }
-            case "manager":
-                print("Showing manager dashboard")
-                showingManagerDashboard = true
-            case "user":
-                print("Showing user dashboard")
-                showingUserDashboard = true
-            default:
-                print("Invalid user type")
-                errorMessage = isEnglish ? "Invalid user type" : "Ongeldig gebruikerstype"
-                showingError = true
-            }
+            isLoggedIn = true
+            showingError = false
         } else {
-            print("Login failed")
-            errorMessage = isEnglish ? "Invalid Credentials" : "Ongeldige Gegevens"
+            errorMessage = isEnglish ? "Invalid username or password" : "Ongeldige gebruikersnaam of wachtwoord"
             showingError = true
         }
     }
+}
+
+#Preview {
+    LoginView(isLoggedIn: .constant(false), userType: .constant(nil))
 } 

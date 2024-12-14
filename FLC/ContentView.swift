@@ -8,48 +8,24 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var showingAdminDashboard = true
-    @State private var isEnglish = true
+    @State private var isLoggedIn = false
+    @State private var userType: String?
     
     var body: some View {
-        Group {
-            if showingAdminDashboard {
-                AdminDashboardView(isEnglish: isEnglish)
-            } else {
-                ZStack {
-                    Color.gray.opacity(0.1)
-                        .ignoresSafeArea()
-                    
-                    VStack {
-                        // Language Selection
-                        HStack(spacing: 20) {
-                            Button(action: { isEnglish = true }) {
-                                Text("🇬🇧 English")
-                                    .foregroundColor(isEnglish ? .blue : .gray)
-                                    .bold(isEnglish)
-                            }
-                            
-                            Button(action: { isEnglish = false }) {
-                                Text("🇳🇱 Nederlands")
-                                    .foregroundColor(!isEnglish ? .blue : .gray)
-                                    .bold(!isEnglish)
-                            }
-                        }
-                        .padding()
-                        
-                        Spacer()
-                        
-                        // Login View centered in the window
-                        LoginView(showingAdminDashboard: $showingAdminDashboard, isEnglish: isEnglish)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        
-                        Spacer()
-                    }
-                }
-                .frame(minWidth: 600, minHeight: 400)
+        if isLoggedIn {
+            switch userType {
+            case "admin":
+                AdminDashboardView(isLoggedIn: $isLoggedIn)
+            case "manager":
+                ManagerDashboardView(isLoggedIn: $isLoggedIn)
+            case "user":
+                UserDashboardView(isLoggedIn: $isLoggedIn)
+            default:
+                Text("Invalid user type")
             }
+        } else {
+            LoginView(isLoggedIn: $isLoggedIn, userType: $userType)
         }
-        .animation(.default, value: showingAdminDashboard)
     }
 }
 

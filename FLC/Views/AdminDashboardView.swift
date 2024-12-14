@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct AdminDashboardView: View {
-    let isEnglish: Bool
-    @Environment(\.dismiss) var dismiss
+    @Binding var isLoggedIn: Bool
     @StateObject private var progress = ImportProgress()
     @State private var selectedItem: String? = nil
+    @State private var isEnglish = true
     
     var body: some View {
         NavigationSplitView {
@@ -20,10 +20,6 @@ struct AdminDashboardView: View {
                 
                 NavigationLink(value: "validation") {
                     Label("Validation", systemImage: "checkmark.shield")
-                }
-                
-                NavigationLink(value: "history") {
-                    Label("History", systemImage: "clock.arrow.2.circlepath")
                 }
                 
                 NavigationLink(value: "content") {
@@ -57,9 +53,9 @@ struct AdminDashboardView: View {
                 }
                 ToolbarItem(placement: .automatic) {
                     Button(action: {
-                        dismiss()
+                        isLoggedIn = false
                     }) {
-                        Text("Logout")
+                        Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
                             .foregroundColor(.red)
                     }
                 }
@@ -69,13 +65,12 @@ struct AdminDashboardView: View {
                 if let selectedItem {
                     switch selectedItem {
                     case "templates":
-                        TemplatesView(isEnglish: isEnglish)
+                        TemplatesView()
                     case "import":
-                        ImportView().environmentObject(progress)
+                        ImportView()
+                            .environmentObject(progress)
                     case "validation":
                         ValidationView(progress: progress)
-                    case "history":
-                        Text("History")
                     case "content":
                         DatabaseContentView()
                     case "combined":
@@ -119,5 +114,5 @@ struct AdminDashboardView: View {
 }
 
 #Preview {
-    AdminDashboardView(isEnglish: true)
+    AdminDashboardView(isLoggedIn: .constant(true))
 } 
