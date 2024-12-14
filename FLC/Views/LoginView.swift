@@ -3,81 +3,86 @@ import SwiftUI
 struct LoginView: View {
     @Binding var isLoggedIn: Bool
     @Binding var userType: String?
-    @State private var username: String = ""
-    @State private var password: String = ""
-    @State private var showingError = false
+    @State private var username = ""
+    @State private var password = ""
+    @State private var showError = false
     @State private var errorMessage = ""
     @State private var isEnglish = true
+    @FocusState private var focusedField: Field?
+    
+    private enum Field {
+        case username
+        case password
+    }
     
     var body: some View {
-        ZStack {
-            Color.gray.opacity(0.1)
-                .ignoresSafeArea()
-            
-            VStack {
-                // Language Selection
-                HStack(spacing: 20) {
-                    Button(action: { isEnglish = true }) {
-                        Text("🇬🇧 English")
-                            .foregroundColor(isEnglish ? .blue : .gray)
-                            .bold(isEnglish)
-                    }
-                    
-                    Button(action: { isEnglish = false }) {
-                        Text("🇳🇱 Nederlands")
-                            .foregroundColor(!isEnglish ? .blue : .gray)
-                            .bold(!isEnglish)
-                    }
-                }
-                .padding()
-                
+        VStack(spacing: 20) {
+            // Language Selector
+            HStack {
                 Spacer()
-                
-                // Login Form
-                VStack(spacing: 20) {
-                    Image(systemName: "person.circle.fill")
-                        .resizable()
-                        .frame(width: 80, height: 80)
+                VStack(spacing: 4) {
+                    Image(systemName: "globe")
                         .foregroundColor(.blue)
-                    
-                    Text(isEnglish ? "Login" : "Inloggen")
-                        .font(.title)
-                        .bold()
-                    
-                    VStack(spacing: 15) {
-                        TextField(isEnglish ? "Username" : "Gebruikersnaam", text: $username)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .frame(width: 250)
-                        
-                        SecureField(isEnglish ? "Password" : "Wachtwoord", text: $password)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .frame(width: 250)
+                        .font(.system(size: 28))
+                    Picker("", selection: $isEnglish) {
+                        Text("ENG").tag(true)
+                        Text("NL").tag(false)
                     }
-                    
-                    Button(action: login) {
-                        Text(isEnglish ? "Login" : "Inloggen")
-                            .foregroundColor(.white)
-                            .frame(width: 250, height: 40)
-                            .background(Color.blue)
-                            .cornerRadius(8)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    if showingError {
-                        Text(errorMessage)
-                            .foregroundColor(.red)
-                            .font(.caption)
-                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 80)
                 }
-                .padding(40)
-                .background(Color.white)
-                .cornerRadius(20)
-                .shadow(radius: 10)
+                .padding(.top, 8)
+            }
+            .padding(.horizontal)
+            
+            Image(systemName: "person.circle")
+                .resizable()
+                .frame(width: 100, height: 100)
+                .foregroundColor(.blue)
+            
+            Text(isEnglish ? "Welcome to FLC" : "Welkom bij FLC")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+            
+            VStack(spacing: 15) {
+                TextField(isEnglish ? "Username" : "Gebruikersnaam", text: $username)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .focused($focusedField, equals: .username)
+                    .onSubmit {
+                        focusedField = .password
+                    }
                 
-                Spacer()
+                SecureField(isEnglish ? "Password" : "Wachtwoord", text: $password)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .focused($focusedField, equals: .password)
+                    .onSubmit {
+                        login()
+                    }
+                
+                Button(action: login) {
+                    Text(isEnglish ? "Login" : "Inloggen")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(username.isEmpty || password.isEmpty)
+            }
+            .frame(maxWidth: 300)
+            .padding()
+            
+            if showError {
+                Text(isEnglish ? "Invalid username or password" : "Ongeldige gebruikersnaam of wachtwoord")
+                    .foregroundColor(.red)
             }
         }
-        .frame(minWidth: 600, minHeight: 400)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(NSColor.windowBackgroundColor))
+        .onAppear {
+            focusedField = .username
+        }
     }
     
     private func login() {
@@ -86,10 +91,11 @@ struct LoginView: View {
         if result.success {
             userType = result.userType
             isLoggedIn = true
-            showingError = false
         } else {
             errorMessage = isEnglish ? "Invalid username or password" : "Ongeldige gebruikersnaam of wachtwoord"
-            showingError = true
+            showError = true
+            password = ""  // Clear password field on error
+            focusedField = .password  // Focus back on password field
         }
     }
 }

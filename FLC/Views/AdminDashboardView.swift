@@ -26,10 +26,6 @@ struct AdminDashboardView: View {
                     Label("Database Content", systemImage: "cylinder")
                 }
                 
-                NavigationLink(value: "combined") {
-                    Label("Database Combined Data", systemImage: "square.stack")
-                }
-                
                 NavigationLink(value: "query") {
                     Label("Query", systemImage: "magnifyingglass")
                 }
@@ -73,14 +69,12 @@ struct AdminDashboardView: View {
                         ValidationView(progress: progress)
                     case "content":
                         DatabaseContentView()
-                    case "combined":
-                        Text("Database Combined Data")
                     case "query":
                         Text("Query")
                     case "reports":
                         Text("Reports")
                     case "admin":
-                        Text("Admin Stuff")
+                        TestDataGeneratorView()
                     default:
                         Text("Select an option from the sidebar")
                     }

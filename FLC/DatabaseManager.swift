@@ -95,19 +95,13 @@ class DatabaseManager {
         
         print("Database path: \(dbPath.path)")
         
-        // If database exists and we need to recreate it
-        if fileManager.fileExists(atPath: dbPath.path) {
-            try? fileManager.removeItem(at: dbPath)
-            print("Removed existing database to recreate with new schema")
-        }
-        
         // Create database pool
         dbPool = try DatabasePool(path: dbPath.path)
         
-        // Create tables
+        // Create tables if they don't exist
         try createTables()
         
-        // Seed initial data
+        // Seed initial data if needed
         try seedInitialData()
     }
     
@@ -150,6 +144,29 @@ class DatabaseManager {
                 t.column("employeeNumber", .text)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()  // Added import set column
+            }
+            
+            // Create combined records table
+            try db.create(table: "combined_records", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                // AD fields
+                t.column("adGroup", .text).notNull()
+                t.column("systemAccount", .text).notNull()
+                t.column("applicationName", .text).notNull()
+                t.column("applicationSuite", .text).notNull()
+                t.column("otap", .text).notNull()
+                t.column("critical", .text).notNull()
+                // HR fields
+                t.column("department", .text)
+                t.column("jobRole", .text)
+                t.column("division", .text)
+                t.column("leaveDate", .datetime)
+                t.column("employeeNumber", .text)
+                // Metadata
+                t.column("importDate", .datetime).notNull()
+                t.column("importSet", .text).notNull()
+                // Create a unique index on the combination of adGroup and systemAccount
+                t.uniqueKey(["adGroup", "systemAccount"])
             }
         }
         print("Tables created successfully")
@@ -367,6 +384,76 @@ class DatabaseManager {
         
         _ = try await dbPool.write { db in
             try db.execute(sql: "DELETE FROM hr_records")
+        }
+    }
+    
+    // Fetch combined records with pagination
+    func fetchCombinedRecords(limit: Int = 1000, offset: Int = 0) async throws -> [CombinedRecord] {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        return try await dbPool.read { db in
+            try CombinedRecord
+                .limit(limit, offset: offset)
+                .fetchAll(db)
+        }
+    }
+    
+    // Generate combined records from AD and HR data
+    func generateCombinedRecords() async throws -> Int {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        return try await dbPool.write { db -> Int in
+            // First, clear existing combined records
+            try db.execute(sql: "DELETE FROM combined_records")
+            
+            // Fetch all AD records and HR records
+            let adRecords = try ADRecord.fetchAll(db)
+            let hrRecords = try HRRecord.fetchAll(db)
+            
+            print("Fetched \(adRecords.count) AD records and \(hrRecords.count) HR records")
+            
+            // Create a dictionary of HR records by system account for faster lookup
+            let hrBySystemAccount = Dictionary(
+                uniqueKeysWithValues: hrRecords.map { ($0.systemAccount, $0) }
+            )
+            
+            var combinedCount = 0
+            
+            // For each AD record, create a combined record with HR data if available
+            for adRecord in adRecords {
+                // Create combined record with optional HR data
+                let combinedRecord = CombinedRecord(
+                    adRecord: adRecord,
+                    hrRecord: hrBySystemAccount[adRecord.systemAccount]
+                )
+                
+                // Insert the combined record
+                try combinedRecord.insert(db)
+                combinedCount += 1
+                
+                // Print progress every 10000 records
+                if combinedCount % 10000 == 0 {
+                    print("Processed \(combinedCount) combined records...")
+                }
+            }
+            
+            print("Generated \(combinedCount) combined records from \(adRecords.count) AD records and \(hrRecords.count) HR records")
+            return combinedCount
+        }
+    }
+    
+    // Clear all combined records
+    func clearCombinedRecords() async throws {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        _ = try await dbPool.write { db in
+            try db.execute(sql: "DELETE FROM combined_records")
         }
     }
 } 

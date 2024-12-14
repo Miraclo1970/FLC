@@ -4,6 +4,7 @@ class ImportProgress: ObservableObject {
     enum DataType {
         case ad
         case hr
+        case combined
     }
     
     @Published var isProcessing: Bool = false

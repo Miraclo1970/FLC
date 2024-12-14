@@ -108,6 +108,11 @@ struct ValidationView: View {
             valid = progress.validHRRecords.count
             invalid = progress.invalidHRRecords.count
             duplicates = progress.duplicateHRRecords.count
+        case .combined:
+            total = 0  // Combined type doesn't have validation stats
+            valid = 0
+            invalid = 0
+            duplicates = 0
         }
         
         print("ValidationView - Current data type: \(progress.selectedDataType), Valid records: \(valid)")
@@ -137,6 +142,10 @@ struct ValidationView: View {
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(8)
                 .onChange(of: progress.selectedDataType) { oldValue, newValue in
+                    if newValue == .combined {
+                        // If somehow combined is selected, switch back to AD
+                        progress.selectedDataType = .ad
+                    }
                     print("ValidationView - Data type changed from \(oldValue) to \(newValue)")
                 }
             }
@@ -464,6 +473,8 @@ extension ValidationView {
             return !progress.validRecords.isEmpty
         case .hr:
             return !progress.validHRRecords.isEmpty
+        case .combined:
+            return false  // Combined type doesn't have validation
         }
     }
     
@@ -473,6 +484,8 @@ extension ValidationView {
             return !progress.invalidRecords.isEmpty || !progress.duplicateRecords.isEmpty
         case .hr:
             return !progress.invalidHRRecords.isEmpty || !progress.duplicateHRRecords.isEmpty
+        case .combined:
+            return false  // Combined type doesn't have validation
         }
     }
     
@@ -570,6 +583,12 @@ extension ValidationView {
                     await MainActor.run {
                         saveProgress = 1.0
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
+                    }
+                case .combined:
+                    // Combined type doesn't support direct saving
+                    await MainActor.run {
+                        saveProgress = 0.0
+                        saveResult = "Combined data type does not support direct saving."
                     }
                 }
             } catch {
