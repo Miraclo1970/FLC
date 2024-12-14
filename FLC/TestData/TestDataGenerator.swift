@@ -5,7 +5,7 @@ class TestDataGenerator {
     
     // Generate AD test data
     func generateADTestData() -> [String] {
-        var csvLines = [
+        let csvLines = [
             "AD Group,System Account,Application,Suite,OTAP,Critical",
             
             // Valid records with matching HR records
@@ -56,7 +56,7 @@ class TestDataGenerator {
     
     // Generate HR test data
     func generateHRTestData() -> [String] {
-        var csvLines = [
+        let csvLines = [
             "System Account,Department,Job Role,Division,Leave Date,Employee Number",
             
             // Active employees with matching AD records
