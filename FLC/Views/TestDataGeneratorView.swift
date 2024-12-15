@@ -45,6 +45,12 @@ struct TestDataGeneratorView: View {
                         await testUpdates()
                     }
                 }
+                
+                Button("Clear All", role: .destructive) {
+                    Task {
+                        await clearAllData()
+                    }
+                }
             }
             
             // Status Message
@@ -85,17 +91,20 @@ struct TestDataGeneratorView: View {
             let adTestData = TestDataGenerator.generateADTestData()
             let hrTestData = TestDataGenerator.generateHRTestData()
             let packageTestData = TestDataGenerator.generatePackageStatusData()
+            let testingData = TestDataGenerator.generateTestingData()
             
             // Save to database
             let adResult = try await DatabaseManager.shared.saveADRecords(adTestData)
             let hrResult = try await DatabaseManager.shared.saveHRRecords(hrTestData)
             let packageResult = try await DatabaseManager.shared.savePackageRecords(packageTestData)
+            let testResult = try await DatabaseManager.shared.saveTestRecords(testingData)
             
             message = """
             Imported:
             - \(adResult.saved) AD records
             - \(hrResult.saved) HR records
             - \(packageResult.saved) Package Status records
+            - \(testResult.saved) Test records
             """
             await checkDatabase()
         } catch {
@@ -165,6 +174,26 @@ struct TestDataGeneratorView: View {
             await checkDatabase()
         } catch {
             message = "Error testing updates: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
+    
+    private func clearAllData() async {
+        isLoading = true
+        message = "Clearing all test data..."
+        
+        do {
+            try await DatabaseManager.shared.clearADRecords()
+            try await DatabaseManager.shared.clearHRRecords()
+            try await DatabaseManager.shared.clearPackageRecords()
+            try await DatabaseManager.shared.clearTestRecords()
+            try await DatabaseManager.shared.clearCombinedRecords()
+            
+            message = "Successfully cleared all test data"
+            await checkDatabase()
+        } catch {
+            message = "Error clearing test data: \(error.localizedDescription)"
         }
         
         isLoading = false

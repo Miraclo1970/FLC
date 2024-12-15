@@ -100,4 +100,37 @@ class TestDataGenerator {
         
         return testData
     }
+    
+    static func generateTestingData() -> [TestingData] {
+        var testData: [TestingData] = []
+        
+        // Test cases with various test scenarios
+        let testCases: [(employeeId: String, applicationName: String, status: String, result: String, comments: String?)] = [
+            ("EMP001", "FileShare", "Completed", "Pass", "All test cases passed"),
+            ("EMP002", "SAP", "In Progress", "Pending", "Testing core functionality"),
+            ("EMP003", "Oracle", "Not Started", "Not Tested", nil),
+            ("EMP004", "SharePoint", "Failed", "Fail", "Critical issues found in security module"),
+            ("EMP005", "Active Directory", "Completed", "Pass with Notes", "Minor issues documented"),
+            ("EMP006", "Custom App", "Blocked", "Blocked", "Waiting for package deployment"),
+            ("EMP007", "System Tools", "Completed", "Pass", "Performance tests successful"),
+            ("EMP008", "Email Client", "In Progress", "Pending", "50% test cases completed"),
+            ("EMP009", "Database Tool", "Completed", "Conditional Pass", "Needs security review"),
+            ("EMP010", "Security Scanner", "Not Started", "Not Tested", "Scheduled for next sprint")
+        ]
+        
+        // Add all test cases
+        for testCase in testCases {
+            let testingData = TestingData(
+                employeeId: testCase.employeeId,
+                applicationName: testCase.applicationName,
+                testStatus: testCase.status,
+                testDate: Date(),  // Current date for simplicity
+                testResult: testCase.result,
+                testComments: testCase.comments
+            )
+            testData.append(testingData)
+        }
+        
+        return testData
+    }
 } 

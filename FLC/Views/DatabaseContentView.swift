@@ -8,6 +8,7 @@ struct DatabaseContentView: View {
     @State private var hrRecords: [HRRecord] = []
     @State private var combinedRecords: [CombinedRecord] = []
     @State private var packageRecords: [PackageRecord] = []
+    @State private var testRecords: [TestRecord] = []
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
@@ -18,12 +19,21 @@ struct DatabaseContentView: View {
     @Environment(\.refresh) private var refresh
     @State private var autoLoadingEnabled = true
     @State private var loadingTask: Task<Void, Never>?
+    @State private var showingAlert = false
+    @State private var alertTitle = ""
+    @State private var alertMessage = ""
     
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
+    
+    private func showAlert(title: String, message: String) {
+        alertTitle = title
+        alertMessage = message
+        showingAlert = true
+    }
     
     var body: some View {
         VStack(spacing: 20) {
@@ -38,6 +48,7 @@ struct DatabaseContentView: View {
                     Text("AD Data").tag(ImportProgress.DataType.ad)
                     Text("HR Data").tag(ImportProgress.DataType.hr)
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
+                    Text("Testing").tag(ImportProgress.DataType.testing)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -62,6 +73,7 @@ struct DatabaseContentView: View {
                         case .hr: return "\(hrRecords.count)"
                         case .combined: return "\(combinedRecords.count)"
                         case .packageStatus: return "\(packageRecords.count)"
+                        case .testing: return "\(testRecords.count)"
                         }
                     }(),
                     icon: "doc.text"
@@ -80,6 +92,7 @@ struct DatabaseContentView: View {
                     case .hr: return hrRecords.isEmpty
                     case .combined: return combinedRecords.isEmpty
                     case .packageStatus: return packageRecords.isEmpty
+                    case .testing: return testRecords.isEmpty
                     }
                 }())
             }
@@ -159,6 +172,13 @@ struct DatabaseContentView: View {
                                     await loadData(resetData: true)
                                 }
                             })
+                    case .testing:
+                        DatabaseTestRecordsView(records: filteredTestRecords)
+                            .environment(\.refresh, {
+                                Task {
+                                    await loadData(resetData: true)
+                                }
+                            })
                     }
                 }
                 
@@ -175,6 +195,7 @@ struct DatabaseContentView: View {
                     case .hr: return "Total Records: \(hrRecords.count)"
                     case .combined: return "Total Records: \(combinedRecords.count)"
                     case .packageStatus: return "Total Records: \(packageRecords.count)"
+                    case .testing: return "Total Records: \(testRecords.count)"
                     }
                 }())
                     .font(.caption)
@@ -199,34 +220,18 @@ struct DatabaseContentView: View {
         }
         .alert("Clear All Records", isPresented: $showingDeleteAlert) {
             Button("Clear All", role: .destructive) {
-                Task {
-                    do {
-                        switch selectedDataType {
-                        case .ad:
-                            try await DatabaseManager.shared.clearADRecords()
-                        case .hr:
-                            try await DatabaseManager.shared.clearHRRecords()
-                        case .combined:
-                            try await DatabaseManager.shared.clearCombinedRecords()
-                        case .packageStatus:
-                            try await DatabaseManager.shared.clearPackageRecords()
-                        }
-                        await loadData(resetData: true)
-                    } catch {
-                        errorMessage = "Error clearing records: \(error.localizedDescription)"
-                    }
-                }
+                clearData()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text({
-                switch selectedDataType {
-                case .ad: return "Are you sure you want to clear all AD records? This action cannot be undone."
-                case .hr: return "Are you sure you want to clear all HR records? This action cannot be undone."
-                case .combined: return "Are you sure you want to clear all combined records? This action cannot be undone."
-                case .packageStatus: return "Are you sure you want to clear all package records? This action cannot be undone."
-                }
-            }())
+            Text("Are you sure you want to clear all records? This action cannot be undone.")
+        }
+        .alert(isPresented: $showingAlert) {
+            Alert(
+                title: Text(alertTitle),
+                message: Text(alertMessage),
+                dismissButton: .default(Text("OK"))
+            )
         }
     }
     
@@ -286,6 +291,19 @@ struct DatabaseContentView: View {
         }
     }
     
+    private var filteredTestRecords: [TestRecord] {
+        if searchText.isEmpty {
+            return testRecords
+        }
+        return testRecords.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.testStatus.localizedCaseInsensitiveContains(searchText) ||
+            record.testResult.localizedCaseInsensitiveContains(searchText) ||
+            (record.testComments ?? "").localizedCaseInsensitiveContains(searchText) ||
+            dateFormatter.string(from: record.testDate).localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
     private func loadData(resetData: Bool = false) async {
         // Check if task is cancelled
         guard !Task.isCancelled else { return }
@@ -298,6 +316,7 @@ struct DatabaseContentView: View {
             hrRecords = []
             combinedRecords = []
             packageRecords = []
+            testRecords = []
             hasMoreData = true
         }
         
@@ -383,6 +402,33 @@ struct DatabaseContentView: View {
                     
                     print("Loaded \(newRecords.count) package records, total: \(packageRecords.count), hasMore: \(hasMoreData)")
                 }
+            case .testing:
+                print("Loading test records page \(currentPage)...")
+                // First, ensure test records are generated
+                if resetData {
+                    let count = try await DatabaseManager.shared.generateTestRecords()
+                    if !Task.isCancelled {  // Check after generation
+                        print("Generated \(count) test records")
+                    }
+                }
+                
+                let newRecords = try await DatabaseManager.shared.fetchTestRecords(limit: pageSize, offset: currentPage * pageSize)
+                if !Task.isCancelled {  // Check again after fetch
+                    if resetData {
+                        testRecords = newRecords
+                    } else {
+                        testRecords.append(contentsOf: newRecords)
+                    }
+                    hasMoreData = !newRecords.isEmpty && newRecords.count == pageSize
+                    
+                    // If we have more data, immediately load the next batch
+                    if hasMoreData && !resetData && !Task.isCancelled {
+                        currentPage += 1
+                        await loadData(resetData: false)
+                    }
+                    
+                    print("Loaded \(newRecords.count) test records, total: \(testRecords.count), hasMore: \(hasMoreData)")
+                }
             }
         } catch {
             if !Task.isCancelled {  // Only show error if not cancelled
@@ -422,6 +468,33 @@ struct DatabaseContentView: View {
             await loadData(resetData: false)
             if !Task.isCancelled {
                 isLoadingMore = false
+            }
+        }
+    }
+    
+    private func clearData() {
+        Task {
+            do {
+                switch selectedDataType {
+                case .ad:
+                    try await DatabaseManager.shared.clearADRecords()
+                    adRecords = []
+                case .hr:
+                    try await DatabaseManager.shared.clearHRRecords()
+                    hrRecords = []
+                case .packageStatus:
+                    try await DatabaseManager.shared.clearPackageRecords()
+                    packageRecords = []
+                case .testing:
+                    try await DatabaseManager.shared.clearTestRecords()
+                    testRecords = []
+                case .combined:
+                    try await DatabaseManager.shared.clearCombinedRecords()
+                    combinedRecords = []
+                }
+                showAlert(title: "Success", message: "All records cleared successfully")
+            } catch {
+                showAlert(title: "Error", message: "Failed to clear records: \(error.localizedDescription)")
             }
         }
     }
@@ -915,6 +988,94 @@ struct DatabasePackageRecordsView: View {
                                         .frame(width: 150, alignment: .leading)
                                         .font(.system(size: 11))
                                     Text(record.packageReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
+                                        .frame(width: 200, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(dateFormatter.string(from: record.importDate))
+                                        .frame(width: 200, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(record.importSet)
+                                        .frame(width: 150, alignment: .leading)
+                                        .font(.system(size: 11))
+                                }
+                                .frame(height: rowHeight)
+                                .padding(.vertical, 0)
+                                .background(Color(NSColor.controlBackgroundColor))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct DatabaseTestRecordsView: View {
+    let records: [TestRecord]
+    private let rowHeight: CGFloat = 18
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("ID")
+                            .frame(width: 80, alignment: .leading)
+                            .padding(.leading, 16)
+                            .font(.system(size: 11))
+                        Text("Application Name")
+                            .frame(width: 200, alignment: .leading)
+                            .font(.system(size: 11))
+                        Text("Test Status")
+                            .frame(width: 150, alignment: .leading)
+                            .font(.system(size: 11))
+                        Text("Test Date")
+                            .frame(width: 200, alignment: .leading)
+                            .font(.system(size: 11))
+                        Text("Test Result")
+                            .frame(width: 150, alignment: .leading)
+                            .font(.system(size: 11))
+                        Text("Test Comments")
+                            .frame(width: 200, alignment: .leading)
+                            .font(.system(size: 11))
+                        Text("Import Date")
+                            .frame(width: 200, alignment: .leading)
+                            .font(.system(size: 11))
+                        Text("Import Set")
+                            .frame(width: 150, alignment: .leading)
+                            .font(.system(size: 11))
+                    }
+                    .padding(.vertical, 4)
+                    .background(Color(NSColor.windowBackgroundColor))
+                    .border(Color.gray.opacity(0.2), width: 1)
+                    
+                    ScrollView(.vertical, showsIndicators: true) {
+                        LazyVStack(spacing: 0, pinnedViews: []) {
+                            ForEach(records, id: \.id) { record in
+                                HStack(spacing: 0) {
+                                    Text(String(format: "%.0f", Double(record.id ?? -1)))
+                                        .frame(width: 80, alignment: .leading)
+                                        .padding(.leading, 16)
+                                        .font(.system(size: 11))
+                                    Text(record.applicationName)
+                                        .frame(width: 200, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(record.testStatus)
+                                        .frame(width: 150, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(dateFormatter.string(from: record.testDate))
+                                        .frame(width: 200, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(record.testResult)
+                                        .frame(width: 150, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(record.testComments ?? "N/A")
                                         .frame(width: 200, alignment: .leading)
                                         .font(.system(size: 11))
                                     Text(dateFormatter.string(from: record.importDate))

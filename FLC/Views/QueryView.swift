@@ -91,6 +91,8 @@ struct QueryView: View {
                    "Department", "Job Role", "Division", "Employee Number", "Leave Date"]
         case .packageStatus:
             return ["System Account", "Application Name", "Package Status", "Package Readiness Date"]
+        case .testing:
+            return ["Test Record"]
         }
     }
     
@@ -107,6 +109,7 @@ struct QueryView: View {
                     Text("HR Data").tag(ImportProgress.DataType.hr)
                     Text("Combined Data").tag(ImportProgress.DataType.combined)
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
+                    Text("Testing").tag(ImportProgress.DataType.testing)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -233,7 +236,7 @@ struct QueryView: View {
                             switch selectedDataType {
                             case .ad:
                                 if let results = queryResults as? [ADRecord] {
-                                    ResultsTableView(results: results)
+                                    ADResultsTableView(results: results)
                                 }
                             case .hr:
                                 if let results = queryResults as? [HRRecord] {
@@ -246,6 +249,10 @@ struct QueryView: View {
                             case .packageStatus:
                                 if let results = queryResults as? [PackageRecord] {
                                     PackageResultsTableView(results: results)
+                                }
+                            case .testing:
+                                if let results = queryResults as? [TestRecord] {
+                                    TestResultsTableView(results: results)
                                 }
                             }
                         }
@@ -299,7 +306,7 @@ struct QueryView: View {
 }
 
 // Results table views
-struct ResultsTableView: View {
+struct ADResultsTableView: View {
     let results: [ADRecord]
     private let rowHeight: CGFloat = 18
     
@@ -325,7 +332,7 @@ struct ResultsTableView: View {
             .background(Color(NSColor.windowBackgroundColor))
             
             // Results
-            ForEach(results, id: \.id) { record in
+            ForEach(results, id: \.id) { (record: ADRecord) in
                 HStack(spacing: 0) {
                     Text(record.adGroup)
                         .frame(width: 300, alignment: .leading)
@@ -379,7 +386,7 @@ struct HRResultsTableView: View {
             .background(Color(NSColor.windowBackgroundColor))
             
             // Results
-            ForEach(results, id: \.id) { record in
+            ForEach(results, id: \.id) { (record: HRRecord) in
                 HStack(spacing: 0) {
                     Text(record.systemAccount)
                         .frame(width: 200, alignment: .leading)
@@ -450,7 +457,7 @@ struct CombinedResultsTableView: View {
             .background(Color(NSColor.windowBackgroundColor))
             
             // Results
-            ForEach(results, id: \.id) { record in
+            ForEach(results, id: \.id) { (record: CombinedRecord) in
                 HStack(spacing: 0) {
                     Group {
                         Text(record.adGroup)
@@ -517,7 +524,7 @@ struct PackageResultsTableView: View {
             .background(Color(NSColor.windowBackgroundColor))
             
             // Results
-            ForEach(results, id: \.id) { record in
+            ForEach(results, id: \.id) { (record: PackageRecord) in
                 HStack(spacing: 0) {
                     Text(record.systemAccount)
                         .frame(width: 200, alignment: .leading)
@@ -527,6 +534,60 @@ struct PackageResultsTableView: View {
                         .frame(width: 150, alignment: .leading)
                     Text(record.packageReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
                         .frame(width: 120, alignment: .leading)
+                }
+                .frame(height: rowHeight)
+                .font(.system(size: 11))
+            }
+        }
+    }
+}
+
+struct TestResultsTableView: View {
+    let results: [TestRecord]
+    private let rowHeight: CGFloat = 18
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("System Account")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application Name")
+                    .frame(width: 200, alignment: .leading)
+                Text("Test Status")
+                    .frame(width: 150, alignment: .leading)
+                Text("Test Date")
+                    .frame(width: 120, alignment: .leading)
+                Text("Test Result")
+                    .frame(width: 120, alignment: .leading)
+                Text("Comments")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ForEach(results, id: \.id) { record in
+                HStack(spacing: 0) {
+                    Text(record.systemAccount)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.applicationName)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.testStatus)
+                        .frame(width: 150, alignment: .leading)
+                    Text(dateFormatter.string(from: record.testDate))
+                        .frame(width: 120, alignment: .leading)
+                    Text(record.testResult)
+                        .frame(width: 120, alignment: .leading)
+                    Text(record.testComments ?? "N/A")
+                        .frame(width: 200, alignment: .leading)
                 }
                 .frame(height: rowHeight)
                 .font(.system(size: 11))

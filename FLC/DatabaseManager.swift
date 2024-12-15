@@ -98,9 +98,9 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
 }
 
 class DatabaseManager {
-    static let shared = DatabaseManager()
+    public static let shared: DatabaseManager = DatabaseManager()
     private var dbPool: DatabasePool?
-    private let currentVersion = 2  // Added version tracking
+    private let currentVersion = 3  // Incremented version for test_records table
     
     private init() {
         do {
@@ -111,34 +111,29 @@ class DatabaseManager {
     }
     
     private func setupDatabase() throws {
-        let fileManager = FileManager.default
         let dbPath = "FLC.db"
-        
-        // Check current database version
-        if let existingPool = try? DatabasePool(path: dbPath) {
-            let version = try? existingPool.read { db in
-                try? Int.fetchOne(db, sql: "PRAGMA user_version")
-            } ?? 0
-            
-            if version != currentVersion {
-                print("Database version mismatch. Recreating database...")
-                try? fileManager.removeItem(atPath: dbPath)
-            }
-        }
         
         // Create or open database
         dbPool = try DatabasePool(path: dbPath)
         
-        try dbPool?.write { db in
-            // Set database version
-            try db.execute(sql: "PRAGMA user_version = \(currentVersion)")
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        try dbPool.write { db in
+            // Drop existing tables to ensure clean schema
+            try? db.execute(sql: "DROP TABLE IF EXISTS combined_records")
+            try? db.execute(sql: "DROP TABLE IF EXISTS ad_records")
+            try? db.execute(sql: "DROP TABLE IF EXISTS hr_records")
+            try? db.execute(sql: "DROP TABLE IF EXISTS package_status_records")
+            try? db.execute(sql: "DROP TABLE IF EXISTS test_records")
+            try? db.execute(sql: "DROP TABLE IF EXISTS users")
             
             // Create users table
             try db.create(table: "users", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("username", .text).notNull().unique()
                 t.column("password", .text).notNull()
-                t.column("role", .text).notNull()
             }
             
             // Create AD records table
@@ -212,6 +207,21 @@ class DatabaseManager {
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
                 // Create a unique index on applicationName only since systemAccount is not used
+                t.uniqueKey(["applicationName"])
+            }
+            
+            // Create test records table
+            try db.create(table: "test_records", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("systemAccount", .text).notNull()
+                t.column("applicationName", .text).notNull()
+                t.column("testStatus", .text).notNull()
+                t.column("testDate", .datetime).notNull()
+                t.column("testResult", .text).notNull()
+                t.column("testComments", .text)
+                t.column("importDate", .datetime).notNull()
+                t.column("importSet", .text).notNull()
+                // Create a unique index on applicationName since it's our key identifier
                 t.uniqueKey(["applicationName"])
             }
         }
@@ -523,8 +533,9 @@ class DatabaseManager {
             let adRecords = try ADRecord.fetchAll(db)
             let hrRecords = try HRRecord.fetchAll(db)
             let packageRecords = try PackageRecord.fetchAll(db)
+            let testRecords = try TestRecord.fetchAll(db)
             
-            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, and \(packageRecords.count) package status records")
+            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, and \(testRecords.count) test records")
             
             // Create dictionaries for faster lookup
             let hrBySystemAccount = Dictionary(
@@ -532,6 +543,9 @@ class DatabaseManager {
             )
             let packageByAppName = Dictionary(
                 uniqueKeysWithValues: packageRecords.map { ($0.applicationName, $0) }
+            )
+            let testByAppName = Dictionary(
+                uniqueKeysWithValues: testRecords.map { ($0.applicationName, $0) }
             )
             
             var combinedCount = 0
@@ -544,7 +558,10 @@ class DatabaseManager {
                 // Find matching Package Status record
                 let packageRecord = packageByAppName[adRecord.applicationName]
                 
-                // Create combined record with optional HR and Package Status data
+                // Find matching Test record
+                let testRecord = testByAppName[adRecord.applicationName]
+                
+                // Create combined record with optional HR, Package Status, and Test data
                 let combinedRecord = CombinedRecord(
                     id: nil,
                     adGroup: adRecord.adGroup,
@@ -560,8 +577,8 @@ class DatabaseManager {
                     employeeNumber: hrRecord?.employeeNumber,
                     applicationPackageStatus: packageRecord?.packageStatus,
                     applicationPackageReadinessDate: packageRecord?.packageReadinessDate,
-                    applicationTestStatus: nil,
-                    applicationTestReadinessDate: nil,
+                    applicationTestStatus: testRecord?.testStatus,
+                    applicationTestReadinessDate: testRecord?.testDate,
                     departmentSimple: nil,
                     migrationCluster: nil,
                     migrationReadiness: nil,
@@ -579,7 +596,7 @@ class DatabaseManager {
                 }
             }
             
-            print("Generated \(combinedCount) combined records from \(adRecords.count) AD records, \(hrRecords.count) HR records, and \(packageRecords.count) package status records")
+            print("Generated \(combinedCount) combined records from \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, and \(testRecords.count) test records")
             return combinedCount
         }
     }
@@ -619,6 +636,8 @@ class DatabaseManager {
                 tableName = "combined_records"
             case .packageStatus:
                 tableName = "package_status_records"
+            case .testing:
+                tableName = "test_records"
             }
             
             // Convert field name to database column name
@@ -645,6 +664,14 @@ class DatabaseManager {
                 mappedColumnName = "packagestatus"
             case "package_readiness_date":
                 mappedColumnName = "packagereadinessdate"
+            case "test_status":
+                mappedColumnName = "teststatus"
+            case "test_date":
+                mappedColumnName = "testdate"
+            case "test_result":
+                mappedColumnName = "testresult"
+            case "test_comments":
+                mappedColumnName = "testcomments"
             default:
                 mappedColumnName = columnName
             }
@@ -730,6 +757,10 @@ class DatabaseManager {
                 let packageResults = try PackageRecord.fetchAll(db, sql: sql, arguments: arguments)
                 print("Found \(packageResults.count) package status records")
                 return packageResults as [Any]
+            case .testing:
+                let testResults = try TestRecord.fetchAll(db, sql: sql, arguments: arguments)
+                print("Found \(testResults.count) test records")
+                return testResults as [Any]
             }
         }
     }
@@ -1009,6 +1040,121 @@ class DatabaseManager {
             
             print("Generated \(packageCount) package records from \(combinedRecords.count) combined records")
             return packageCount
+        }
+    }
+    
+    // Save test records to database with upsert behavior
+    func saveTestRecords(_ records: [TestingData]) async throws -> (saved: Int, skipped: Int) {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        print("Attempting to save \(records.count) test records")
+        
+        return try await dbPool.write { db -> (Int, Int) in
+            var counts = (saved: 0, skipped: 0)
+            
+            for record in records {
+                let dbRecord = TestRecord(from: record)
+                print("Processing test record for application: \(dbRecord.applicationName)")
+                
+                // Try to find existing record by applicationName only
+                if let existingRecord = try TestRecord
+                    .filter(Column("applicationName") == record.applicationName)
+                    .fetchOne(db) {
+                    print("Found existing record for \(dbRecord.applicationName), updating...")
+                    // Update existing record with new data, preserving id
+                    var updatedRecord = dbRecord
+                    updatedRecord.id = existingRecord.id
+                    try updatedRecord.update(db)
+                    counts.saved += 1
+                } else {
+                    print("No existing record for \(dbRecord.applicationName), inserting new record...")
+                    // Insert new record
+                    try dbRecord.insert(db)
+                    counts.saved += 1
+                }
+            }
+            
+            print("Finished saving test records - Saved: \(counts.saved), Skipped: \(counts.skipped)")
+            return counts
+        }
+    }
+    
+    // Fetch test records with pagination
+    func fetchTestRecords(limit: Int = 1000, offset: Int = 0) async throws -> [TestRecord] {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        return try await dbPool.read { db in
+            try TestRecord
+                .order(sql: "applicationName ASC")
+                .limit(limit, offset: offset)
+                .fetchAll(db)
+        }
+    }
+    
+    // Clear all test records
+    func clearTestRecords() async throws {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        _ = try await dbPool.write { db in
+            try db.execute(sql: "DELETE FROM test_records")
+        }
+    }
+    
+    // Generate test records from combined records
+    func generateTestRecords() async throws -> Int {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        print("Starting test records generation from combined records")
+        
+        return try await dbPool.write { db -> Int in
+            // Get all combined records
+            let combinedRecords = try CombinedRecord.fetchAll(db)
+            var testCount = 0
+            
+            print("Found \(combinedRecords.count) combined records to process")
+            
+            // Create test records from combined records
+            for record in combinedRecords {
+                if let testStatus = record.applicationTestStatus {
+                    print("Processing combined record for \(record.applicationName) with status: \(testStatus)")
+                    
+                    let testingData = TestingData(
+                        employeeId: record.systemAccount,
+                        applicationName: record.applicationName,
+                        testStatus: testStatus,
+                        testDate: record.applicationTestReadinessDate ?? Date(),
+                        testResult: "Pending",
+                        testComments: nil
+                    )
+                    
+                    let testRecord = TestRecord(from: testingData)
+                    
+                    // Try to find existing record
+                    if let existingRecord = try TestRecord
+                        .filter(Column("applicationName") == record.applicationName)
+                        .fetchOne(db) {
+                        print("Updating existing test record for \(record.applicationName)")
+                        var updatedRecord = testRecord
+                        updatedRecord.id = existingRecord.id
+                        try updatedRecord.update(db)
+                    } else {
+                        print("Creating new test record for \(record.applicationName)")
+                        try testRecord.insert(db)
+                    }
+                    testCount += 1
+                }
+            }
+            
+            print("Generated \(testCount) test records from \(combinedRecords.count) combined records")
+            return testCount
         }
     }
 } 
