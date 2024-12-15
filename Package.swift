@@ -7,16 +7,22 @@ let package = Package(
         .macOS(.v13)
     ],
     dependencies: [
-        .package(url: "https://github.com/CoreOffice/CoreXLSX.git", from: "0.14.1"),
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.0.0")
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.0.0"),
+        .package(url: "https://github.com/CoreOffice/CoreXLSX.git", from: "0.14.0")
     ],
     targets: [
-        .target(
+        .executableTarget(
             name: "FLC",
             dependencies: [
-                "CoreXLSX",
-                .product(name: "GRDB", package: "GRDB.swift")
-            ]
+                .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "CoreXLSX", package: "CoreXLSX")
+            ],
+            path: "FLC"
+        ),
+        .testTarget(
+            name: "FLCTests",
+            dependencies: ["FLC"],
+            path: "FLCTests"
         )
     ]
 ) 

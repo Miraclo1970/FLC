@@ -121,14 +121,6 @@ class DatabaseManager {
         }
         
         try dbPool.write { db in
-            // Drop existing tables to ensure clean schema
-            try? db.execute(sql: "DROP TABLE IF EXISTS combined_records")
-            try? db.execute(sql: "DROP TABLE IF EXISTS ad_records")
-            try? db.execute(sql: "DROP TABLE IF EXISTS hr_records")
-            try? db.execute(sql: "DROP TABLE IF EXISTS package_status_records")
-            try? db.execute(sql: "DROP TABLE IF EXISTS test_records")
-            try? db.execute(sql: "DROP TABLE IF EXISTS users")
-            
             // Create users table
             try db.create(table: "users", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
@@ -210,22 +202,20 @@ class DatabaseManager {
                 t.uniqueKey(["applicationName"])
             }
             
-            // Create test records table
+            // Create test_records table
             try db.create(table: "test_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
-                t.column("systemAccount", .text).notNull()
                 t.column("applicationName", .text).notNull()
                 t.column("testStatus", .text).notNull()
-                t.column("testDate", .datetime).notNull()
+                t.column("testDate", .date).notNull()
                 t.column("testResult", .text).notNull()
                 t.column("testComments", .text)
-                t.column("importDate", .datetime).notNull()
+                t.column("importDate", .date).notNull()
                 t.column("importSet", .text).notNull()
-                // Create a unique index on applicationName since it's our key identifier
-                t.uniqueKey(["applicationName"])
+                t.uniqueKey(["applicationName", "importSet"])
             }
         }
-        print("Tables created successfully")
+        print("Database setup completed successfully")
     }
     
     // Save AD records to database with upsert behavior
@@ -1127,7 +1117,6 @@ class DatabaseManager {
                     print("Processing combined record for \(record.applicationName) with status: \(testStatus)")
                     
                     let testingData = TestingData(
-                        employeeId: record.systemAccount,
                         applicationName: record.applicationName,
                         testStatus: testStatus,
                         testDate: record.applicationTestReadinessDate ?? Date(),

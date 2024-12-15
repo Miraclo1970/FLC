@@ -4,7 +4,6 @@ import GRDB
 // Database record structure for test data
 struct TestRecord: Codable, FetchableRecord, PersistableRecord {
     var id: Int64?
-    let systemAccount: String
     let applicationName: String
     let testStatus: String
     let testDate: Date
@@ -17,7 +16,6 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
     
     init(from data: TestingData) {
         self.id = nil
-        self.systemAccount = data.employeeId
         self.applicationName = data.applicationName
         self.testStatus = data.testStatus
         self.testDate = data.testDate
@@ -34,7 +32,6 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
 
 struct TestingData: Identifiable, Codable {
     let id: UUID
-    let employeeId: String
     let applicationName: String
     let testStatus: String
     let testDate: Date
@@ -43,10 +40,6 @@ struct TestingData: Identifiable, Codable {
     
     var validationErrors: [String] {
         var errors: [String] = []
-        
-        if employeeId.isEmpty {
-            errors.append("Employee ID is required")
-        }
         
         if applicationName.isEmpty {
             errors.append("Application Name is required")
@@ -67,9 +60,8 @@ struct TestingData: Identifiable, Codable {
         return validationErrors.isEmpty
     }
     
-    init(employeeId: String, applicationName: String, testStatus: String, testDate: Date, testResult: String, testComments: String? = nil) {
+    init(applicationName: String, testStatus: String, testDate: Date, testResult: String, testComments: String? = nil) {
         self.id = UUID()
-        self.employeeId = employeeId
         self.applicationName = applicationName
         self.testStatus = testStatus
         self.testDate = testDate

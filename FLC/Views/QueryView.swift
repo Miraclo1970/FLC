@@ -251,8 +251,43 @@ struct QueryView: View {
                                     PackageResultsTableView(results: results)
                                 }
                             case .testing:
-                                if let results = queryResults as? [TestRecord] {
-                                    TestResultsTableView(results: results)
+                                if let results = queryResults as? [TestingData] {
+                                    VStack(spacing: 0) {
+                                        // Header
+                                        HStack(spacing: 0) {
+                                            Text("Application Name")
+                                                .frame(width: 200, alignment: .leading)
+                                            Text("Test Status")
+                                                .frame(width: 150, alignment: .leading)
+                                            Text("Test Date")
+                                                .frame(width: 150, alignment: .leading)
+                                            Text("Test Result")
+                                                .frame(width: 150, alignment: .leading)
+                                            Text("Comments")
+                                                .frame(width: 200, alignment: .leading)
+                                        }
+                                        .padding(.vertical, 4)
+                                        .font(.system(size: 11, weight: .bold))
+                                        .background(Color(NSColor.windowBackgroundColor))
+                                        
+                                        // Results
+                                        ForEach(results) { record in
+                                            HStack(spacing: 0) {
+                                                Text(record.applicationName)
+                                                    .frame(width: 200, alignment: .leading)
+                                                Text(record.testStatus)
+                                                    .frame(width: 150, alignment: .leading)
+                                                Text(dateFormatter.string(from: record.testDate))
+                                                    .frame(width: 150, alignment: .leading)
+                                                Text(record.testResult)
+                                                    .frame(width: 150, alignment: .leading)
+                                                Text(record.testComments ?? "")
+                                                    .frame(width: 200, alignment: .leading)
+                                            }
+                                            .padding(.vertical, 4)
+                                            .font(.system(size: 11))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -534,60 +569,6 @@ struct PackageResultsTableView: View {
                         .frame(width: 150, alignment: .leading)
                     Text(record.packageReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
                         .frame(width: 120, alignment: .leading)
-                }
-                .frame(height: rowHeight)
-                .font(.system(size: 11))
-            }
-        }
-    }
-}
-
-struct TestResultsTableView: View {
-    let results: [TestRecord]
-    private let rowHeight: CGFloat = 18
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Text("System Account")
-                    .frame(width: 200, alignment: .leading)
-                Text("Application Name")
-                    .frame(width: 200, alignment: .leading)
-                Text("Test Status")
-                    .frame(width: 150, alignment: .leading)
-                Text("Test Date")
-                    .frame(width: 120, alignment: .leading)
-                Text("Test Result")
-                    .frame(width: 120, alignment: .leading)
-                Text("Comments")
-                    .frame(width: 200, alignment: .leading)
-            }
-            .padding(.vertical, 4)
-            .font(.system(size: 11, weight: .bold))
-            .background(Color(NSColor.windowBackgroundColor))
-            
-            // Results
-            ForEach(results, id: \.id) { record in
-                HStack(spacing: 0) {
-                    Text(record.systemAccount)
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.applicationName)
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.testStatus)
-                        .frame(width: 150, alignment: .leading)
-                    Text(dateFormatter.string(from: record.testDate))
-                        .frame(width: 120, alignment: .leading)
-                    Text(record.testResult)
-                        .frame(width: 120, alignment: .leading)
-                    Text(record.testComments ?? "N/A")
-                        .frame(width: 200, alignment: .leading)
                 }
                 .frame(height: rowHeight)
                 .font(.system(size: 11))

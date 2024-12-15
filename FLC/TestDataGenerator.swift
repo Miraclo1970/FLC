@@ -105,23 +105,22 @@ class TestDataGenerator {
         var testData: [TestingData] = []
         
         // Test cases with various test scenarios
-        let testCases: [(employeeId: String, applicationName: String, status: String, result: String, comments: String?)] = [
-            ("EMP001", "FileShare", "Completed", "Pass", "All test cases passed"),
-            ("EMP002", "SAP", "In Progress", "Pending", "Testing core functionality"),
-            ("EMP003", "Oracle", "Not Started", "Not Tested", nil),
-            ("EMP004", "SharePoint", "Failed", "Fail", "Critical issues found in security module"),
-            ("EMP005", "Active Directory", "Completed", "Pass with Notes", "Minor issues documented"),
-            ("EMP006", "Custom App", "Blocked", "Blocked", "Waiting for package deployment"),
-            ("EMP007", "System Tools", "Completed", "Pass", "Performance tests successful"),
-            ("EMP008", "Email Client", "In Progress", "Pending", "50% test cases completed"),
-            ("EMP009", "Database Tool", "Completed", "Conditional Pass", "Needs security review"),
-            ("EMP010", "Security Scanner", "Not Started", "Not Tested", "Scheduled for next sprint")
+        let testCases: [(applicationName: String, status: String, result: String, comments: String?)] = [
+            ("FileShare", "Completed", "Pass", "All test cases passed"),
+            ("SAP", "In Progress", "Pending", "Testing core functionality"),
+            ("Oracle", "Not Started", "Not Tested", nil),
+            ("SharePoint", "Failed", "Fail", "Critical issues found in security module"),
+            ("Active Directory", "Completed", "Pass with Notes", "Minor issues documented"),
+            ("Custom App", "Blocked", "Blocked", "Waiting for package deployment"),
+            ("System Tools", "Completed", "Pass", "Performance tests successful"),
+            ("Email Client", "In Progress", "Pending", "50% test cases completed"),
+            ("Database Tool", "Completed", "Conditional Pass", "Needs security review"),
+            ("Security Scanner", "Not Started", "Not Tested", "Scheduled for next sprint")
         ]
         
         // Add all test cases
         for testCase in testCases {
             let testingData = TestingData(
-                employeeId: testCase.employeeId,
                 applicationName: testCase.applicationName,
                 testStatus: testCase.status,
                 testDate: Date(),  // Current date for simplicity

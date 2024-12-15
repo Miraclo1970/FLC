@@ -13,6 +13,7 @@ struct ImportView: View {
         case hr
         case ad
         case packageStatus
+        case testing
     }
     
     private enum DataTypeValidationError: Error {
@@ -36,6 +37,8 @@ struct ImportView: View {
             return .ad
         } else if firstRow.contains("package") || firstRow.contains("status") {
             return .packageStatus
+        } else if firstRow.contains("test") || firstRow.contains("status") {
+            return .testing
         }
         
         return nil
@@ -61,13 +64,25 @@ struct ImportView: View {
             fileName = "HR_template"
         case .packageStatus:
             fileName = "PackageStatus_template"
+        case .testing:
+            fileName = "TestStatus_template"
         }
         
+        // First try to find the template in the bundle
         if let templateURL = Bundle.main.url(forResource: fileName, withExtension: "xlsx") {
             NSWorkspace.shared.open(templateURL)
         } else {
-            print("Template file not found: \(fileName).xlsx")
-            message = "Error: Template file not found"
+            // If not in bundle, try to find it relative to the executable path
+            let executableURL = Bundle.main.bundleURL
+            let templateURL = executableURL.deletingLastPathComponent().appendingPathComponent("\(fileName).xlsx")
+            
+            if FileManager.default.fileExists(atPath: templateURL.path) {
+                NSWorkspace.shared.open(templateURL)
+            } else {
+                print("Template file not found: \(fileName).xlsx")
+                print("Tried bundle path and: \(templateURL.path)")
+                message = "Error: Template file not found"
+            }
         }
     }
     
@@ -99,36 +114,44 @@ struct ImportView: View {
                             openTemplate(type: .packageStatus)
                         }
                         .buttonStyle(.bordered)
+                        
+                        Button("Open Test Status Template") {
+                            openTemplate(type: .testing)
+                        }
+                        .buttonStyle(.bordered)
                     }
                     .padding(.bottom, 8)
                     
                     // Import buttons
-                    Button(action: {
-                        importType = .ad
-                        showFileImporter = true
-                    }) {
-                        Text("Import AD Data")
-                            .frame(maxWidth: .infinity)
+                    VStack(spacing: 8) {
+                        Button("Import AD Data") {
+                            importType = .ad
+                            showFileImporter = true
+                        }
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.bordered)
+                        
+                        Button("Import HR Data") {
+                            importType = .hr
+                            showFileImporter = true
+                        }
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.bordered)
+                        
+                        Button("Import Package Status") {
+                            importType = .packageStatus
+                            showFileImporter = true
+                        }
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.bordered)
+                        
+                        Button("Import Test Status") {
+                            importType = .testing
+                            showFileImporter = true
+                        }
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
-                    
-                    Button(action: {
-                        importType = .hr
-                        showFileImporter = true
-                    }) {
-                        Text("Import HR Data")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    
-                    Button(action: {
-                        importType = .packageStatus
-                        showFileImporter = true
-                    }) {
-                        Text("Import Package Status")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
                 }
             } else {
                 VStack(spacing: 20) {
@@ -251,6 +274,20 @@ struct ImportView: View {
                         message = "Successfully processed Package Status data from: \(file.lastPathComponent)"
                         progress.isProcessing = false
                         print("Processed Package Status records - Valid: \(valid.count)")
+                        print("Data type is now: \(progress.selectedDataType)")
+                        // Dismiss this view to return to the main navigation
+                        dismiss()
+                    }
+                    
+                case .testing:
+                    let (valid, _, _) = try await processTestStatusData(xlsx)
+                    await MainActor.run {
+                        print("Setting Test Status records - Valid: \(valid.count)")
+                        progress.selectedDataType = .testing
+                        progress.validTestRecords = valid
+                        message = "Successfully processed Test Status data from: \(file.lastPathComponent)"
+                        progress.isProcessing = false
+                        print("Processed Test Status records - Valid: \(valid.count)")
                         print("Data type is now: \(progress.selectedDataType)")
                         // Dismiss this view to return to the main navigation
                         dismiss()
@@ -1004,6 +1041,151 @@ struct ImportView: View {
                 )
                 validRecords.append(record)
                 processedValidRows += 1
+            }
+        }
+        
+        // Final progress update
+        let summary = """
+        Processing complete:
+        Valid records: \(processedValidRows)
+        Invalid records: \(invalidRecords.count)
+        Duplicate records: \(duplicateRecords.count)
+        """
+        
+        await MainActor.run {
+            progress.update(operation: summary, progress: 0.95)
+        }
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 5/5: Import complete!", progress: 1.0)
+        }
+        
+        return (validRecords, invalidRecords, duplicateRecords)
+    }
+    
+    private func processTestStatusData(_ xlsx: XLSXFile) async throws -> ([TestingData], [String], [String]) {
+        var validRecords: [TestingData] = []
+        let invalidRecords: [String] = []
+        let duplicateRecords: [String] = []
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 1/5: Reading worksheet data...", progress: 0.1)
+        }
+        
+        // Get the first worksheet
+        let worksheetPaths = try xlsx.parseWorksheetPaths()
+        guard let worksheetPath = worksheetPaths.first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheet found in the file"])
+        }
+        
+        let worksheet = try xlsx.parseWorksheet(at: worksheetPath)
+        let sharedStrings = try xlsx.parseSharedStrings()
+        let totalRows = worksheet.data?.rows.count ?? 0
+        
+        // Validate header row
+        guard let firstRow = worksheet.data?.rows.first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data found in worksheet"])
+        }
+        
+        let headers = firstRow.cells.map { cell -> String in
+            if let sharedStrings = sharedStrings,
+               case .sharedString = cell.type,
+               let value = cell.value,
+               let stringIndex = Int(value),
+               stringIndex < sharedStrings.items.count {
+                return sharedStrings.items[stringIndex].text ?? ""
+            }
+            return cell.value ?? ""
+        }
+        
+        // Check for Test Status header
+        let headerText = headers.joined(separator: " ").lowercased()
+        guard headerText.contains("test") && headerText.contains("status") else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid file format: Expected Test Status data but found different content"])
+        }
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 2/5: Processing \(totalRows) rows...", progress: 0.2)
+        }
+        
+        // Process each row
+        var processedValidRows = 0
+        
+        // Skip first two rows (header and column names)
+        let dataRows = (worksheet.data?.rows ?? []).dropFirst(2)
+        
+        for (index, row) in dataRows.enumerated() {
+            let rowContent = row.cells.map { cell -> (columnIndex: Int, value: String) in
+                var cellValue = ""
+                
+                if let sharedStrings = sharedStrings,
+                   case .sharedString = cell.type,
+                   let value = cell.value,
+                   let stringIndex = Int(value),
+                   stringIndex < sharedStrings.items.count {
+                    cellValue = sharedStrings.items[stringIndex].text ?? ""
+                } else if let value = cell.value {
+                    cellValue = value
+                }
+                
+                let columnIndex = cell.reference.column.value.excelColumnToIndex()
+                return (columnIndex: columnIndex, value: cellValue.trimmingCharacters(in: .whitespaces))
+            }
+            
+            // Create a dictionary for easier column access
+            var rowData: [Int: String] = [:]
+            for content in rowContent {
+                rowData[content.columnIndex] = content.value
+            }
+            
+            // Extract data from the correct columns (adjusted column indices)
+            let applicationName = rowData[0] ?? "N/A"
+            let testStatus = rowData[1] ?? "N/A"
+            let testDateStr = rowData[2] ?? ""
+            let testResult = rowData[3] ?? "N/A"
+            let testComments = rowData[4]
+            
+            // Parse the test date
+            var testDate: Date = Date()
+            if !testDateStr.isEmpty && testDateStr != "N/A" {
+                let dateFormatters = [
+                    "dd-MM-yyyy",
+                    "yyyy-MM-dd",
+                    "MM/dd/yyyy",
+                    "dd/MM/yyyy"
+                ].map { format -> DateFormatter in
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = format
+                    return formatter
+                }
+                
+                for formatter in dateFormatters {
+                    if let date = formatter.date(from: testDateStr) {
+                        testDate = date
+                        break
+                    }
+                }
+            }
+            
+            // Validate the record
+            if applicationName != "N/A" && testStatus != "N/A" {
+                let record = TestingData(
+                    applicationName: applicationName,
+                    testStatus: testStatus,
+                    testDate: testDate,
+                    testResult: testResult,
+                    testComments: testComments
+                )
+                validRecords.append(record)
+                processedValidRows += 1
+            }
+            
+            // Update progress
+            if index % 100 == 0 {
+                await MainActor.run {
+                    let progress = Double(index) / Double(totalRows)
+                    self.progress.update(operation: "Phase 2/5: Processing row \(index) of \(totalRows)...", progress: 0.2 + (progress * 0.6))
+                }
             }
         }
         
