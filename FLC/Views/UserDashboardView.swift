@@ -1,71 +1,139 @@
 import SwiftUI
 
 struct UserDashboardView: View {
-    let isEnglish: Bool
-    let username: String
-    @Environment(\.dismiss) var dismiss
+    @Binding var isLoggedIn: Bool
+    @StateObject private var progress = ImportProgress()
+    @State private var selectedItem: String? = nil
+    @State private var isEnglish = true
     
     var body: some View {
-        NavigationView {
+        NavigationSplitView {
             // Sidebar
-            List {
-                NavigationLink(destination: Text("My Tasks")) {
+            List(selection: $selectedItem) {
+                NavigationLink(value: "import") {
+                    Label(isEnglish ? "Import" : "Importeren", 
+                          systemImage: "square.and.arrow.down")
+                }
+                
+                NavigationLink(value: "validation") {
+                    Label(isEnglish ? "Validation" : "Validatie", 
+                          systemImage: "checkmark.shield")
+                }
+                
+                NavigationLink(value: "content") {
+                    Label(isEnglish ? "Database Content" : "Database Inhoud", 
+                          systemImage: "cylinder")
+                }
+                
+                NavigationLink(value: "tasks") {
                     Label(isEnglish ? "My Tasks" : "Mijn Taken", 
                           systemImage: "list.bullet")
                 }
-                NavigationLink(destination: Text("Messages")) {
+                
+                NavigationLink(value: "messages") {
                     Label(isEnglish ? "Messages" : "Berichten", 
                           systemImage: "envelope")
                 }
-                NavigationLink(destination: Text("Profile")) {
+                
+                NavigationLink(value: "profile") {
                     Label(isEnglish ? "Profile" : "Profiel", 
                           systemImage: "person.circle")
                 }
             }
             .listStyle(SidebarListStyle())
             .frame(minWidth: 200)
-            
-            // Main Content
-            VStack(spacing: 20) {
-                Text(isEnglish ? "Welcome, \(username)" : "Welkom, \(username)")
-                    .font(.largeTitle)
-                    .padding(.top)
-                
-                // Quick Stats
-                HStack(spacing: 20) {
-                    DashboardCard(
-                        title: isEnglish ? "My Tasks" : "Mijn Taken",
-                        value: "3",
-                        icon: "checkmark.circle"
-                    )
-                    DashboardCard(
-                        title: isEnglish ? "Messages" : "Berichten",
-                        value: "2",
-                        icon: "envelope"
-                    )
+            .navigationTitle(isEnglish ? "User Dashboard" : "Gebruiker Dashboard")
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button(action: toggleSidebar) {
+                        Image(systemName: "sidebar.left")
+                    }
                 }
-                .padding()
-                
-                Spacer()
+                ToolbarItem(placement: .automatic) {
+                    Button(action: {
+                        isLoggedIn = false
+                    }) {
+                        Label(isEnglish ? "Logout" : "Uitloggen", 
+                              systemImage: "rectangle.portrait.and.arrow.right")
+                            .foregroundColor(.red)
+                    }
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
-            .background(Color(NSColor.windowBackgroundColor))
+        } detail: {
+            NavigationStack {
+                if let selectedItem {
+                    switch selectedItem {
+                    case "import":
+                        ImportView()
+                            .environmentObject(progress)
+                    case "validation":
+                        ValidationView(progress: progress)
+                    case "content":
+                        DatabaseContentView()
+                    case "tasks":
+                        VStack(spacing: 20) {
+                            Text(isEnglish ? "My Tasks" : "Mijn Taken")
+                                .font(.largeTitle)
+                                .padding(.top)
+                            
+                            DashboardCard(
+                                title: isEnglish ? "Active Tasks" : "Actieve Taken",
+                                value: "3",
+                                icon: "checkmark.circle"
+                            )
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding()
+                    case "messages":
+                        VStack(spacing: 20) {
+                            Text(isEnglish ? "Messages" : "Berichten")
+                                .font(.largeTitle)
+                                .padding(.top)
+                            
+                            DashboardCard(
+                                title: isEnglish ? "Unread Messages" : "Ongelezen Berichten",
+                                value: "2",
+                                icon: "envelope"
+                            )
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding()
+                    case "profile":
+                        VStack(spacing: 20) {
+                            Text(isEnglish ? "Profile" : "Profiel")
+                                .font(.largeTitle)
+                                .padding(.top)
+                            
+                            Image(systemName: "person.circle.fill")
+                                .resizable()
+                                .frame(width: 100, height: 100)
+                                .foregroundColor(.blue)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding()
+                    default:
+                        Text(isEnglish ? "Select an option from the sidebar" : "Selecteer een optie uit het menu")
+                    }
+                } else {
+                    VStack {
+                        Text(isEnglish ? "Select an option from the sidebar" : "Selecteer een optie uit het menu")
+                            .font(.title)
+                            .foregroundColor(.gray)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(NSColor.windowBackgroundColor))
+                }
+            }
         }
-        .navigationTitle(isEnglish ? "User Dashboard" : "Gebruiker Dashboard")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button(action: toggleSidebar) {
-                    Image(systemName: "sidebar.left")
-                }
+        .frame(minWidth: 800, minHeight: 600)
+        .onChange(of: progress.validRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
             }
-            ToolbarItem(placement: .automatic) {
-                Button(action: {
-                    dismiss()
-                }) {
-                    Text(isEnglish ? "Logout" : "Uitloggen")
-                        .foregroundColor(.red)
-                }
+        }
+        .onChange(of: progress.validHRRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
             }
         }
     }
@@ -76,5 +144,5 @@ struct UserDashboardView: View {
 }
 
 #Preview {
-    UserDashboardView(isEnglish: true, username: "John")
+    UserDashboardView(isLoggedIn: .constant(true))
 } 

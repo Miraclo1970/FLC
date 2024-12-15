@@ -91,23 +91,43 @@ struct ValidationView: View {
     @State private var saveProgress: Double = 0.0
     private let batchSize = 5000
     
-    var validationStats: [(String, String)] {
-        let total: Int
-        let valid: Int
-        let invalid: Int
-        let duplicates: Int
+    private var stats: [(String, String)] {
+        var total = 0
+        var valid = 0
+        var invalid = 0
+        var duplicates = 0
         
         switch progress.selectedDataType {
         case .ad:
-            total = progress.validRecords.count + progress.invalidRecords.count + progress.duplicateRecords.count
+            total = progress.validRecords.count +
+                    progress.invalidRecords.count +
+                    progress.duplicateRecords.count
             valid = progress.validRecords.count
             invalid = progress.invalidRecords.count
             duplicates = progress.duplicateRecords.count
         case .hr:
-            total = progress.validHRRecords.count + progress.invalidHRRecords.count + progress.duplicateHRRecords.count
+            total = progress.validHRRecords.count +
+                    progress.invalidHRRecords.count +
+                    progress.duplicateHRRecords.count
             valid = progress.validHRRecords.count
             invalid = progress.invalidHRRecords.count
             duplicates = progress.duplicateHRRecords.count
+        case .packageStatus:
+            total = progress.validPackageRecords.count +
+                    progress.invalidPackageRecords.count +
+                    progress.duplicatePackageRecords.count
+            valid = progress.validPackageRecords.count
+            invalid = 0  // Package status doesn't track invalid records yet
+            duplicates = 0  // Package status doesn't track duplicates yet
+        case .testing:
+            total = progress.validTestRecords.count +
+                    progress.invalidTestRecords.count +
+                    progress.duplicateTestRecords.count
+            valid = progress.validTestRecords.count
+            invalid = progress.invalidTestRecords.count
+            duplicates = progress.duplicateTestRecords.count
+        case .combined:
+            total = 0  // Combined view doesn't have its own records
         }
         
         print("ValidationView - Current data type: \(progress.selectedDataType), Valid records: \(valid)")
@@ -130,6 +150,7 @@ struct ValidationView: View {
                 Picker("Data Type", selection: $progress.selectedDataType) {
                     Text("AD Data").tag(ImportProgress.DataType.ad)
                     Text("HR Data").tag(ImportProgress.DataType.hr)
+                    Text("Package Status").tag(ImportProgress.DataType.packageStatus)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -137,6 +158,10 @@ struct ValidationView: View {
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(8)
                 .onChange(of: progress.selectedDataType) { oldValue, newValue in
+                    if newValue == .combined {
+                        // If somehow combined is selected, switch back to AD
+                        progress.selectedDataType = .ad
+                    }
                     print("ValidationView - Data type changed from \(oldValue) to \(newValue)")
                 }
             }
@@ -146,7 +171,7 @@ struct ValidationView: View {
             HStack {
                 // Stats Cards
                 HStack(spacing: 20) {
-                    ForEach(validationStats, id: \.0) { stat in
+                    ForEach(stats, id: \.0) { stat in
                         DashboardCard(
                             title: stat.0,
                             value: stat.1,
@@ -464,15 +489,31 @@ extension ValidationView {
             return !progress.validRecords.isEmpty
         case .hr:
             return !progress.validHRRecords.isEmpty
+        case .packageStatus:
+            return !progress.validPackageRecords.isEmpty
+        case .testing:
+            return !progress.validTestRecords.isEmpty
+        case .combined:
+            return false  // Combined view doesn't have its own records
         }
     }
     
     private var hasInvalidOrDuplicateRecords: Bool {
         switch progress.selectedDataType {
         case .ad:
-            return !progress.invalidRecords.isEmpty || !progress.duplicateRecords.isEmpty
+            return !progress.invalidRecords.isEmpty ||
+                   !progress.duplicateRecords.isEmpty
         case .hr:
-            return !progress.invalidHRRecords.isEmpty || !progress.duplicateHRRecords.isEmpty
+            return !progress.invalidHRRecords.isEmpty ||
+                   !progress.duplicateHRRecords.isEmpty
+        case .packageStatus:
+            return !progress.invalidPackageRecords.isEmpty ||
+                   !progress.duplicatePackageRecords.isEmpty
+        case .testing:
+            return !progress.invalidTestRecords.isEmpty ||
+                   !progress.duplicateTestRecords.isEmpty
+        case .combined:
+            return false  // Combined view doesn't have its own records
         }
     }
     
@@ -571,6 +612,58 @@ extension ValidationView {
                         saveProgress = 1.0
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
+                case .packageStatus:
+                    let records = progress.validPackageRecords
+                    var totalSaved = 0
+                    var totalSkipped = 0
+                    let totalBatches = Int(ceil(Double(records.count) / Double(batchSize)))
+                    
+                    for batchIndex in 0..<totalBatches {
+                        let start = batchIndex * batchSize
+                        let end = min(start + batchSize, records.count)
+                        let batch = Array(records[start..<end])
+                        
+                        let (saved, skipped) = try await DatabaseManager.shared.savePackageRecords(batch)
+                        totalSaved += saved
+                        totalSkipped += skipped
+                        
+                        await MainActor.run {
+                            saveProgress = Double(end) / Double(records.count)
+                            saveResult = "Processing: \(end)/\(records.count) records..."
+                        }
+                    }
+                    
+                    await MainActor.run {
+                        saveProgress = 1.0
+                        saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
+                    }
+                case .testing:
+                    let records = progress.validTestRecords
+                    var totalSaved = 0
+                    var totalSkipped = 0
+                    let totalBatches = Int(ceil(Double(records.count) / Double(batchSize)))
+                    
+                    for batchIndex in 0..<totalBatches {
+                        let start = batchIndex * batchSize
+                        let end = min(start + batchSize, records.count)
+                        let batch = Array(records[start..<end])
+                        
+                        let (saved, skipped) = try await DatabaseManager.shared.saveTestRecords(batch)
+                        totalSaved += saved
+                        totalSkipped += skipped
+                        
+                        await MainActor.run {
+                            saveProgress = Double(end) / Double(records.count)
+                            saveResult = "Processing: \(end)/\(records.count) records..."
+                        }
+                    }
+                    
+                    await MainActor.run {
+                        saveProgress = 1.0
+                        saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
+                    }
+                case .combined:
+                    break  // Combined view doesn't have its own records to save
                 }
             } catch {
                 await MainActor.run {

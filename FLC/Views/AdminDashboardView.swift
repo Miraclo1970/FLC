@@ -1,19 +1,15 @@
 import SwiftUI
 
 struct AdminDashboardView: View {
-    let isEnglish: Bool
-    @Environment(\.dismiss) var dismiss
+    @Binding var isLoggedIn: Bool
     @StateObject private var progress = ImportProgress()
     @State private var selectedItem: String? = nil
+    @State private var isEnglish = true
     
     var body: some View {
         NavigationSplitView {
             // Sidebar
             List(selection: $selectedItem) {
-                NavigationLink(value: "templates") {
-                    Label("Templates", systemImage: "doc")
-                }
-                
                 NavigationLink(value: "import") {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
@@ -22,16 +18,8 @@ struct AdminDashboardView: View {
                     Label("Validation", systemImage: "checkmark.shield")
                 }
                 
-                NavigationLink(value: "history") {
-                    Label("History", systemImage: "clock.arrow.2.circlepath")
-                }
-                
                 NavigationLink(value: "content") {
-                    Label("Database Content", systemImage: "cylinder")
-                }
-                
-                NavigationLink(value: "combined") {
-                    Label("Database Combined Data", systemImage: "square.stack")
+                    Label("Database", systemImage: "cylinder")
                 }
                 
                 NavigationLink(value: "query") {
@@ -57,9 +45,9 @@ struct AdminDashboardView: View {
                 }
                 ToolbarItem(placement: .automatic) {
                     Button(action: {
-                        dismiss()
+                        isLoggedIn = false
                     }) {
-                        Text("Logout")
+                        Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
                             .foregroundColor(.red)
                     }
                 }
@@ -68,24 +56,19 @@ struct AdminDashboardView: View {
             NavigationStack {
                 if let selectedItem {
                     switch selectedItem {
-                    case "templates":
-                        TemplatesView(isEnglish: isEnglish)
                     case "import":
-                        ImportView().environmentObject(progress)
+                        ImportView()
+                            .environmentObject(progress)
                     case "validation":
                         ValidationView(progress: progress)
-                    case "history":
-                        Text("History")
                     case "content":
                         DatabaseContentView()
-                    case "combined":
-                        Text("Database Combined Data")
                     case "query":
-                        Text("Query")
+                        QueryView()
                     case "reports":
                         Text("Reports")
                     case "admin":
-                        Text("Admin Stuff")
+                        TestDataGeneratorView()
                     default:
                         Text("Select an option from the sidebar")
                     }
@@ -119,5 +102,5 @@ struct AdminDashboardView: View {
 }
 
 #Preview {
-    AdminDashboardView(isEnglish: true)
+    AdminDashboardView(isLoggedIn: .constant(true))
 } 

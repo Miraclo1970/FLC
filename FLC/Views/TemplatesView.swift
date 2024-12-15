@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TemplatesView: View {
-    let isEnglish: Bool
+    @State private var isEnglish = true
     
     var body: some View {
         VStack(spacing: 20) {
@@ -60,5 +60,5 @@ struct DownloadButton: View {
 }
 
 #Preview {
-    TemplatesView(isEnglish: true)
+    TemplatesView()
 } 
