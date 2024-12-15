@@ -19,11 +19,68 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
     let leaveDate: Date?
     let employeeNumber: String?
     
+    // Package tracking fields
+    var applicationPackageStatus: String?
+    var applicationPackageReadinessDate: Date?
+    
+    // Test tracking fields
+    var applicationTestStatus: String?
+    var applicationTestReadinessDate: Date?
+    
+    // Department and Migration fields
+    var departmentSimple: String?
+    var migrationCluster: String?
+    var migrationReadiness: String?
+    
     // Metadata
     let importDate: Date
     let importSet: String
     
     static let databaseTableName = "combined_records"
+    
+    init(id: Int64?,
+         adGroup: String,
+         systemAccount: String,
+         applicationName: String,
+         applicationSuite: String,
+         otap: String,
+         critical: String,
+         department: String?,
+         jobRole: String?,
+         division: String?,
+         leaveDate: Date?,
+         employeeNumber: String?,
+         applicationPackageStatus: String?,
+         applicationPackageReadinessDate: Date?,
+         applicationTestStatus: String?,
+         applicationTestReadinessDate: Date?,
+         departmentSimple: String?,
+         migrationCluster: String?,
+         migrationReadiness: String?,
+         importDate: Date,
+         importSet: String) {
+        self.id = id
+        self.adGroup = adGroup
+        self.systemAccount = systemAccount
+        self.applicationName = applicationName
+        self.applicationSuite = applicationSuite
+        self.otap = otap
+        self.critical = critical
+        self.department = department
+        self.jobRole = jobRole
+        self.division = division
+        self.leaveDate = leaveDate
+        self.employeeNumber = employeeNumber
+        self.applicationPackageStatus = applicationPackageStatus
+        self.applicationPackageReadinessDate = applicationPackageReadinessDate
+        self.applicationTestStatus = applicationTestStatus
+        self.applicationTestReadinessDate = applicationTestReadinessDate
+        self.departmentSimple = departmentSimple
+        self.migrationCluster = migrationCluster
+        self.migrationReadiness = migrationReadiness
+        self.importDate = importDate
+        self.importSet = importSet
+    }
     
     init(adRecord: ADRecord, hrRecord: HRRecord?) {
         self.id = nil
@@ -42,6 +99,19 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.division = hrRecord?.division
         self.leaveDate = hrRecord?.leaveDate
         self.employeeNumber = hrRecord?.employeeNumber
+        
+        // Package tracking fields (initialized as nil)
+        self.applicationPackageStatus = nil
+        self.applicationPackageReadinessDate = nil
+        
+        // Test tracking fields (initialized as nil)
+        self.applicationTestStatus = nil
+        self.applicationTestReadinessDate = nil
+        
+        // Department and Migration fields (initialized as nil)
+        self.departmentSimple = nil
+        self.migrationCluster = nil
+        self.migrationReadiness = nil
         
         // Use the most recent import date and create a combined import set
         self.importDate = Date()

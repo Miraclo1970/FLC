@@ -1,45 +1,173 @@
 import SwiftUI
 
 struct TestDataGeneratorView: View {
-    @State private var message: String = ""
-    @State private var showingMessage = false
+    @State private var dbState = "No data yet"
+    @State private var isLoading = false
+    @State private var message = ""
     
     var body: some View {
         VStack(spacing: 20) {
-            Text("Test Data Generator")
+            Text("Database Test Panel")
                 .font(.title)
-                .padding()
             
-            Button(action: generateTestData) {
-                Text("Generate Test Data Files")
-                    .frame(maxWidth: 200)
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+            // Database State
+            GroupBox("Database State") {
+                ScrollView {
+                    Text(dbState)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: 300)
             }
-            .buttonStyle(PlainButtonStyle())
             
-            if showingMessage {
+            // Action Buttons
+            HStack(spacing: 20) {
+                Button("Check Database") {
+                    Task {
+                        await checkDatabase()
+                    }
+                }
+                
+                Button("Import Test Data") {
+                    Task {
+                        await importTestData()
+                    }
+                }
+                
+                Button("Generate Combined") {
+                    Task {
+                        await generateCombined()
+                    }
+                }
+                
+                Button("Test Updates") {
+                    Task {
+                        await testUpdates()
+                    }
+                }
+            }
+            
+            // Status Message
+            if !message.isEmpty {
                 Text(message)
                     .foregroundColor(message.contains("Error") ? .red : .green)
                     .padding()
-                    .multilineTextAlignment(.center)
+            }
+            
+            if isLoading {
+                ProgressView()
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.windowBackgroundColor))
+        .padding()
+        .onAppear {
+            Task {
+                await checkDatabase()
+            }
+        }
     }
     
-    private func generateTestData() {
+    private func checkDatabase() async {
+        isLoading = true
         do {
-            try TestDataGenerator.shared.saveTestDataToFiles()
-            message = "Test data files generated successfully!\nCheck the Documents folder for ad_test_data.csv and hr_test_data.csv"
-            showingMessage = true
+            dbState = try await DatabaseManager.shared.checkDatabaseState()
         } catch {
-            message = "Error generating test data: \(error.localizedDescription)"
-            showingMessage = true
+            message = "Error checking database: \(error.localizedDescription)"
         }
+        isLoading = false
+    }
+    
+    private func importTestData() async {
+        isLoading = true
+        message = "Importing test data..."
+        
+        do {
+            // Generate test data
+            let adTestData = TestDataGenerator.generateADTestData()
+            let hrTestData = TestDataGenerator.generateHRTestData()
+            let packageTestData = TestDataGenerator.generatePackageStatusData()
+            
+            // Save to database
+            let adResult = try await DatabaseManager.shared.saveADRecords(adTestData)
+            let hrResult = try await DatabaseManager.shared.saveHRRecords(hrTestData)
+            let packageResult = try await DatabaseManager.shared.savePackageRecords(packageTestData)
+            
+            message = """
+            Imported:
+            - \(adResult.saved) AD records
+            - \(hrResult.saved) HR records
+            - \(packageResult.saved) Package Status records
+            """
+            await checkDatabase()
+        } catch {
+            message = "Error importing test data: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
+    
+    private func generateCombined() async {
+        isLoading = true
+        message = "Generating combined records..."
+        
+        do {
+            let count = try await DatabaseManager.shared.generateCombinedRecords()
+            message = "Generated \(count) combined records"
+            await checkDatabase()
+        } catch {
+            message = "Error generating combined records: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
+    
+    private func testUpdates() async {
+        isLoading = true
+        message = "Testing updates..."
+        
+        do {
+            // Get a sample record to update
+            let records = try await DatabaseManager.shared.fetchCombinedRecords(limit: 1)
+            guard let record = records.first else {
+                message = "No records found to test updates"
+                isLoading = false
+                return
+            }
+            
+            // Test package status update
+            try await DatabaseManager.shared.updatePackageStatus(
+                forSystemAccount: record.systemAccount,
+                adGroup: record.adGroup,
+                status: "In Progress"
+            )
+            
+            // Test package readiness date
+            try await DatabaseManager.shared.updatePackageReadinessDate(
+                forSystemAccount: record.systemAccount,
+                adGroup: record.adGroup,
+                date: Date().addingTimeInterval(60*60*24*30) // 30 days from now
+            )
+            
+            // Test test status
+            try await DatabaseManager.shared.updateTestStatus(
+                forSystemAccount: record.systemAccount,
+                adGroup: record.adGroup,
+                status: "Testing"
+            )
+            
+            // Test migration info
+            try await DatabaseManager.shared.updateMigrationCluster(
+                forSystemAccount: record.systemAccount,
+                adGroup: record.adGroup,
+                cluster: "Cluster A"
+            )
+            
+            message = "Successfully tested all updates on record: \(record.systemAccount)"
+            await checkDatabase()
+        } catch {
+            message = "Error testing updates: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
     }
 }
 

@@ -12,6 +12,7 @@ struct ImportView: View {
     enum ImportType {
         case hr
         case ad
+        case packageStatus
     }
     
     private enum DataTypeValidationError: Error {
@@ -33,6 +34,8 @@ struct ImportView: View {
             return .hr
         } else if firstRow.contains("ad") {
             return .ad
+        } else if firstRow.contains("package") || firstRow.contains("status") {
+            return .packageStatus
         }
         
         return nil
@@ -50,7 +53,15 @@ struct ImportView: View {
     }
     
     private func openTemplate(type: ImportType) {
-        let fileName = type == .ad ? "AD_template" : "HR_template"
+        let fileName: String
+        switch type {
+        case .ad:
+            fileName = "AD_template"
+        case .hr:
+            fileName = "HR_template"
+        case .packageStatus:
+            fileName = "PackageStatus_template"
+        }
         
         if let templateURL = Bundle.main.url(forResource: fileName, withExtension: "xlsx") {
             NSWorkspace.shared.open(templateURL)
@@ -62,11 +73,65 @@ struct ImportView: View {
     
     var body: some View {
         VStack(spacing: 20) {
+            Text("Import Data")
+                .font(.title)
+            
             Text(message)
+                .foregroundColor(message.contains("Error") ? .red : .secondary)
+                .multilineTextAlignment(.center)
                 .padding()
             
-            if progress.isProcessing {
+            if !progress.isProcessing {
                 VStack(spacing: 16) {
+                    // Template buttons
+                    HStack(spacing: 20) {
+                        Button("Open AD Template") {
+                            openTemplate(type: .ad)
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button("Open HR Template") {
+                            openTemplate(type: .hr)
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button("Open Package Status Template") {
+                            openTemplate(type: .packageStatus)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(.bottom, 8)
+                    
+                    // Import buttons
+                    Button(action: {
+                        importType = .ad
+                        showFileImporter = true
+                    }) {
+                        Text("Import AD Data")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button(action: {
+                        importType = .hr
+                        showFileImporter = true
+                    }) {
+                        Text("Import HR Data")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button(action: {
+                        importType = .packageStatus
+                        showFileImporter = true
+                    }) {
+                        Text("Import Package Status")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            } else {
+                VStack(spacing: 20) {
                     // Progress bar
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
@@ -94,36 +159,6 @@ struct ImportView: View {
                 }
                 .frame(width: 300)
                 .padding()
-            } else {
-                VStack(spacing: 20) {
-                    // Template buttons
-                    HStack(spacing: 20) {
-                        Button("Open AD Template") {
-                            openTemplate(type: .ad)
-                        }
-                        .buttonStyle(.bordered)
-                        
-                        Button("Open HR Template") {
-                            openTemplate(type: .hr)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    
-                    // Import buttons
-                    HStack(spacing: 20) {
-                        Button("Import HR Data") {
-                            importType = .hr
-                            showFileImporter = true
-                        }
-                        .buttonStyle(.bordered)
-                        
-                        Button("Import AD Data") {
-                            importType = .ad
-                            showFileImporter = true
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
             }
         }
         .padding()
@@ -202,6 +237,20 @@ struct ImportView: View {
                         message = "Successfully processed HR data from: \(file.lastPathComponent)"
                         progress.isProcessing = false
                         print("Processed HR records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
+                        print("Data type is now: \(progress.selectedDataType)")
+                        // Dismiss this view to return to the main navigation
+                        dismiss()
+                    }
+                    
+                case .packageStatus:
+                    let (valid, _, _) = try await processPackageStatusData(xlsx)
+                    await MainActor.run {
+                        print("Setting Package Status records - Valid: \(valid.count)")
+                        progress.selectedDataType = .packageStatus
+                        progress.validPackageRecords = valid
+                        message = "Successfully processed Package Status data from: \(file.lastPathComponent)"
+                        progress.isProcessing = false
+                        print("Processed Package Status records - Valid: \(valid.count)")
                         print("Data type is now: \(progress.selectedDataType)")
                         // Dismiss this view to return to the main navigation
                         dismiss()
@@ -388,7 +437,7 @@ struct ImportView: View {
         
         var processedValidRows = 0
         var processedInvalidRows = 0
-        var processedDuplicateRows = 0
+        var processedDuplicateRows = 0  // Changed from let to var since we need to modify it
         
         for (index, row) in dataRows.enumerated() {
             // Update progress more frequently for data processing
@@ -676,7 +725,7 @@ struct ImportView: View {
         
         var processedValidRows = 0
         var processedInvalidRows = 0
-        var processedDuplicateRows = 0
+        var processedDuplicateRows = 0  // Changed from let to var since we need to modify it
         
         for (index, row) in dataRows.enumerated() {
             if index % 50 == 0 {
@@ -812,6 +861,158 @@ struct ImportView: View {
         Valid records: \(processedValidRows)
         Invalid records: \(processedInvalidRows)
         Duplicate records: \(processedDuplicateRows)
+        """
+        
+        await MainActor.run {
+            progress.update(operation: summary, progress: 0.95)
+        }
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 5/5: Import complete!", progress: 1.0)
+        }
+        
+        return (validRecords, invalidRecords, duplicateRecords)
+    }
+    
+    private func processPackageStatusData(_ xlsx: XLSXFile) async throws -> ([PackageStatusData], [String], [String]) {
+        var validRecords: [PackageStatusData] = []
+        let invalidRecords: [String] = []
+        let duplicateRecords: [String] = []
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 1/5: Reading worksheet data...", progress: 0.1)
+        }
+        
+        // Get the first worksheet
+        let worksheetPaths = try xlsx.parseWorksheetPaths()
+        guard let worksheetPath = worksheetPaths.first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheet found in the file"])
+        }
+        
+        let worksheet = try xlsx.parseWorksheet(at: worksheetPath)
+        let sharedStrings = try xlsx.parseSharedStrings()
+        let totalRows = worksheet.data?.rows.count ?? 0
+        
+        // Validate header row
+        guard let firstRow = worksheet.data?.rows.first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data found in worksheet"])
+        }
+        
+        let headers = firstRow.cells.map { cell -> String in
+            if let sharedStrings = sharedStrings,
+               case .sharedString = cell.type,
+               let value = cell.value,
+               let stringIndex = Int(value),
+               stringIndex < sharedStrings.items.count {
+                return sharedStrings.items[stringIndex].text ?? ""
+            }
+            return cell.value ?? ""
+        }
+        
+        // Check for Package Status header
+        let headerText = headers.joined(separator: " ").lowercased()
+        guard headerText.contains("package") && headerText.contains("status") else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid file format: Expected Package Status data but found different content"])
+        }
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 2/5: Processing \(totalRows) rows...", progress: 0.2)
+        }
+        
+        // Process each row
+        var processedValidRows = 0
+        
+        // Skip first two rows (header and column names)
+        let dataRows = (worksheet.data?.rows ?? []).dropFirst(2)
+        
+        for (index, row) in dataRows.enumerated() {
+            let progressValue = 0.2 + (0.6 * Double(index) / Double(totalRows))
+            
+            // Update progress periodically
+            if index % 100 == 0 {
+                let stats = """
+                Row: \(index) of \(totalRows)
+                Valid: \(processedValidRows)
+                """
+                await MainActor.run {
+                    progress.update(operation: stats, progress: progressValue)
+                }
+            }
+            
+            let rowContent = row.cells.map { cell -> (columnIndex: Int, value: String) in
+                let cellValue: String
+                if let sharedStrings = sharedStrings,
+                   case .sharedString = cell.type,
+                   let value = cell.value,
+                   let stringIndex = Int(value),
+                   stringIndex < sharedStrings.items.count {
+                    let text = sharedStrings.items[stringIndex].text ?? ""
+                    cellValue = text.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : text
+                } else {
+                    let value = cell.value ?? ""
+                    cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
+                }
+                
+                let columnIndex = cell.reference.column.value.excelColumnToIndex()
+                return (columnIndex: columnIndex, value: cellValue)
+            }
+            
+            // Create a dictionary for easier column access
+            var rowData: [Int: String] = [:]
+            for content in rowContent {
+                rowData[content.columnIndex] = content.value
+            }
+            
+            // Extract data from the correct columns
+            let applicationName = rowData[0] ?? "N/A"
+            let packageStatus = rowData[1] ?? "N/A"
+            let packageReadinessDateStr = rowData[2] ?? ""
+            
+            // Parse the package readiness date
+            var packageReadinessDate: Date? = nil
+            if !packageReadinessDateStr.isEmpty && packageReadinessDateStr != "N/A" {
+                // Try different date formats
+                let dateFormatters = [
+                    "dd-MM-yyyy",
+                    "yyyy-MM-dd",
+                    "MM/dd/yyyy",
+                    "dd/MM/yyyy"
+                ].map { format -> DateFormatter in
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = format
+                    return formatter
+                }
+                
+                for formatter in dateFormatters {
+                    if let date = formatter.date(from: packageReadinessDateStr) {
+                        packageReadinessDate = date
+                        break
+                    }
+                }
+            }
+            
+            // Validate the record
+            if applicationName != "N/A" && packageStatus != "N/A" {
+                let record = PackageStatusData(
+                    id: nil,
+                    systemAccount: "", // Not used for package status
+                    applicationName: applicationName,
+                    packageStatus: packageStatus,
+                    packageReadinessDate: packageReadinessDate,
+                    importDate: Date(),
+                    importSet: UUID().uuidString
+                )
+                validRecords.append(record)
+                processedValidRows += 1
+            }
+        }
+        
+        // Final progress update
+        let summary = """
+        Processing complete:
+        Valid records: \(processedValidRows)
+        Invalid records: \(invalidRecords.count)
+        Duplicate records: \(duplicateRecords.count)
         """
         
         await MainActor.run {

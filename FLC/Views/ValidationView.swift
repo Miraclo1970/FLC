@@ -91,11 +91,11 @@ struct ValidationView: View {
     @State private var saveProgress: Double = 0.0
     private let batchSize = 5000
     
-    var validationStats: [(String, String)] {
-        let total: Int
-        let valid: Int
-        let invalid: Int
-        let duplicates: Int
+    private var stats: [(String, String)] {
+        var total = 0
+        var valid = 0
+        var invalid = 0
+        var duplicates = 0
         
         switch progress.selectedDataType {
         case .ad:
@@ -113,6 +113,11 @@ struct ValidationView: View {
             valid = 0
             invalid = 0
             duplicates = 0
+        case .packageStatus:
+            total = progress.validPackageRecords.count
+            valid = progress.validPackageRecords.count
+            invalid = 0  // Package status doesn't track invalid records yet
+            duplicates = 0  // Package status doesn't track duplicates yet
         }
         
         print("ValidationView - Current data type: \(progress.selectedDataType), Valid records: \(valid)")
@@ -135,6 +140,7 @@ struct ValidationView: View {
                 Picker("Data Type", selection: $progress.selectedDataType) {
                     Text("AD Data").tag(ImportProgress.DataType.ad)
                     Text("HR Data").tag(ImportProgress.DataType.hr)
+                    Text("Package Status").tag(ImportProgress.DataType.packageStatus)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -155,7 +161,7 @@ struct ValidationView: View {
             HStack {
                 // Stats Cards
                 HStack(spacing: 20) {
-                    ForEach(validationStats, id: \.0) { stat in
+                    ForEach(stats, id: \.0) { stat in
                         DashboardCard(
                             title: stat.0,
                             value: stat.1,
@@ -475,6 +481,8 @@ extension ValidationView {
             return !progress.validHRRecords.isEmpty
         case .combined:
             return false  // Combined type doesn't have validation
+        case .packageStatus:
+            return !progress.validPackageRecords.isEmpty
         }
     }
     
@@ -486,6 +494,8 @@ extension ValidationView {
             return !progress.invalidHRRecords.isEmpty || !progress.duplicateHRRecords.isEmpty
         case .combined:
             return false  // Combined type doesn't have validation
+        case .packageStatus:
+            return false  // Package status doesn't track invalid/duplicate records
         }
     }
     
@@ -589,6 +599,31 @@ extension ValidationView {
                     await MainActor.run {
                         saveProgress = 0.0
                         saveResult = "Combined data type does not support direct saving."
+                    }
+                case .packageStatus:
+                    let records = progress.validPackageRecords
+                    var totalSaved = 0
+                    var totalSkipped = 0
+                    let totalBatches = Int(ceil(Double(records.count) / Double(batchSize)))
+                    
+                    for batchIndex in 0..<totalBatches {
+                        let start = batchIndex * batchSize
+                        let end = min(start + batchSize, records.count)
+                        let batch = Array(records[start..<end])
+                        
+                        let (saved, skipped) = try await DatabaseManager.shared.savePackageRecords(batch)
+                        totalSaved += saved
+                        totalSkipped += skipped
+                        
+                        await MainActor.run {
+                            saveProgress = Double(end) / Double(records.count)
+                            saveResult = "Processing: \(end)/\(records.count) records..."
+                        }
+                    }
+                    
+                    await MainActor.run {
+                        saveProgress = 1.0
+                        saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
                 }
             } catch {

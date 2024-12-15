@@ -64,7 +64,7 @@ struct AdminDashboardView: View {
                     case "content":
                         DatabaseContentView()
                     case "query":
-                        Text("Query")
+                        QueryView()
                     case "reports":
                         Text("Reports")
                     case "admin":

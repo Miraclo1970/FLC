@@ -5,6 +5,7 @@ class ImportProgress: ObservableObject {
         case ad
         case hr
         case combined
+        case packageStatus
     }
     
     @Published var isProcessing: Bool = false
@@ -22,6 +23,9 @@ class ImportProgress: ObservableObject {
     @Published var invalidHRRecords: [String] = []
     @Published var duplicateHRRecords: [String] = []
     
+    // Validation data for package status
+    @Published var validPackageRecords: [PackageStatusData] = []
+    
     func reset() {
         isProcessing = false
         currentOperation = ""
@@ -35,6 +39,8 @@ class ImportProgress: ObservableObject {
         validHRRecords = []
         invalidHRRecords = []
         duplicateHRRecords = []
+        // Reset package status data
+        validPackageRecords = []
     }
     
     func update(operation: String, progress: Double) {
