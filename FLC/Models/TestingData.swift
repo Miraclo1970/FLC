@@ -14,6 +14,30 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
     
     static let databaseTableName = "test_records"
     
+    // Explicitly define the columns for GRDB
+    enum Columns {
+        static let id = Column("id")
+        static let applicationName = Column("applicationName")
+        static let testStatus = Column("testStatus")
+        static let testDate = Column("testDate")
+        static let testResult = Column("testResult")
+        static let testComments = Column("testComments")
+        static let importDate = Column("importDate")
+        static let importSet = Column("importSet")
+    }
+    
+    // Define persistence behavior
+    func encode(to container: inout PersistenceContainer) {
+        container[Columns.id] = id
+        container[Columns.applicationName] = applicationName
+        container[Columns.testStatus] = testStatus
+        container[Columns.testDate] = testDate
+        container[Columns.testResult] = testResult
+        container[Columns.testComments] = testComments
+        container[Columns.importDate] = importDate
+        container[Columns.importSet] = importSet
+    }
+    
     init(from data: TestingData) {
         self.id = nil
         self.applicationName = data.applicationName

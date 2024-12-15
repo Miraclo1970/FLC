@@ -111,7 +111,17 @@ class DatabaseManager {
     }
     
     private func setupDatabase() throws {
-        let dbPath = "FLC.db"
+        // Get the Application Support directory
+        guard let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find Application Support directory"])
+        }
+        
+        // Create FLC directory if it doesn't exist
+        let flcDir = appSupportDir.appendingPathComponent("FLC")
+        try? FileManager.default.createDirectory(at: flcDir, withIntermediateDirectories: true)
+        
+        // Set up database path
+        let dbPath = flcDir.appendingPathComponent("database.sqlite").path
         
         // Create or open database
         dbPool = try DatabasePool(path: dbPath)
@@ -212,6 +222,7 @@ class DatabaseManager {
                 t.column("testComments", .text)
                 t.column("importDate", .date).notNull()
                 t.column("importSet", .text).notNull()
+                // Create a unique index on applicationName and importSet
                 t.uniqueKey(["applicationName", "importSet"])
             }
         }
@@ -639,7 +650,13 @@ class DatabaseManager {
             case "job_role":
                 mappedColumnName = "jobrole"
             case "system_account":
-                mappedColumnName = "systemaccount"
+                // Only map systemAccount for tables that have this column
+                switch dataType {
+                case .testing:
+                    mappedColumnName = columnName  // Keep original for test records
+                default:
+                    mappedColumnName = "systemaccount"
+                }
             case "ad_group":
                 mappedColumnName = "adgroup"
             case "application_name":
