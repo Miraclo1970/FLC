@@ -47,10 +47,21 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
         self.testComments = data.testComments
         self.importDate = Date()
         
-        // Create a descriptive import set identifier
+        // Create a more descriptive import set identifier
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         self.importSet = "Test_Import_\(dateFormatter.string(from: Date()))"
+    }
+    
+    init(id: Int64?, applicationName: String, testStatus: String, testDate: Date, testResult: String, testComments: String?, importDate: Date, importSet: String) {
+        self.id = id
+        self.applicationName = applicationName
+        self.testStatus = testStatus
+        self.testDate = testDate
+        self.testResult = testResult
+        self.testComments = testComments
+        self.importDate = importDate
+        self.importSet = importSet
     }
 }
 

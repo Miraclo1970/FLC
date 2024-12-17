@@ -31,6 +31,9 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
     var departmentSimple: String?
     var migrationCluster: String?
     var migrationReadiness: String?
+    var applicationNameNew: String?  // New Application
+    var suiteNew: String?           // New Suite
+    var scopeDivision: String?      // Scope Division
     
     // Metadata
     let importDate: Date
@@ -57,6 +60,9 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
          departmentSimple: String?,
          migrationCluster: String?,
          migrationReadiness: String?,
+         applicationNameNew: String?,
+         suiteNew: String?,
+         scopeDivision: String?,
          importDate: Date,
          importSet: String) {
         self.id = id
@@ -78,6 +84,9 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.departmentSimple = departmentSimple
         self.migrationCluster = migrationCluster
         self.migrationReadiness = migrationReadiness
+        self.applicationNameNew = applicationNameNew
+        self.suiteNew = suiteNew
+        self.scopeDivision = scopeDivision
         self.importDate = importDate
         self.importSet = importSet
     }
@@ -112,6 +121,9 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.departmentSimple = nil
         self.migrationCluster = nil
         self.migrationReadiness = nil
+        self.applicationNameNew = nil
+        self.suiteNew = nil
+        self.scopeDivision = nil
         
         // Use the most recent import date and create a combined import set
         self.importDate = Date()

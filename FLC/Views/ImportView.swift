@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import CoreXLSX
 
+@available(macOS 14.0, *)
 struct ImportView: View {
     @State private var showFileImporter = false
     @State private var message = "Select type of data to import"
@@ -1225,6 +1226,8 @@ extension String {
     }
 }
 
-#Preview {
-    ImportView()
+struct ImportView_Previews: PreviewProvider {
+    static var previews: some View {
+        ImportView()
+    }
 } 

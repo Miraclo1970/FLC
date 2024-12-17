@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(macOS 14.0, *)
 struct TemplatesView: View {
     @State private var isEnglish = true
     
@@ -34,6 +35,7 @@ struct TemplatesView: View {
     }
 }
 
+@available(macOS 14.0, *)
 struct DownloadButton: View {
     let title: String
     let action: () -> Void
@@ -60,5 +62,9 @@ struct DownloadButton: View {
 }
 
 #Preview {
-    TemplatesView()
+    if #available(macOS 14.0, *) {
+        TemplatesView()
+    } else {
+        Text("Only available on macOS 14.0 or newer")
+    }
 } 

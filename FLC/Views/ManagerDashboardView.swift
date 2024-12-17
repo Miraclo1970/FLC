@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(macOS 14.0, *)
 struct ManagerDashboardView: View {
     @Binding var isLoggedIn: Bool
     @StateObject private var progress = ImportProgress()
@@ -38,13 +39,13 @@ struct ManagerDashboardView: View {
             .listStyle(SidebarListStyle())
             .frame(minWidth: 200)
             .navigationTitle(isEnglish ? "Manager Dashboard" : "Manager Dashboard")
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
+            .toolbar(id: "managerDashboardToolbar") {
+                ToolbarItem(id: "sidebarToggle", placement: .navigation) {
                     Button(action: toggleSidebar) {
                         Image(systemName: "sidebar.left")
                     }
                 }
-                ToolbarItem(placement: .automatic) {
+                ToolbarItem(id: "logoutButton", placement: .automatic) {
                     Button(action: {
                         isLoggedIn = false
                     }) {
@@ -126,5 +127,9 @@ struct ManagerDashboardView: View {
 }
 
 #Preview {
-    ManagerDashboardView(isLoggedIn: .constant(true))
+    if #available(macOS 14.0, *) {
+        ManagerDashboardView(isLoggedIn: .constant(true))
+    } else {
+        Text("Only available on macOS 14.0 or newer")
+    }
 } 

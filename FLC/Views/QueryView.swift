@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(macOS 14.0, *)
 struct QueryView: View {
     @State private var selectedDataType = ImportProgress.DataType.ad
     @State private var selectedField = ""
@@ -18,14 +19,14 @@ struct QueryView: View {
     }()
     
     // Field types
-    enum FieldType {
+    private enum FieldType {
         case text
         case date
         case boolean
     }
     
     // Field definitions with their types
-    let fieldTypes: [String: FieldType] = [
+    private let fieldTypes: [String: FieldType] = [
         // AD fields
         "AD Group": .text,
         "System Account": .text,
@@ -43,7 +44,22 @@ struct QueryView: View {
         
         // Package Status fields
         "Package Status": .text,
-        "Package Readiness Date": .date
+        "Package Readiness Date": .date,
+        
+        // Test fields
+        "Test Status": .text,
+        "Test Date": .date,
+        "Test Result": .text,
+        "Test Comments": .text,
+        
+        // Migration fields
+        "New Application": .text,
+        "Suite": .text,
+        "New Suite": .text,
+        "Scope Division": .text,
+        "Department Simple": .text,
+        "Migration Cluster": .text,
+        "Migration Readiness": .text
     ]
     
     // Available operators based on field type
@@ -92,491 +108,263 @@ struct QueryView: View {
         case .packageStatus:
             return ["System Account", "Application Name", "Package Status", "Package Readiness Date"]
         case .testing:
-            return ["Test Record"]
+            return ["Application Name", "Test Status", "Test Date", "Test Result", "Test Comments"]
+        case .migration:
+            return ["AD Group", "Application Name", "New Application", "Suite", "New Suite", "Scope Division",
+                   "Department Simple", "Migration Cluster", "Migration Readiness"]
         }
     }
     
-    var body: some View {
-        VStack(spacing: 20) {
-            // Data Type Selector
-            VStack(spacing: 8) {
-                Text("Select Data Source")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
-                
-                Picker("Data Source", selection: $selectedDataType) {
-                    Text("AD Data").tag(ImportProgress.DataType.ad)
-                    Text("HR Data").tag(ImportProgress.DataType.hr)
-                    Text("Combined Data").tag(ImportProgress.DataType.combined)
-                    Text("Package Status").tag(ImportProgress.DataType.packageStatus)
-                    Text("Testing").tag(ImportProgress.DataType.testing)
-                }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(8)
-                .onChange(of: selectedDataType) { oldValue, newValue in
-                    // Reset field selection when data type changes
-                    selectedField = ""
-                    filterValue = ""
-                }
-            }
-            .padding(.horizontal)
-            
-            // Query Builder Section
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Build Query")
-                    .font(.headline)
-                    .padding(.bottom, 4)
-                
-                // Field Selection
-                HStack(spacing: 20) {
-                    VStack(alignment: .leading) {
-                        Text("Field")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Picker("Field", selection: $selectedField) {
-                            Text("Select field").tag("")
-                            ForEach(availableFields, id: \.self) { field in
-                                Text(field).tag(field)
-                            }
-                        }
-                        .frame(width: 200)
-                        .onChange(of: selectedField) { oldValue, newValue in
-                            // Reset operator when field changes
-                            if !availableOperators.contains(selectedOperator) {
-                                selectedOperator = availableOperators.first ?? ""
-                            }
-                            // Reset value when field changes
-                            filterValue = ""
-                        }
-                    }
-                    
-                    VStack(alignment: .leading) {
-                        Text("Operator")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Picker("Operator", selection: $selectedOperator) {
-                            ForEach(availableOperators, id: \.self) { op in
-                                Text(op).tag(op)
-                            }
-                        }
-                        .frame(width: 150)
-                        .disabled(selectedField.isEmpty)
-                    }
-                    
-                    VStack(alignment: .leading) {
-                        Text("Value")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        
-                        if let fieldType = fieldTypes[selectedField] {
-                            switch fieldType {
-                            case .text:
-                                TextField("Enter text", text: $filterValue)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .frame(width: 200)
-                            case .date:
-                                DatePicker("", selection: $selectedDate, displayedComponents: .date)
-                                    .frame(width: 200)
-                                    .onChange(of: selectedDate) { oldValue, newValue in
-                                        filterValue = dateFormatter.string(from: newValue)
-                                    }
-                            case .boolean:
-                                Picker("", selection: $filterValue) {
-                                    Text("Yes").tag("YES")
-                                    Text("No").tag("NO")
-                                }
-                                .frame(width: 200)
-                            }
-                        } else {
-                            TextField("Select a field first", text: .constant(""))
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .frame(width: 200)
-                                .disabled(true)
-                        }
-                    }
-                }
-                .padding(.bottom, 8)
-                
-                // Search Button
-                Button(action: executeQuery) {
-                    Text("Search")
-                        .frame(width: 100)
-                        .padding(.vertical, 6)
-                        .background(selectedField.isEmpty || filterValue.isEmpty ? Color.gray : Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
-                }
-                .disabled(selectedField.isEmpty || filterValue.isEmpty)
-            }
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(10)
-            .padding(.horizontal)
-            
-            // Results Area
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Results")
-                    .font(.headline)
-                    .padding(.bottom, 4)
-                
-                if isLoading {
-                    ProgressView("Loading results...")
-                } else if let error = errorMessage {
-                    Text(error)
-                        .foregroundColor(.red)
-                } else if queryResults.isEmpty {
-                    Text("No results found")
-                        .foregroundColor(.secondary)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            switch selectedDataType {
-                            case .ad:
-                                if let results = queryResults as? [ADRecord] {
-                                    ADResultsTableView(results: results)
-                                }
-                            case .hr:
-                                if let results = queryResults as? [HRRecord] {
-                                    HRResultsTableView(results: results)
-                                }
-                            case .combined:
-                                if let results = queryResults as? [CombinedRecord] {
-                                    CombinedResultsTableView(results: results)
-                                }
-                            case .packageStatus:
-                                if let results = queryResults as? [PackageRecord] {
-                                    PackageResultsTableView(results: results)
-                                }
-                            case .testing:
-                                if let results = queryResults as? [TestingData] {
-                                    VStack(spacing: 0) {
-                                        // Header
-                                        HStack(spacing: 0) {
-                                            Text("Application Name")
-                                                .frame(width: 200, alignment: .leading)
-                                            Text("Test Status")
-                                                .frame(width: 150, alignment: .leading)
-                                            Text("Test Date")
-                                                .frame(width: 150, alignment: .leading)
-                                            Text("Test Result")
-                                                .frame(width: 150, alignment: .leading)
-                                            Text("Comments")
-                                                .frame(width: 200, alignment: .leading)
-                                        }
-                                        .padding(.vertical, 4)
-                                        .font(.system(size: 11, weight: .bold))
-                                        .background(Color(NSColor.windowBackgroundColor))
-                                        
-                                        // Results
-                                        ForEach(results) { record in
-                                            HStack(spacing: 0) {
-                                                Text(record.applicationName)
-                                                    .frame(width: 200, alignment: .leading)
-                                                Text(record.testStatus)
-                                                    .frame(width: 150, alignment: .leading)
-                                                Text(dateFormatter.string(from: record.testDate))
-                                                    .frame(width: 150, alignment: .leading)
-                                                Text(record.testResult)
-                                                    .frame(width: 150, alignment: .leading)
-                                                Text(record.testComments ?? "")
-                                                    .frame(width: 200, alignment: .leading)
-                                            }
-                                            .padding(.vertical, 4)
-                                            .font(.system(size: 11))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    Text("\(queryResults.count) results found")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
-                }
-            }
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(10)
-            .padding(.horizontal)
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.windowBackgroundColor))
-    }
-    
-    private func executeQuery() {
+    func executeQuery() async {
         guard !selectedField.isEmpty && !filterValue.isEmpty else { return }
         
         isLoading = true
         errorMessage = nil
         queryResults = []
         
-        Task {
-            do {
-                let results = try await DatabaseManager.shared.executeQuery(
-                    dataType: selectedDataType,
-                    field: selectedField,
-                    operator: selectedOperator,
-                    value: filterValue
-                )
-                
-                await MainActor.run {
-                    queryResults = results
-                    isLoading = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    isLoading = false
-                }
+        do {
+            let results = try await DatabaseManager.shared.executeQuery(
+                dataType: selectedDataType,
+                field: selectedField,
+                operator: selectedOperator,
+                value: filterValue
+            )
+            
+            await MainActor.run {
+                queryResults = results
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isLoading = false
             }
         }
     }
-}
-
-// Results table views
-struct ADResultsTableView: View {
-    let results: [ADRecord]
-    private let rowHeight: CGFloat = 18
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Text("AD Group")
-                    .frame(width: 300, alignment: .leading)
-                Text("System Account")
-                    .frame(width: 200, alignment: .leading)
-                Text("Application")
-                    .frame(width: 250, alignment: .leading)
-                Text("Suite")
-                    .frame(width: 200, alignment: .leading)
-                Text("OTAP")
-                    .frame(width: 80, alignment: .leading)
-                Text("Critical")
-                    .frame(width: 80, alignment: .leading)
-            }
-            .padding(.vertical, 4)
-            .font(.system(size: 11, weight: .bold))
-            .background(Color(NSColor.windowBackgroundColor))
+        QueryContentView(
+            selectedDataType: $selectedDataType,
+            selectedField: $selectedField,
+            selectedOperator: $selectedOperator,
+            filterValue: $filterValue,
+            selectedDate: $selectedDate,
+            isLoading: $isLoading,
+            errorMessage: errorMessage,
+            queryResults: queryResults,
+            availableFields: availableFields,
+            availableOperators: availableOperators,
+            executeQuery: executeQuery
+        )
+    }
+    
+    // ... rest of the existing methods ...
+}
+
+@available(macOS 14.0, *)
+private struct QueryContentView: View {
+    @Binding var selectedDataType: ImportProgress.DataType
+    @Binding var selectedField: String
+    @Binding var selectedOperator: String
+    @Binding var filterValue: String
+    @Binding var selectedDate: Date
+    @Binding var isLoading: Bool
+    let errorMessage: String?
+    let queryResults: [Any]
+    let availableFields: [String]
+    var availableOperators: [String]
+    let executeQuery: () async -> Void
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            DataTypeSelector(
+                selectedDataType: $selectedDataType,
+                selectedField: $selectedField,
+                selectedOperator: $selectedOperator,
+                filterValue: $filterValue,
+                selectedDate: $selectedDate,
+                queryResults: .constant([])
+            )
             
-            // Results
-            ForEach(results, id: \.id) { (record: ADRecord) in
-                HStack(spacing: 0) {
-                    Text(record.adGroup)
-                        .frame(width: 300, alignment: .leading)
-                    Text(record.systemAccount)
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.applicationName)
-                        .frame(width: 250, alignment: .leading)
-                    Text(record.applicationSuite)
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.otap)
-                        .frame(width: 80, alignment: .leading)
-                    Text(record.critical)
-                        .frame(width: 80, alignment: .leading)
-                }
-                .frame(height: rowHeight)
-                .font(.system(size: 11))
-            }
+            QueryBuilder(
+                selectedField: $selectedField,
+                selectedOperator: $selectedOperator,
+                filterValue: $filterValue,
+                selectedDate: $selectedDate,
+                availableFields: availableFields,
+                availableOperators: availableOperators
+            )
+            
+            QueryResults(
+                isLoading: isLoading,
+                errorMessage: errorMessage,
+                queryResults: queryResults,
+                executeQuery: executeQuery
+            )
         }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-struct HRResultsTableView: View {
-    let results: [HRRecord]
-    private let rowHeight: CGFloat = 18
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
+@available(macOS 14.0, *)
+private struct DataTypeSelector: View {
+    @Binding var selectedDataType: ImportProgress.DataType
+    @Binding var selectedField: String
+    @Binding var selectedOperator: String
+    @Binding var filterValue: String
+    @Binding var selectedDate: Date
+    @Binding var queryResults: [Any]
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Text("System Account")
-                    .frame(width: 200, alignment: .leading)
-                Text("Department")
-                    .frame(width: 200, alignment: .leading)
-                Text("Job Role")
-                    .frame(width: 200, alignment: .leading)
-                Text("Division")
-                    .frame(width: 200, alignment: .leading)
-                Text("Leave Date")
-                    .frame(width: 120, alignment: .leading)
-                Text("Employee #")
-                    .frame(width: 120, alignment: .leading)
-            }
-            .padding(.vertical, 4)
-            .font(.system(size: 11, weight: .bold))
-            .background(Color(NSColor.windowBackgroundColor))
+        VStack(spacing: 8) {
+            Text("Select Data Source")
+                .font(.headline)
+                .foregroundColor(.secondary)
             
-            // Results
-            ForEach(results, id: \.id) { (record: HRRecord) in
-                HStack(spacing: 0) {
-                    Text(record.systemAccount)
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.department ?? "N/A")
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.jobRole ?? "N/A")
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.division ?? "N/A")
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                        .frame(width: 120, alignment: .leading)
-                    Text(record.employeeNumber ?? "N/A")
-                        .frame(width: 120, alignment: .leading)
-                }
-                .frame(height: rowHeight)
-                .font(.system(size: 11))
+            Picker("Data Source", selection: $selectedDataType) {
+                Text("AD Data").tag(ImportProgress.DataType.ad)
+                Text("HR Data").tag(ImportProgress.DataType.hr)
+                Text("Combined Data").tag(ImportProgress.DataType.combined)
+                Text("Package Status").tag(ImportProgress.DataType.packageStatus)
+                Text("Testing").tag(ImportProgress.DataType.testing)
+                Text("Migration").tag(ImportProgress.DataType.migration)
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(8)
+            .onChange(of: selectedDataType) { oldValue, newValue in
+                selectedField = ""
+                selectedOperator = "equals"
+                filterValue = ""
+                queryResults = []
             }
         }
+        .padding(.horizontal)
     }
 }
 
-struct CombinedResultsTableView: View {
-    let results: [CombinedRecord]
-    private let rowHeight: CGFloat = 18
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
+@available(macOS 14.0, *)
+private struct QueryBuilder: View {
+    @Binding var selectedField: String
+    @Binding var selectedOperator: String
+    @Binding var filterValue: String
+    @Binding var selectedDate: Date
+    let availableFields: [String]
+    let availableOperators: [String]
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Group {
-                    Text("AD Group")
-                        .frame(width: 250, alignment: .leading)
-                    Text("System Account")
-                        .frame(width: 200, alignment: .leading)
-                    Text("Application")
-                        .frame(width: 200, alignment: .leading)
-                    Text("Suite")
-                        .frame(width: 200, alignment: .leading)
-                    Text("OTAP")
-                        .frame(width: 100, alignment: .leading)
-                    Text("Critical")
-                        .frame(width: 100, alignment: .leading)
-                }
-                .background(Color.blue.opacity(0.1))
-                
-                Group {
-                    Text("Department")
-                        .frame(width: 200, alignment: .leading)
-                    Text("Job Role")
-                        .frame(width: 200, alignment: .leading)
-                    Text("Division")
-                        .frame(width: 200, alignment: .leading)
-                    Text("Leave Date")
-                        .frame(width: 120, alignment: .leading)
-                    Text("Employee #")
-                        .frame(width: 120, alignment: .leading)
-                }
-                .background(Color.green.opacity(0.1))
-            }
-            .padding(.vertical, 4)
-            .font(.system(size: 11, weight: .bold))
-            .background(Color(NSColor.windowBackgroundColor))
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Build Query")
+                .font(.headline)
+                .padding(.bottom, 4)
             
-            // Results
-            ForEach(results, id: \.id) { (record: CombinedRecord) in
-                HStack(spacing: 0) {
-                    Group {
-                        Text(record.adGroup)
-                            .frame(width: 250, alignment: .leading)
-                        Text(record.systemAccount)
-                            .frame(width: 200, alignment: .leading)
-                        Text(record.applicationName)
-                            .frame(width: 200, alignment: .leading)
-                        Text(record.applicationSuite)
-                            .frame(width: 200, alignment: .leading)
-                        Text(record.otap)
-                            .frame(width: 100, alignment: .leading)
-                        Text(record.critical)
-                            .frame(width: 100, alignment: .leading)
+            HStack(spacing: 20) {
+                VStack(alignment: .leading) {
+                    Text("Field")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Picker("Field", selection: $selectedField) {
+                        Text("Select field").tag("")
+                        ForEach(availableFields, id: \.self) { field in
+                            Text(field).tag(field)
+                        }
                     }
-                    .background(Color.blue.opacity(0.05))
-                    
-                    Group {
-                        Text(record.department ?? "N/A")
-                            .frame(width: 200, alignment: .leading)
-                        Text(record.jobRole ?? "N/A")
-                            .frame(width: 200, alignment: .leading)
-                        Text(record.division ?? "N/A")
-                            .frame(width: 200, alignment: .leading)
-                        Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                            .frame(width: 120, alignment: .leading)
-                        Text(record.employeeNumber ?? "N/A")
-                            .frame(width: 120, alignment: .leading)
-                    }
-                    .background(Color.green.opacity(0.05))
+                    .frame(width: 200)
                 }
-                .frame(height: rowHeight)
-                .font(.system(size: 11))
+                
+                VStack(alignment: .leading) {
+                    Text("Operator")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Picker("Operator", selection: $selectedOperator) {
+                        ForEach(availableOperators, id: \.self) { op in
+                            Text(op).tag(op)
+                        }
+                    }
+                    .frame(width: 150)
+                }
+                
+                VStack(alignment: .leading) {
+                    Text("Value")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    if selectedOperator == "before" || selectedOperator == "after" {
+                        DatePicker("", selection: $selectedDate, displayedComponents: .date)
+                            .labelsHidden()
+                            .frame(width: 200)
+                    } else {
+                        TextField("Enter value", text: $filterValue)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .frame(width: 200)
+                    }
+                }
             }
         }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
     }
 }
 
-struct PackageResultsTableView: View {
-    let results: [PackageRecord]
-    private let rowHeight: CGFloat = 18
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
+@available(macOS 14.0, *)
+private struct QueryResults: View {
+    let isLoading: Bool
+    let errorMessage: String?
+    let queryResults: [Any]
+    let executeQuery: () async -> Void
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Text("System Account")
-                    .frame(width: 200, alignment: .leading)
-                Text("Application Name")
-                    .frame(width: 200, alignment: .leading)
-                Text("Package Status")
-                    .frame(width: 150, alignment: .leading)
-                Text("Readiness Date")
-                    .frame(width: 120, alignment: .leading)
-            }
-            .padding(.vertical, 4)
-            .font(.system(size: 11, weight: .bold))
-            .background(Color(NSColor.windowBackgroundColor))
-            
-            // Results
-            ForEach(results, id: \.id) { (record: PackageRecord) in
-                HStack(spacing: 0) {
-                    Text(record.systemAccount)
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.applicationName)
-                        .frame(width: 200, alignment: .leading)
-                    Text(record.packageStatus)
-                        .frame(width: 150, alignment: .leading)
-                    Text(record.packageReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                        .frame(width: 120, alignment: .leading)
+        VStack {
+            HStack {
+                Text("Results")
+                    .font(.headline)
+                Spacer()
+                Button(action: {
+                    Task {
+                        await executeQuery()
+                    }
+                }) {
+                    Text("Execute Query")
                 }
-                .frame(height: rowHeight)
-                .font(.system(size: 11))
+                .disabled(isLoading)
+            }
+            
+            if isLoading {
+                ProgressView("Executing query...")
+            } else if let error = errorMessage {
+                Text(error)
+                    .foregroundColor(.red)
+            } else {
+                ResultsList(results: queryResults)
             }
         }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+    }
+}
+
+@available(macOS 14.0, *)
+private struct ResultsList: View {
+    let results: [Any]
+    
+    var body: some View {
+        List {
+            ForEach(0..<results.count, id: \.self) { index in
+                Text(String(describing: results[index]))
+            }
+        }
+        .frame(maxHeight: .infinity)
     }
 }
 
 #Preview {
-    QueryView()
+    if #available(macOS 14.0, *) {
+        QueryView()
+    } else {
+        Text("Only available on macOS 14.0 or newer")
+    }
 } 

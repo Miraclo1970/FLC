@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+@available(macOS 14.0, *)
 @main
 struct FLCApp: App {
     init() {
@@ -20,3 +21,4 @@ struct FLCApp: App {
         }
     }
 }
+

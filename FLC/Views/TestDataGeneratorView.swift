@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(macOS 14.0, *)
 struct TestDataGeneratorView: View {
     @State private var dbState = "No data yet"
     @State private var isLoading = false
@@ -201,5 +202,9 @@ struct TestDataGeneratorView: View {
 }
 
 #Preview {
-    TestDataGeneratorView()
+    if #available(macOS 14.0, *) {
+        TestDataGeneratorView()
+    } else {
+        Text("Only available on macOS 14.0 or newer")
+    }
 } 

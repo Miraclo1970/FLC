@@ -41,6 +41,18 @@ struct ADRecord: Codable, FetchableRecord, PersistableRecord {
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         self.importSet = "AD_Import_\(dateFormatter.string(from: Date()))"
     }
+    
+    init(id: Int64?, adGroup: String, systemAccount: String, applicationName: String, applicationSuite: String, otap: String, critical: String, importDate: Date, importSet: String) {
+        self.id = id
+        self.adGroup = adGroup
+        self.systemAccount = systemAccount
+        self.applicationName = applicationName
+        self.applicationSuite = applicationSuite
+        self.otap = otap
+        self.critical = critical
+        self.importDate = importDate
+        self.importSet = importSet
+    }
 }
 
 // HR record structure for database
@@ -72,6 +84,18 @@ struct HRRecord: Codable, FetchableRecord, PersistableRecord {
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         self.importSet = "HR_Import_\(dateFormatter.string(from: Date()))"
     }
+    
+    init(id: Int64?, systemAccount: String, department: String?, jobRole: String?, division: String?, leaveDate: Date?, employeeNumber: String?, importDate: Date, importSet: String) {
+        self.id = id
+        self.systemAccount = systemAccount
+        self.department = department
+        self.jobRole = jobRole
+        self.division = division
+        self.leaveDate = leaveDate
+        self.employeeNumber = employeeNumber
+        self.importDate = importDate
+        self.importSet = importSet
+    }
 }
 
 // Package status record structure for database
@@ -94,6 +118,16 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
         self.packageReadinessDate = data.packageReadinessDate
         self.importDate = data.importDate
         self.importSet = data.importSet
+    }
+    
+    init(id: Int64?, systemAccount: String, applicationName: String, packageStatus: String, packageReadinessDate: Date?, importDate: Date, importSet: String) {
+        self.id = id
+        self.systemAccount = systemAccount
+        self.applicationName = applicationName
+        self.packageStatus = packageStatus
+        self.packageReadinessDate = packageReadinessDate
+        self.importDate = importDate
+        self.importSet = importSet
     }
 }
 
@@ -192,6 +226,9 @@ class DatabaseManager {
                 t.column("departmentSimple", .text)
                 t.column("migrationCluster", .text)
                 t.column("migrationReadiness", .text)
+                t.column("applicationNameNew", .text)  // New Application
+                t.column("suiteNew", .text)           // New Suite
+                t.column("scopeDivision", .text)      // Scope Division
                 // Metadata
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
@@ -225,6 +262,24 @@ class DatabaseManager {
                 // Create a unique index on applicationName and importSet
                 t.uniqueKey(["applicationName", "importSet"])
             }
+            
+            // Create migration status records table
+            try db.create(table: "migration_status_records", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("adGroup", .text).notNull()
+                t.column("applicationName", .text).notNull()
+                t.column("applicationNameNew", .text)  // Optional
+                t.column("suite", .text)              // Optional
+                t.column("suiteNew", .text)           // Optional
+                t.column("scopeDivision", .text)      // Optional
+                t.column("departmentSimple", .text)   // Optional
+                t.column("migrationCluster", .text)   // Optional
+                t.column("migrationReadiness", .text) // Optional
+                t.column("importDate", .datetime).notNull()
+                t.column("importSet", .text).notNull()
+                // Create a unique index on the combination of adGroup and applicationName
+                t.uniqueKey(["adGroup", "applicationName"])
+            }
         }
         print("Database setup completed successfully")
     }
@@ -246,9 +301,18 @@ class DatabaseManager {
                     .filter(Column("adGroup") == record.adGroup)
                     .filter(Column("systemAccount") == record.systemAccount)
                     .fetchOne(db) {
-                    // Update existing record with new data, preserving id
-                    var updatedRecord = dbRecord
-                    updatedRecord.id = existingRecord.id
+                    // Create a new record with the existing id
+                    let updatedRecord = ADRecord(
+                        id: existingRecord.id,
+                        adGroup: dbRecord.adGroup,
+                        systemAccount: dbRecord.systemAccount,
+                        applicationName: dbRecord.applicationName,
+                        applicationSuite: dbRecord.applicationSuite,
+                        otap: dbRecord.otap,
+                        critical: dbRecord.critical,
+                        importDate: dbRecord.importDate,
+                        importSet: dbRecord.importSet
+                    )
                     try updatedRecord.update(db)
                     counts.saved += 1
                 } else {
@@ -276,9 +340,18 @@ class DatabaseManager {
                 
                 // Try to find existing record by systemAccount
                 if let existingRecord = try HRRecord.filter(Column("systemAccount") == record.systemAccount).fetchOne(db) {
-                    // Update existing record with new data, preserving systemAccount and id
-                    var updatedRecord = dbRecord
-                    updatedRecord.id = existingRecord.id
+                    // Create a new record with the existing id
+                    let updatedRecord = HRRecord(
+                        id: existingRecord.id,
+                        systemAccount: dbRecord.systemAccount,
+                        department: dbRecord.department,
+                        jobRole: dbRecord.jobRole,
+                        division: dbRecord.division,
+                        leaveDate: dbRecord.leaveDate,
+                        employeeNumber: dbRecord.employeeNumber,
+                        importDate: dbRecord.importDate,
+                        importSet: dbRecord.importSet
+                    )
                     try updatedRecord.update(db)
                     counts.saved += 1
                 } else {
@@ -312,9 +385,16 @@ class DatabaseManager {
                     .filter(Column("applicationName") == record.applicationName)
                     .fetchOne(db) {
                     print("Found existing record for \(dbRecord.applicationName), updating...")
-                    // Update existing record with new data, preserving id
-                    var updatedRecord = dbRecord
-                    updatedRecord.id = existingRecord.id
+                    // Create a new record with the existing id
+                    let updatedRecord = PackageRecord(
+                        id: existingRecord.id,
+                        systemAccount: record.systemAccount,
+                        applicationName: record.applicationName,
+                        packageStatus: record.packageStatus,
+                        packageReadinessDate: record.packageReadinessDate,
+                        importDate: record.importDate,
+                        importSet: record.importSet
+                    )
                     try updatedRecord.update(db)
                     counts.saved += 1
                 } else {
@@ -326,6 +406,56 @@ class DatabaseManager {
             }
             
             print("Finished saving package records - Saved: \(counts.saved), Skipped: \(counts.skipped)")
+            return counts
+        }
+    }
+    
+    // Save migration status records to database with upsert behavior
+    func saveMigrationRecords(_ records: [MigrationStatusData]) async throws -> (saved: Int, skipped: Int) {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        print("Attempting to save \(records.count) migration status records")
+        
+        return try await dbPool.write { db -> (Int, Int) in
+            var counts = (saved: 0, skipped: 0)
+            
+            for record in records {
+                print("Processing migration record for application: \(record.applicationName)")
+                
+                // Try to find existing record by composite key (adGroup + applicationName)
+                if let existingRecord = try MigrationStatusData
+                    .filter(Column("adGroup") == record.adGroup)
+                    .filter(Column("applicationName") == record.applicationName)
+                    .fetchOne(db) {
+                    print("Found existing record for \(record.applicationName), updating...")
+                    // Create a new record with the existing id
+                    let updatedRecord = MigrationStatusData(
+                        id: existingRecord.id,
+                        adGroup: record.adGroup,
+                        applicationName: record.applicationName,
+                        applicationNameNew: record.applicationNameNew,
+                        suite: record.suite,
+                        suiteNew: record.suiteNew,
+                        scopeDivision: record.scopeDivision,
+                        departmentSimple: record.departmentSimple,
+                        migrationCluster: record.migrationCluster,
+                        migrationReadiness: record.migrationReadiness,
+                        importDate: record.importDate,
+                        importSet: record.importSet
+                    )
+                    try updatedRecord.update(db)
+                    counts.saved += 1
+                } else {
+                    print("No existing record for \(record.applicationName), inserting new record...")
+                    // Insert new record
+                    try record.insert(db)
+                    counts.saved += 1
+                }
+            }
+            
+            print("Finished saving migration records - Saved: \(counts.saved), Skipped: \(counts.skipped)")
             return counts
         }
     }
@@ -530,13 +660,14 @@ class DatabaseManager {
             // First, clear existing combined records
             try db.execute(sql: "DELETE FROM combined_records")
             
-            // Fetch all AD records, HR records, and Package Status records
+            // Fetch all records
             let adRecords = try ADRecord.fetchAll(db)
             let hrRecords = try HRRecord.fetchAll(db)
             let packageRecords = try PackageRecord.fetchAll(db)
             let testRecords = try TestRecord.fetchAll(db)
+            let migrationRecords = try MigrationStatusData.fetchAll(db)
             
-            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, and \(testRecords.count) test records")
+            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, \(testRecords.count) test records, and \(migrationRecords.count) migration records")
             
             // Create dictionaries for faster lookup
             let hrBySystemAccount = Dictionary(
@@ -548,10 +679,17 @@ class DatabaseManager {
             let testByAppName = Dictionary(
                 uniqueKeysWithValues: testRecords.map { ($0.applicationName, $0) }
             )
+            let migrationByKey = Dictionary(
+                uniqueKeysWithValues: migrationRecords.map { record in
+                    // Only use adGroup and applicationName for matching
+                    let key = "\(record.adGroup)|\(record.applicationName)"
+                    return (key, record)
+                }
+            )
             
             var combinedCount = 0
             
-            // For each AD record, create a combined record with HR and Package Status data if available
+            // For each AD record, create a combined record with HR, Package Status, Test, and Migration data if available
             for adRecord in adRecords {
                 // Find matching HR record
                 let hrRecord = hrBySystemAccount[adRecord.systemAccount]
@@ -562,7 +700,11 @@ class DatabaseManager {
                 // Find matching Test record
                 let testRecord = testByAppName[adRecord.applicationName]
                 
-                // Create combined record with optional HR, Package Status, and Test data
+                // Find matching Migration record - only match on adGroup and applicationName
+                let migrationKey = "\(adRecord.adGroup)|\(adRecord.applicationName)"
+                let migrationRecord = migrationByKey[migrationKey]
+                
+                // Create combined record with all available data
                 let combinedRecord = CombinedRecord(
                     id: nil,
                     adGroup: adRecord.adGroup,
@@ -580,9 +722,12 @@ class DatabaseManager {
                     applicationPackageReadinessDate: packageRecord?.packageReadinessDate,
                     applicationTestStatus: testRecord?.testStatus,
                     applicationTestReadinessDate: testRecord?.testDate,
-                    departmentSimple: nil,
-                    migrationCluster: nil,
-                    migrationReadiness: nil,
+                    departmentSimple: migrationRecord?.departmentSimple,
+                    migrationCluster: migrationRecord?.migrationCluster,
+                    migrationReadiness: migrationRecord?.migrationReadiness,
+                    applicationNameNew: migrationRecord?.applicationNameNew,
+                    suiteNew: migrationRecord?.suiteNew,
+                    scopeDivision: migrationRecord?.scopeDivision,
                     importDate: Date(),
                     importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
                 )
@@ -597,7 +742,7 @@ class DatabaseManager {
                 }
             }
             
-            print("Generated \(combinedCount) combined records from \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, and \(testRecords.count) test records")
+            print("Generated \(combinedCount) combined records from \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, \(testRecords.count) test records, and \(migrationRecords.count) migration records")
             return combinedCount
         }
     }
@@ -639,6 +784,8 @@ class DatabaseManager {
                 tableName = "package_status_records"
             case .testing:
                 tableName = "test_records"
+            case .migration:
+                tableName = "migration_status_records"
             }
             
             // Convert field name to database column name
@@ -679,6 +826,18 @@ class DatabaseManager {
                 mappedColumnName = "testresult"
             case "test_comments":
                 mappedColumnName = "testcomments"
+            case "new_application":
+                mappedColumnName = "newapplication"
+            case "new_suite":
+                mappedColumnName = "newsuite"
+            case "scope_division":
+                mappedColumnName = "scopedivision"
+            case "department_simple":
+                mappedColumnName = "departmentsimple"
+            case "migration_cluster":
+                mappedColumnName = "migrationcluster"
+            case "migration_readiness":
+                mappedColumnName = "migrationreadiness"
             default:
                 mappedColumnName = columnName
             }
@@ -768,6 +927,10 @@ class DatabaseManager {
                 let testResults = try TestRecord.fetchAll(db, sql: sql, arguments: arguments)
                 print("Found \(testResults.count) test records")
                 return testResults as [Any]
+            case .migration:
+                let migrationResults = try MigrationStatusData.fetchAll(db, sql: sql, arguments: arguments)
+                print("Found \(migrationResults.count) migration records")
+                return migrationResults as [Any]
             }
         }
     }
@@ -1033,8 +1196,16 @@ class DatabaseManager {
                         .filter(Column("applicationName") == record.applicationName)
                         .fetchOne(db) {
                         print("Updating existing package record for \(record.applicationName)")
-                        var updatedRecord = PackageRecord(from: packageStatusData)
-                        updatedRecord.id = existingRecord.id
+                        // Create a new record with the existing id
+                        let updatedRecord = PackageRecord(
+                            id: existingRecord.id,
+                            systemAccount: record.systemAccount,
+                            applicationName: record.applicationName,
+                            packageStatus: packageStatus,
+                            packageReadinessDate: record.applicationPackageReadinessDate,
+                            importDate: Date(),
+                            importSet: "Generated_\(DateFormatter.hrDateFormatter.string(from: Date()))"
+                        )
                         try updatedRecord.update(db)
                     } else {
                         print("Creating new package record for \(record.applicationName)")
@@ -1062,23 +1233,39 @@ class DatabaseManager {
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
-                let dbRecord = TestRecord(from: record)
-                print("Processing test record for application: \(dbRecord.applicationName)")
+                print("Processing test record for application: \(record.applicationName)")
                 
                 // Try to find existing record by applicationName only
                 if let existingRecord = try TestRecord
                     .filter(Column("applicationName") == record.applicationName)
                     .fetchOne(db) {
-                    print("Found existing record for \(dbRecord.applicationName), updating...")
-                    // Update existing record with new data, preserving id
-                    var updatedRecord = dbRecord
-                    updatedRecord.id = existingRecord.id
+                    print("Found existing record for \(record.applicationName), updating...")
+                    // Create a new record with the existing id
+                    let updatedRecord = TestRecord(
+                        id: existingRecord.id,
+                        applicationName: record.applicationName,
+                        testStatus: record.testStatus,
+                        testDate: record.testDate,
+                        testResult: record.testResult,
+                        testComments: record.testComments ?? nil,
+                        importDate: Date(),
+                        importSet: "Test_Import_\(DateFormatter.hrDateFormatter.string(from: Date()))"
+                    )
                     try updatedRecord.update(db)
                     counts.saved += 1
                 } else {
-                    print("No existing record for \(dbRecord.applicationName), inserting new record...")
-                    // Insert new record
-                    try dbRecord.insert(db)
+                    print("No existing record for \(record.applicationName), inserting new record...")
+                    let newRecord = TestRecord(
+                        id: nil,
+                        applicationName: record.applicationName,
+                        testStatus: record.testStatus,
+                        testDate: record.testDate,
+                        testResult: record.testResult,
+                        testComments: record.testComments ?? nil,
+                        importDate: Date(),
+                        importSet: "Test_Import_\(DateFormatter.hrDateFormatter.string(from: Date()))"
+                    )
+                    try newRecord.insert(db)
                     counts.saved += 1
                 }
             }
@@ -1133,27 +1320,35 @@ class DatabaseManager {
                 if let testStatus = record.applicationTestStatus {
                     print("Processing combined record for \(record.applicationName) with status: \(testStatus)")
                     
-                    let testingData = TestingData(
-                        applicationName: record.applicationName,
-                        testStatus: testStatus,
-                        testDate: record.applicationTestReadinessDate ?? Date(),
-                        testResult: "Pending",
-                        testComments: nil
-                    )
-                    
-                    let testRecord = TestRecord(from: testingData)
-                    
                     // Try to find existing record
                     if let existingRecord = try TestRecord
                         .filter(Column("applicationName") == record.applicationName)
                         .fetchOne(db) {
                         print("Updating existing test record for \(record.applicationName)")
-                        var updatedRecord = testRecord
-                        updatedRecord.id = existingRecord.id
+                        let updatedRecord = TestRecord(
+                            id: existingRecord.id,
+                            applicationName: record.applicationName,
+                            testStatus: testStatus,
+                            testDate: record.applicationTestReadinessDate ?? Date(),
+                            testResult: "Pending",
+                            testComments: nil,
+                            importDate: Date(),
+                            importSet: "Generated_\(DateFormatter.hrDateFormatter.string(from: Date()))"
+                        )
                         try updatedRecord.update(db)
                     } else {
                         print("Creating new test record for \(record.applicationName)")
-                        try testRecord.insert(db)
+                        let newRecord = TestRecord(
+                            id: nil,
+                            applicationName: record.applicationName,
+                            testStatus: testStatus,
+                            testDate: record.applicationTestReadinessDate ?? Date(),
+                            testResult: "Pending",
+                            testComments: nil,
+                            importDate: Date(),
+                            importSet: "Generated_\(DateFormatter.hrDateFormatter.string(from: Date()))"
+                        )
+                        try newRecord.insert(db)
                     }
                     testCount += 1
                 }
@@ -1161,6 +1356,31 @@ class DatabaseManager {
             
             print("Generated \(testCount) test records from \(combinedRecords.count) combined records")
             return testCount
+        }
+    }
+    
+    // Fetch migration status records with pagination
+    func fetchMigrationRecords(limit: Int = 1000, offset: Int = 0) async throws -> [MigrationStatusData] {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        return try await dbPool.read { db in
+            try MigrationStatusData
+                .order(sql: "applicationName ASC")
+                .limit(limit, offset: offset)
+                .fetchAll(db)
+        }
+    }
+    
+    // Clear all migration status records
+    func clearMigrationRecords() async throws {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        _ = try await dbPool.write { db in
+            try db.execute(sql: "DELETE FROM migration_status_records")
         }
     }
 } 

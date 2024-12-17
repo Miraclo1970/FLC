@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(macOS 14.0, *)
 struct DatabaseContentView: View {
     @State private var selectedDataType = ImportProgress.DataType.combined
     @State private var searchText = ""
@@ -9,6 +10,7 @@ struct DatabaseContentView: View {
     @State private var combinedRecords: [CombinedRecord] = []
     @State private var packageRecords: [PackageRecord] = []
     @State private var testRecords: [TestRecord] = []
+    @State private var migrationRecords: [MigrationStatusData] = []
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
@@ -49,6 +51,7 @@ struct DatabaseContentView: View {
                     Text("HR Data").tag(ImportProgress.DataType.hr)
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
                     Text("Testing").tag(ImportProgress.DataType.testing)
+                    Text("Migration").tag(ImportProgress.DataType.migration)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -74,6 +77,7 @@ struct DatabaseContentView: View {
                         case .combined: return "\(combinedRecords.count)"
                         case .packageStatus: return "\(packageRecords.count)"
                         case .testing: return "\(testRecords.count)"
+                        case .migration: return "\(migrationRecords.count)"
                         }
                     }(),
                     icon: "doc.text"
@@ -93,6 +97,7 @@ struct DatabaseContentView: View {
                     case .combined: return combinedRecords.isEmpty
                     case .packageStatus: return packageRecords.isEmpty
                     case .testing: return testRecords.isEmpty
+                    case .migration: return migrationRecords.isEmpty
                     }
                 }())
             }
@@ -179,6 +184,13 @@ struct DatabaseContentView: View {
                                     await loadData(resetData: true)
                                 }
                             })
+                    case .migration:
+                        DatabaseMigrationRecordsView(records: filteredMigrationRecords)
+                            .environment(\.refresh, {
+                                Task {
+                                    await loadData(resetData: true)
+                                }
+                            })
                     }
                 }
                 
@@ -196,6 +208,7 @@ struct DatabaseContentView: View {
                     case .combined: return "Total Records: \(combinedRecords.count)"
                     case .packageStatus: return "Total Records: \(packageRecords.count)"
                     case .testing: return "Total Records: \(testRecords.count)"
+                    case .migration: return "Total Records: \(migrationRecords.count)"
                     }
                 }())
                     .font(.caption)
@@ -304,142 +317,61 @@ struct DatabaseContentView: View {
         }
     }
     
+    private var filteredMigrationRecords: [MigrationStatusData] {
+        if searchText.isEmpty {
+            return migrationRecords
+        }
+        return migrationRecords.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.adGroup.localizedCaseInsensitiveContains(searchText) ||
+            (record.departmentSimple ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.migrationCluster ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.migrationReadiness ?? "").localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
     private func loadData(resetData: Bool = false) async {
-        // Check if task is cancelled
-        guard !Task.isCancelled else { return }
+        isLoading = true
+        errorMessage = nil
         
         if resetData {
-            isLoading = true
-            errorMessage = nil
             currentPage = 0
+            hasMoreData = true
             adRecords = []
             hrRecords = []
             combinedRecords = []
             packageRecords = []
             testRecords = []
-            hasMoreData = true
+            migrationRecords = []
         }
         
         do {
             switch selectedDataType {
             case .ad:
-                print("Loading AD records page \(currentPage)...")
                 let newRecords = try await DatabaseManager.shared.fetchADRecords(limit: pageSize, offset: currentPage * pageSize)
-                if !Task.isCancelled {  // Check again after async operation
-                    if resetData {
-                        adRecords = newRecords
-                    } else {
-                        adRecords.append(contentsOf: newRecords)
-                    }
-                    hasMoreData = !newRecords.isEmpty && newRecords.count == pageSize
-                    
-                    // If we have more data, immediately load the next batch
-                    if hasMoreData && !resetData && !Task.isCancelled {
-                        currentPage += 1
-                        await loadData(resetData: false)
-                    }
-                    
-                    print("Loaded \(newRecords.count) AD records, total: \(adRecords.count), hasMore: \(hasMoreData)")
-                }
+                adRecords += newRecords
+                hasMoreData = newRecords.count == pageSize
             case .hr:
-                print("Loading HR records...")
-                let records = try await DatabaseManager.shared.fetchHRRecords()
-                if !Task.isCancelled {  // Check again after async operation
-                    hrRecords = records
-                    print("Loaded \(hrRecords.count) HR records")
-                }
+                hrRecords = try await DatabaseManager.shared.fetchHRRecords()
             case .combined:
-                print("Loading combined records page \(currentPage)...")
-                // First, ensure combined records are generated
-                if resetData {
-                    let count = try await DatabaseManager.shared.generateCombinedRecords()
-                    if !Task.isCancelled {  // Check after generation
-                        print("Generated \(count) combined records")
-                    }
-                }
-                
                 let newRecords = try await DatabaseManager.shared.fetchCombinedRecords(limit: pageSize, offset: currentPage * pageSize)
-                if !Task.isCancelled {  // Check again after fetch
-                    if resetData {
-                        combinedRecords = newRecords
-                    } else {
-                        combinedRecords.append(contentsOf: newRecords)
-                    }
-                    hasMoreData = !newRecords.isEmpty && newRecords.count == pageSize
-                    
-                    // If we have more data, immediately load the next batch
-                    if hasMoreData && !resetData && !Task.isCancelled {
-                        currentPage += 1
-                        await loadData(resetData: false)
-                    }
-                    
-                    print("Loaded \(newRecords.count) combined records, total: \(combinedRecords.count), hasMore: \(hasMoreData)")
-                }
+                combinedRecords += newRecords
+                hasMoreData = newRecords.count == pageSize
             case .packageStatus:
-                print("Loading package records page \(currentPage)...")
-                // First, ensure package records are generated
-                if resetData {
-                    let count = try await DatabaseManager.shared.generatePackageRecords()
-                    if !Task.isCancelled {  // Check after generation
-                        print("Generated \(count) package records")
-                    }
-                }
-                
-                let newRecords = try await DatabaseManager.shared.fetchPackageRecords(limit: pageSize, offset: currentPage * pageSize)
-                if !Task.isCancelled {  // Check again after fetch
-                    if resetData {
-                        packageRecords = newRecords
-                    } else {
-                        packageRecords.append(contentsOf: newRecords)
-                    }
-                    hasMoreData = !newRecords.isEmpty && newRecords.count == pageSize
-                    
-                    // If we have more data, immediately load the next batch
-                    if hasMoreData && !resetData && !Task.isCancelled {
-                        currentPage += 1
-                        await loadData(resetData: false)
-                    }
-                    
-                    print("Loaded \(newRecords.count) package records, total: \(packageRecords.count), hasMore: \(hasMoreData)")
-                }
+                packageRecords = try await DatabaseManager.shared.fetchPackageRecords()
             case .testing:
-                print("Loading test records page \(currentPage)...")
-                // First, ensure test records are generated
-                if resetData {
-                    let count = try await DatabaseManager.shared.generateTestRecords()
-                    if !Task.isCancelled {  // Check after generation
-                        print("Generated \(count) test records")
-                    }
-                }
-                
-                let newRecords = try await DatabaseManager.shared.fetchTestRecords(limit: pageSize, offset: currentPage * pageSize)
-                if !Task.isCancelled {  // Check again after fetch
-                    if resetData {
-                        testRecords = newRecords
-                    } else {
-                        testRecords.append(contentsOf: newRecords)
-                    }
-                    hasMoreData = !newRecords.isEmpty && newRecords.count == pageSize
-                    
-                    // If we have more data, immediately load the next batch
-                    if hasMoreData && !resetData && !Task.isCancelled {
-                        currentPage += 1
-                        await loadData(resetData: false)
-                    }
-                    
-                    print("Loaded \(newRecords.count) test records, total: \(testRecords.count), hasMore: \(hasMoreData)")
-                }
+                testRecords = try await DatabaseManager.shared.fetchTestRecords()
+            case .migration:
+                let newRecords = try await DatabaseManager.shared.fetchMigrationRecords(limit: pageSize, offset: currentPage * pageSize)
+                migrationRecords += newRecords
+                hasMoreData = newRecords.count == pageSize
             }
+            currentPage += 1
         } catch {
-            if !Task.isCancelled {  // Only show error if not cancelled
-                print("Error loading records: \(error)")
-                errorMessage = "Error loading records: \(error.localizedDescription)"
-            }
+            errorMessage = "Error loading records: \(error.localizedDescription)"
         }
         
-        if !Task.isCancelled {  // Only update loading state if not cancelled
-            isLoading = false
-        }
+        isLoading = false
     }
     
     private func loadMoreADRecords() async {
@@ -491,6 +423,9 @@ struct DatabaseContentView: View {
                 case .combined:
                     try await DatabaseManager.shared.clearCombinedRecords()
                     combinedRecords = []
+                case .migration:
+                    try await DatabaseManager.shared.clearMigrationRecords()
+                    migrationRecords = []
                 }
                 showAlert(title: "Success", message: "All records cleared successfully")
             } catch {
@@ -500,6 +435,7 @@ struct DatabaseContentView: View {
     }
 }
 
+@available(macOS 14.0, *)
 struct DatabaseADRecordsView: View {
     let records: [ADRecord]
     private let rowHeight: CGFloat = 18
@@ -623,6 +559,7 @@ struct ViewHeightPreferenceKey: PreferenceKey {
     }
 }
 
+@available(macOS 14.0, *)
 struct ContentHeightPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -630,6 +567,7 @@ struct ContentHeightPreferenceKey: PreferenceKey {
     }
 }
 
+@available(macOS 14.0, *)
 struct DatabaseHRRecordsView: View {
     let records: [HRRecord]
     private let rowHeight: CGFloat = 18
@@ -724,6 +662,7 @@ struct DatabaseHRRecordsView: View {
     }
 }
 
+@available(macOS 14.0, *)
 struct DatabaseCombinedRecordsView: View {
     let records: [CombinedRecord]
     let onScrolledNearBottom: () -> Void
@@ -808,6 +747,12 @@ struct DatabaseCombinedRecordsView: View {
                             Text("Migration Cluster")
                                 .frame(width: 120, alignment: .leading)
                             Text("Migration Readiness")
+                                .frame(width: 120, alignment: .leading)
+                            Text("New Application")
+                                .frame(width: 120, alignment: .leading)
+                            Text("New Suite")
+                                .frame(width: 120, alignment: .leading)
+                            Text("Scope Division")
                                 .frame(width: 120, alignment: .leading)
                         }
                         .font(.system(size: 11))
@@ -899,6 +844,12 @@ struct DatabaseCombinedRecordsView: View {
                                             .frame(width: 120, alignment: .leading)
                                         Text(record.migrationReadiness ?? "N/A")
                                             .frame(width: 120, alignment: .leading)
+                                        Text(record.applicationNameNew ?? "N/A")
+                                            .frame(width: 120, alignment: .leading)
+                                        Text(record.suiteNew ?? "N/A")
+                                            .frame(width: 120, alignment: .leading)
+                                        Text(record.scopeDivision ?? "N/A")
+                                            .frame(width: 120, alignment: .leading)
                                     }
                                     .font(.system(size: 11))
                                     .background(Color.yellow.opacity(0.05))
@@ -933,6 +884,7 @@ struct DatabaseCombinedRecordsView: View {
     }
 }
 
+@available(macOS 14.0, *)
 struct DatabasePackageRecordsView: View {
     let records: [PackageRecord]
     private let rowHeight: CGFloat = 18
@@ -1009,6 +961,7 @@ struct DatabasePackageRecordsView: View {
     }
 }
 
+@available(macOS 14.0, *)
 struct DatabaseTestRecordsView: View {
     let records: [TestRecord]
     private let rowHeight: CGFloat = 18
@@ -1097,8 +1050,10 @@ struct DatabaseTestRecordsView: View {
     }
 }
 
-#Preview {
-    DatabaseContentView()
+struct DatabaseContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        DatabaseContentView()
+    }
 }
 
 // Environment key for refresh action

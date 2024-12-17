@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(macOS 14.0, *)
 struct ImportProgressView: View {
     let progress: Double
     let currentOperation: String

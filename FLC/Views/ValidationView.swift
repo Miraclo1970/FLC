@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+@available(macOS 14.0, *)
 struct ValidHRRecordsView: View {
     let records: [HRData]
     let searchText: String
@@ -82,13 +83,14 @@ struct ValidHRRecordsView: View {
     }
 }
 
+@available(macOS 14.0, *)
 struct ValidationView: View {
-    @State private var selectedTab = 0
-    @State private var searchText = ""
-    @State private var isSaving = false
-    @State private var saveResult: String?
     @ObservedObject var progress: ImportProgress
-    @State private var saveProgress: Double = 0.0
+    @State private var searchText = ""
+    @State private var selectedTab = 0
+    @State private var isSaving = false
+    @State private var saveProgress = 0.0
+    @State private var saveResult: String?
     private let batchSize = 5000
     
     private var stats: [(String, String)] {
@@ -117,8 +119,8 @@ struct ValidationView: View {
                     progress.invalidPackageRecords.count +
                     progress.duplicatePackageRecords.count
             valid = progress.validPackageRecords.count
-            invalid = 0  // Package status doesn't track invalid records yet
-            duplicates = 0  // Package status doesn't track duplicates yet
+            invalid = progress.invalidPackageRecords.count
+            duplicates = progress.duplicatePackageRecords.count
         case .testing:
             total = progress.validTestRecords.count +
                     progress.invalidTestRecords.count +
@@ -127,7 +129,15 @@ struct ValidationView: View {
             invalid = progress.invalidTestRecords.count
             duplicates = progress.duplicateTestRecords.count
         case .combined:
-            total = 0  // Combined view doesn't have its own records
+            total = 0
+            valid = 0
+            invalid = 0
+            duplicates = 0
+        case .migration:
+            total = 0  // Migration records don't go through validation
+            valid = 0
+            invalid = 0
+            duplicates = 0
         }
         
         print("ValidationView - Current data type: \(progress.selectedDataType), Valid records: \(valid)")
@@ -151,6 +161,8 @@ struct ValidationView: View {
                     Text("AD Data").tag(ImportProgress.DataType.ad)
                     Text("HR Data").tag(ImportProgress.DataType.hr)
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
+                    Text("Testing").tag(ImportProgress.DataType.testing)
+                    Text("Migration").tag(ImportProgress.DataType.migration)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -241,14 +253,7 @@ struct ValidationView: View {
             
             // Tabs and Content
             TabView(selection: $selectedTab) {
-                // Valid Records Tab
-                Group {
-                    if progress.selectedDataType == .ad {
-                        ValidRecordsView(records: progress.validRecords, searchText: searchText)
-                    } else {
-                        ValidHRRecordsView(records: progress.validHRRecords, searchText: searchText)
-                    }
-                }
+                validRecordsContent
                 .tabItem {
                     Label("Valid", systemImage: "checkmark.circle")
                 }
@@ -256,7 +261,16 @@ struct ValidationView: View {
                 
                 // Invalid Records Tab
                 InvalidRecordsView(
-                    records: progress.selectedDataType == .ad ? progress.invalidRecords : progress.invalidHRRecords,
+                    records: {
+                        switch progress.selectedDataType {
+                        case .ad: return progress.invalidRecords
+                        case .hr: return progress.invalidHRRecords
+                        case .packageStatus: return progress.invalidPackageRecords
+                        case .testing: return progress.invalidTestRecords
+                        case .migration: return []  // Migration records don't have validation
+                        case .combined: return []
+                        }
+                    }(),
                     searchText: searchText
                 )
                 .tabItem {
@@ -266,7 +280,16 @@ struct ValidationView: View {
                 
                 // Duplicate Records Tab
                 DuplicateRecordsView(
-                    records: progress.selectedDataType == .ad ? progress.duplicateRecords : progress.duplicateHRRecords,
+                    records: {
+                        switch progress.selectedDataType {
+                        case .ad: return progress.duplicateRecords
+                        case .hr: return progress.duplicateHRRecords
+                        case .packageStatus: return progress.duplicatePackageRecords
+                        case .testing: return progress.duplicateTestRecords
+                        case .migration: return []  // Migration records don't have duplicates
+                        case .combined: return []
+                        }
+                    }(),
                     searchText: searchText
                 )
                 .tabItem {
@@ -297,191 +320,27 @@ struct ValidationView: View {
             return "doc"
         }
     }
-}
-
-struct ValidRecordsView: View {
-    let records: [ADData]
-    let searchText: String
     
-    var filteredRecords: [ADData] {
-        if searchText.isEmpty {
-            return records
-        }
-        return records.filter { record in
-            record.adGroup.localizedCaseInsensitiveContains(searchText) ||
-            record.systemAccount.localizedCaseInsensitiveContains(searchText) ||
-            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
-            record.applicationSuite.localizedCaseInsensitiveContains(searchText) ||
-            record.otap.localizedCaseInsensitiveContains(searchText) ||
-            record.critical.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Header
-                    HStack(spacing: 0) {
-                        Text("#")
-                            .frame(width: 50, alignment: .leading)
-                            .padding(.leading, 25)
-                        Text("AD Group")
-                            .frame(width: 300, alignment: .leading)
-                        Text("System Account")
-                            .frame(width: 200, alignment: .leading)
-                        Text("Application")
-                            .frame(width: 250, alignment: .leading)
-                        Text("Suite")
-                            .frame(width: 200, alignment: .leading)
-                        Text("OTAP")
-                            .frame(width: 80, alignment: .leading)
-                        Text("Critical")
-                            .frame(width: 80, alignment: .leading)
-                        Spacer()
-                    }
-                    .padding(.vertical, 8)
-                    .background(Color(NSColor.separatorColor).opacity(0.2))
-                    .font(.headline)
-                    
-                    // Records
-                    List {
-                        ForEach(Array(filteredRecords.enumerated()), id: \.element.id) { index, record in
-                            if index > 0 {  // Skip the first row (header)
-                                HStack(spacing: 0) {
-                                    Text("#\(index)")
-                                        .frame(width: 50, alignment: .leading)
-                                        .padding(.leading, 10)
-                                        .foregroundColor(.secondary)
-                                    Text(record.adGroup)
-                                        .frame(width: 300, alignment: .leading)
-                                        .lineLimit(1)
-                                    Text(record.systemAccount)
-                                        .frame(width: 200, alignment: .leading)
-                                        .lineLimit(1)
-                                    Text(record.applicationName)
-                                        .frame(width: 250, alignment: .leading)
-                                        .lineLimit(1)
-                                    Text(record.applicationSuite)
-                                        .frame(width: 200, alignment: .leading)
-                                        .lineLimit(1)
-                                    Text(record.otap)
-                                        .frame(width: 80, alignment: .leading)
-                                        .lineLimit(1)
-                                    Text(record.critical)
-                                        .frame(width: 80, alignment: .leading)
-                                        .lineLimit(1)
-                                    Spacer()
-                                }
-                                .font(.system(.body, design: .monospaced))
-                            }
-                        }
-                    }
-                }
-            }
+    @ViewBuilder
+    private var validRecordsContent: some View {
+        switch progress.selectedDataType {
+        case .ad:
+            ValidRecordsView(records: progress.validRecords, searchText: searchText)
+        case .hr:
+            ValidHRRecordsView(records: progress.validHRRecords, searchText: searchText)
+        case .packageStatus:
+            ValidPackageRecordsView(records: progress.validPackageRecords, searchText: searchText)
+        case .testing:
+            ValidTestRecordsView(records: progress.validTestRecords, searchText: searchText)
+        case .migration:
+            ValidMigrationRecordsView(records: progress.validMigrationRecords, searchText: searchText)
+        case .combined:
+            EmptyView() // Combined records don't go through validation
         }
     }
 }
 
-struct InvalidRecordsView: View {
-    let records: [String]
-    let searchText: String
-    
-    var filteredRecords: [String] {
-        if searchText.isEmpty {
-            return records
-        }
-        return records.filter { $0.localizedCaseInsensitiveContains(searchText) }
-    }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Text("#")
-                    .frame(width: 40, alignment: .leading)
-                Text("Error Message")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.separatorColor).opacity(0.2))
-            .font(.headline)
-            
-            if records.isEmpty {
-                Text("No invalid records found")
-                    .foregroundColor(.secondary)
-                    .padding()
-            } else {
-                // Records
-                List {
-                    ForEach(Array(filteredRecords.enumerated()), id: \.element) { index, record in
-                        HStack(spacing: 0) {
-                            Text("#\(index + 1)")
-                                .frame(width: 40, alignment: .leading)
-                                .foregroundColor(.secondary)
-                            Text(record)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .foregroundColor(.red)
-                                .lineLimit(nil) // Allow multiple lines
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 4)
-                        .font(.system(.body, design: .monospaced))
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct DuplicateRecordsView: View {
-    let records: [String]
-    let searchText: String
-    
-    var filteredRecords: [String] {
-        if searchText.isEmpty {
-            return records
-        }
-        return records.filter { $0.localizedCaseInsensitiveContains(searchText) }
-    }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Text("#")
-                    .frame(width: 40, alignment: .leading)
-                Text("Duplicate Information")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.separatorColor).opacity(0.2))
-            .font(.headline)
-            
-            // Records
-            List {
-                ForEach(Array(filteredRecords.enumerated()), id: \.element) { index, record in
-                    HStack(spacing: 0) {
-                        Text("#\(index + 1)")
-                            .frame(width: 40, alignment: .leading)
-                            .foregroundColor(.secondary)
-                        Text(record)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .foregroundColor(.orange)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 20)
-                    .font(.system(.body, design: .monospaced))
-                }
-            }
-        }
-    }
-}
-
+@available(macOS 14.0, *)
 extension ValidationView {
     private var hasValidRecords: Bool {
         switch progress.selectedDataType {
@@ -495,6 +354,8 @@ extension ValidationView {
             return !progress.validTestRecords.isEmpty
         case .combined:
             return false  // Combined view doesn't have its own records
+        case .migration:
+            return false  // Migration records don't go through validation
         }
     }
     
@@ -514,6 +375,8 @@ extension ValidationView {
                    !progress.duplicateTestRecords.isEmpty
         case .combined:
             return false  // Combined view doesn't have its own records
+        case .migration:
+            return false  // Migration records don't go through validation
         }
     }
     
@@ -663,7 +526,15 @@ extension ValidationView {
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
                 case .combined:
-                    break  // Combined view doesn't have its own records to save
+                    // Combined records are generated, not saved directly
+                    await MainActor.run {
+                        saveResult = "Combined records are generated, not saved directly"
+                    }
+                case .migration:
+                    // Migration records are handled separately
+                    await MainActor.run {
+                        saveResult = "Migration records are handled through a different process"
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -679,6 +550,425 @@ extension ValidationView {
     }
 }
 
+@available(macOS 14.0, *)
+struct ValidRecordsView: View {
+    let records: [ADData]
+    let searchText: String
+    
+    var filteredRecords: [ADData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.adGroup.localizedCaseInsensitiveContains(searchText) ||
+            record.systemAccount.localizedCaseInsensitiveContains(searchText) ||
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.applicationSuite.localizedCaseInsensitiveContains(searchText) ||
+            record.otap.localizedCaseInsensitiveContains(searchText) ||
+            record.critical.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("#")
+                            .frame(width: 50, alignment: .leading)
+                            .padding(.leading, 25)
+                        Text("AD Group")
+                            .frame(width: 300, alignment: .leading)
+                        Text("System Account")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Application")
+                            .frame(width: 250, alignment: .leading)
+                        Text("Suite")
+                            .frame(width: 200, alignment: .leading)
+                        Text("OTAP")
+                            .frame(width: 80, alignment: .leading)
+                        Text("Critical")
+                            .frame(width: 80, alignment: .leading)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.separatorColor).opacity(0.2))
+                    .font(.headline)
+                    
+                    // Records
+                    List(Array(filteredRecords.enumerated()), id: \.element.id) { index, record in
+                        if index > 0 {  // Skip the first row (header)
+                            HStack(spacing: 0) {
+                                Text("#\(index)")
+                                    .frame(width: 50, alignment: .leading)
+                                    .padding(.leading, 10)
+                                    .foregroundColor(.secondary)
+                                Text(record.adGroup)
+                                    .frame(width: 300, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.systemAccount)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.applicationName)
+                                    .frame(width: 250, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.applicationSuite)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.otap)
+                                    .frame(width: 80, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.critical)
+                                    .frame(width: 80, alignment: .leading)
+                                    .lineLimit(1)
+                                Spacer()
+                            }
+                            .font(.system(.body, design: .monospaced))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+struct InvalidRecordsView: View {
+    let records: [String]
+    let searchText: String
+    
+    var filteredRecords: [String] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { $0.localizedCaseInsensitiveContains(searchText) }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("#")
+                    .frame(width: 40, alignment: .leading)
+                Text("Error Message")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.separatorColor).opacity(0.2))
+            .font(.headline)
+            
+            if records.isEmpty {
+                Text("No invalid records found")
+                    .foregroundColor(.secondary)
+                    .padding()
+            } else {
+                // Records
+                List(Array(filteredRecords.enumerated()), id: \.element) { index, record in
+                    HStack(spacing: 0) {
+                        Text("#\(index + 1)")
+                            .frame(width: 40, alignment: .leading)
+                            .foregroundColor(.secondary)
+                        Text(record)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .foregroundColor(.red)
+                            .lineLimit(nil) // Allow multiple lines
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 4)
+                    .font(.system(.body, design: .monospaced))
+                }
+            }
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+struct DuplicateRecordsView: View {
+    let records: [String]
+    let searchText: String
+    
+    var filteredRecords: [String] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { $0.localizedCaseInsensitiveContains(searchText) }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("#")
+                    .frame(width: 40, alignment: .leading)
+                Text("Duplicate Information")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.separatorColor).opacity(0.2))
+            .font(.headline)
+            
+            // Records
+            List(Array(filteredRecords.enumerated()), id: \.element) { index, record in
+                HStack(spacing: 0) {
+                    Text("#\(index + 1)")
+                        .frame(width: 40, alignment: .leading)
+                        .foregroundColor(.secondary)
+                    Text(record)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .foregroundColor(.orange)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 20)
+                .font(.system(.body, design: .monospaced))
+            }
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+struct ValidPackageRecordsView: View {
+    let records: [PackageStatusData]
+    let searchText: String
+    
+    var filteredRecords: [PackageStatusData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.packageStatus.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("#")
+                            .frame(width: 50, alignment: .leading)
+                            .padding(.leading, 25)
+                        Text("Application Name")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Package Status")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Package Readiness Date")
+                            .frame(width: 150, alignment: .leading)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.separatorColor).opacity(0.2))
+                    .font(.headline)
+                    
+                    // Records
+                    List(Array(filteredRecords.enumerated()), id: \.1.id) { index, record in
+                        HStack(spacing: 0) {
+                            Text("#\(index + 1)")
+                                .frame(width: 50, alignment: .leading)
+                                .padding(.leading, 10)
+                                .foregroundColor(.secondary)
+                            Text(record.applicationName)
+                                .frame(width: 200, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.packageStatus)
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.packageReadinessDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .font(.system(.body, design: .monospaced))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+struct ValidTestRecordsView: View {
+    let records: [TestingData]
+    let searchText: String
+    
+    var filteredRecords: [TestingData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.testStatus.localizedCaseInsensitiveContains(searchText) ||
+            record.testResult.localizedCaseInsensitiveContains(searchText) ||
+            (record.testComments ?? "").localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("#")
+                            .frame(width: 50, alignment: .leading)
+                            .padding(.leading, 25)
+                        Text("Application Name")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Test Status")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Test Date")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Test Result")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Test Comments")
+                            .frame(width: 200, alignment: .leading)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.separatorColor).opacity(0.2))
+                    .font(.headline)
+                    
+                    // Records
+                    List(Array(filteredRecords.enumerated()), id: \.1.id) { index, record in
+                        HStack(spacing: 0) {
+                            Text("#\(index + 1)")
+                                .frame(width: 50, alignment: .leading)
+                                .padding(.leading, 10)
+                                .foregroundColor(.secondary)
+                            Text(record.applicationName)
+                                .frame(width: 200, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.testStatus)
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Text(DateFormatter.hrDateFormatter.string(from: record.testDate))
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.testResult)
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.testComments ?? "N/A")
+                                .frame(width: 200, alignment: .leading)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .font(.system(.body, design: .monospaced))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+struct ValidMigrationRecordsView: View {
+    let records: [MigrationStatusData]
+    let searchText: String
+    
+    var filteredRecords: [MigrationStatusData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.adGroup.localizedCaseInsensitiveContains(searchText) ||
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            (record.applicationNameNew ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.suite ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.suiteNew ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.scopeDivision ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.departmentSimple ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.migrationCluster ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.migrationReadiness ?? "").localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("#")
+                            .frame(width: 50, alignment: .leading)
+                            .padding(.leading, 25)
+                        Text("AD Group")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Application")
+                            .frame(width: 200, alignment: .leading)
+                        Text("New Application")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Suite")
+                            .frame(width: 150, alignment: .leading)
+                        Text("New Suite")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Scope Division")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Department Simple")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Migration Cluster")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Migration Readiness")
+                            .frame(width: 150, alignment: .leading)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.separatorColor).opacity(0.2))
+                    .font(.headline)
+                    
+                    // Records
+                    List(Array(filteredRecords.enumerated()), id: \.1.id) { index, record in
+                        HStack(spacing: 0) {
+                            Text("#\(index + 1)")
+                                .frame(width: 50, alignment: .leading)
+                                .padding(.leading, 10)
+                                .foregroundColor(.secondary)
+                            Text(record.adGroup)
+                                .frame(width: 200, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.applicationName)
+                                .frame(width: 200, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.applicationNameNew ?? "N/A")
+                                .frame(width: 200, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.suite ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.suiteNew ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.scopeDivision ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.departmentSimple ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.migrationCluster ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Text(record.migrationReadiness ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .font(.system(.body, design: .monospaced))
+                    }
+                }
+            }
+        }
+    }
+}
+
 #Preview {
-    ValidationView(progress: ImportProgress())
+    if #available(macOS 14.0, *) {
+        ValidationView(progress: ImportProgress())
+    } else {
+        Text("Only available on macOS 14.0 or newer")
+    }
 } 

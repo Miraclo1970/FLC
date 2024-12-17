@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(macOS 14.0, *)
 struct DashboardCard: View {
     let title: String
     let value: String
@@ -26,6 +27,10 @@ struct DashboardCard: View {
 }
 
 #Preview {
-    DashboardCard(title: "Users", value: "42", icon: "person.2")
-        .frame(width: 200)
+    if #available(macOS 14.0, *) {
+        DashboardCard(title: "Users", value: "42", icon: "person.2")
+            .frame(width: 200)
+    } else {
+        Text("Only available on macOS 14.0 or newer")
+    }
 } 

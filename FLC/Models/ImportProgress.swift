@@ -1,12 +1,13 @@
 import SwiftUI
 
 class ImportProgress: ObservableObject {
-    enum DataType {
-        case ad
-        case hr
-        case combined
-        case packageStatus
-        case testing
+    enum DataType: String {
+        case ad = "AD"
+        case hr = "HR"
+        case combined = "Combined"
+        case packageStatus = "Package Status"
+        case testing = "Testing"
+        case migration = "Migration"
     }
     
     @Published var isProcessing: Bool = false
@@ -34,6 +35,11 @@ class ImportProgress: ObservableObject {
     @Published var invalidTestRecords: [String] = []
     @Published var duplicateTestRecords: [String] = []
     
+    // Validation data for migration
+    @Published var validMigrationRecords: [MigrationStatusData] = []
+    @Published var invalidMigrationRecords: [String] = []
+    @Published var duplicateMigrationRecords: [String] = []
+    
     func reset() {
         isProcessing = false
         currentOperation = ""
@@ -55,6 +61,10 @@ class ImportProgress: ObservableObject {
         validTestRecords = []
         invalidTestRecords = []
         duplicateTestRecords = []
+        // Reset migration data
+        validMigrationRecords = []
+        invalidMigrationRecords = []
+        duplicateMigrationRecords = []
     }
     
     func update(operation: String, progress: Double) {
