@@ -723,8 +723,8 @@ struct ImportView: View {
                         case "leave date", "leavedate", "leave-date", "leave_date":
                             print("Found Leave Date column at index \(colIndex)")
                             standardHeader = "Leave Date"
-                        case "employee nr", "employeenr", "employee-nr", "employee_nr":
-                            standardHeader = "Employee Number"
+                        case "department simple", "departmentsimple", "department-simple", "department_simple", "simple department":
+                            standardHeader = "Department Simple"
                         default:
                             standardHeader = normalizedHeader
                         }
@@ -815,6 +815,7 @@ struct ImportView: View {
             let jobRole = fullRowContent[safe: columnMap["Job Role"] ?? -1] != "N/A" ? fullRowContent[safe: columnMap["Job Role"] ?? -1] : nil
             let division = fullRowContent[safe: columnMap["Division"] ?? -1] != "N/A" ? fullRowContent[safe: columnMap["Division"] ?? -1] : nil
             let leaveDateStr = fullRowContent[safe: columnMap["Leave Date"] ?? -1] != "N/A" ? fullRowContent[safe: columnMap["Leave Date"] ?? -1] : nil
+            let departmentSimple = fullRowContent[safe: columnMap["Department Simple"] ?? -1] != "N/A" ? fullRowContent[safe: columnMap["Department Simple"] ?? -1] : nil
 
             print("Row \(index) values - System Account: \(systemAccount)")
             
@@ -849,7 +850,8 @@ struct ImportView: View {
                 department: department,
                 jobRole: jobRole,
                 division: division,
-                leaveDate: leaveDate
+                leaveDate: leaveDate,
+                departmentSimple: departmentSimple
             )
             
             if record.isValid {

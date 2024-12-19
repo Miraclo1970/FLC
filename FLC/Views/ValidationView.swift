@@ -12,6 +12,7 @@ struct ValidHRRecordsView: View {
         return records.filter { record in
             record.systemAccount.localizedCaseInsensitiveContains(searchText) ||
             (record.department ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.departmentSimple ?? "").localizedCaseInsensitiveContains(searchText) ||
             (record.jobRole ?? "").localizedCaseInsensitiveContains(searchText) ||
             (record.division ?? "").localizedCaseInsensitiveContains(searchText)
         }
@@ -30,6 +31,8 @@ struct ValidHRRecordsView: View {
                             .frame(width: 200, alignment: .leading)
                         Text("Department")
                             .frame(width: 200, alignment: .leading)
+                        Text("Department Simple")
+                            .frame(width: 150, alignment: .leading)
                         Text("Job Role")
                             .frame(width: 200, alignment: .leading)
                         Text("Division")
@@ -54,6 +57,9 @@ struct ValidHRRecordsView: View {
                                     .lineLimit(1)
                                 Text(record.department ?? "N/A")
                                     .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.departmentSimple ?? "N/A")
+                                    .frame(width: 150, alignment: .leading)
                                     .lineLimit(1)
                                 Text(record.jobRole ?? "N/A")
                                     .frame(width: 200, alignment: .leading)

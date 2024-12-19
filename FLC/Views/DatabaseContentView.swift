@@ -630,88 +630,29 @@ struct ContentHeightPreferenceKey: PreferenceKey {
 
 struct DatabaseHRRecordsView: View {
     let records: [HRRecord]
-    private let rowHeight: CGFloat = 18
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .medium
-        return formatter
-    }()
     
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Header
-                    HStack(spacing: 0) {
-                        Text("ID")
-                            .frame(width: 80, alignment: .leading)
-                            .padding(.leading, 16)
-                            .font(.system(size: 11))
-                        Text("System Account")
-                            .frame(width: 200, alignment: .leading)
-                            .font(.system(size: 11))
-                        Text("Department")
-                            .frame(width: 200, alignment: .leading)
-                            .font(.system(size: 11))
-                        Text("Job Role")
-                            .frame(width: 200, alignment: .leading)
-                            .font(.system(size: 11))
-                        Text("Division")
-                            .frame(width: 200, alignment: .leading)
-                            .font(.system(size: 11))
-                        Text("Leave Date")
-                            .frame(width: 120, alignment: .leading)
-                            .font(.system(size: 11))
-                        Text("Import Date")
-                            .frame(width: 200, alignment: .leading)
-                            .font(.system(size: 11))
-                        Text("Import Set")
-                            .frame(width: 150, alignment: .leading)
-                            .font(.system(size: 11))
-                    }
-                    .padding(.vertical, 4)
-                    .background(Color(NSColor.windowBackgroundColor))
-                    .border(Color.gray.opacity(0.2), width: 1)
-                    
-                    ScrollView(.vertical, showsIndicators: true) {
-                        LazyVStack(spacing: 0, pinnedViews: []) {
-                            ForEach(records, id: \.id) { record in
-                                HStack(spacing: 0) {
-                                    Text(String(format: "%.0f", Double(record.id ?? -1)))
-                                        .frame(width: 80, alignment: .leading)
-                                        .padding(.leading, 16)
-                                        .font(.system(size: 11))
-                                    Text(record.systemAccount)
-                                        .frame(width: 200, alignment: .leading)
-                                        .font(.system(size: 11))
-                                    Text(record.department ?? "N/A")
-                                        .frame(width: 200, alignment: .leading)
-                                        .font(.system(size: 11))
-                                    Text(record.jobRole ?? "N/A")
-                                        .frame(width: 200, alignment: .leading)
-                                        .font(.system(size: 11))
-                                    Text(record.division ?? "N/A")
-                                        .frame(width: 200, alignment: .leading)
-                                        .font(.system(size: 11))
-                                    Text(record.leaveDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
-                                        .frame(width: 120, alignment: .leading)
-                                        .font(.system(size: 11))
-                                    Text(dateFormatter.string(from: record.importDate))
-                                        .frame(width: 200, alignment: .leading)
-                                        .font(.system(size: 11))
-                                    Text(record.importSet)
-                                        .frame(width: 150, alignment: .leading)
-                                        .font(.system(size: 11))
-                                }
-                                .frame(height: rowHeight)
-                                .padding(.vertical, 0)
-                                .background(Color(NSColor.controlBackgroundColor))
-                            }
-                        }
-                    }
-                }
+        Table(records, selection: .constant(Set<HRRecord.ID>())) {
+            TableColumn("System Account", value: \.systemAccount)
+            TableColumn("Department") { record in
+                Text(record.department ?? "N/A")
             }
+            TableColumn("Job Role") { record in
+                Text(record.jobRole ?? "N/A")
+            }
+            TableColumn("Division") { record in
+                Text(record.division ?? "N/A")
+            }
+            TableColumn("Department Simple") { record in
+                Text(record.departmentSimple ?? "N/A")
+            }
+            TableColumn("Leave Date") { record in
+                Text(record.leaveDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+            }
+            TableColumn("Import Date") { record in
+                Text(DateFormatter.hrDateFormatter.string(from: record.importDate))
+            }
+            TableColumn("Import Set", value: \.importSet)
         }
     }
 }
@@ -767,6 +708,8 @@ struct DatabaseCombinedRecordsView: View {
                                 .frame(width: 150, alignment: .leading)
                             Text("Leave Date")
                                 .frame(width: 100, alignment: .leading)
+                            Text("Department Simple")
+                                .frame(width: 150, alignment: .leading)
                         }
                         .font(.system(size: 11))
                         .background(Color.green.opacity(0.1))
@@ -855,6 +798,8 @@ struct DatabaseCombinedRecordsView: View {
                                             .frame(width: 150, alignment: .leading)
                                         Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
                                             .frame(width: 100, alignment: .leading)
+                                        Text(record.departmentSimple ?? "N/A")
+                                            .frame(width: 150, alignment: .leading)
                                     }
                                     .font(.system(size: 11))
                                     .background(Color.green.opacity(0.05))

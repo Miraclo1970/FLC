@@ -8,6 +8,7 @@ struct HRData: Codable, Identifiable, Hashable {
     let jobRole: String?
     let division: String?
     let leaveDate: Date?
+    let departmentSimple: String?
     
     // Validation errors
     var validationErrors: [String] {

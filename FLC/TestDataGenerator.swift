@@ -38,11 +38,11 @@ class TestDataGenerator {
         var testData: [HRData] = []
         
         // Test cases with various scenarios including leave dates
-        let testCases: [(systemAccount: String, dept: String, role: String, div: String, leaveDate: Date?)] = [
-            ("sz12345", "IT", "System Administrator", "Operations", nil),
-            ("sz54321", "Finance", "Business Analyst", "Business", Date().addingTimeInterval(60*60*24*30)), // Leaving in 30 days
-            ("sz98765", "IT", "Database Admin", "Operations", nil),
-            ("sz24680", "HR", "HR Manager", "Support", nil)
+        let testCases: [(systemAccount: String, dept: String, deptSimple: String, role: String, div: String, leaveDate: Date?)] = [
+            ("sz12345", "IT - Infrastructure", "IT", "System Administrator", "Operations", nil),
+            ("sz54321", "Finance - Accounting", "Finance", "Business Analyst", "Business", Date().addingTimeInterval(60*60*24*30)), // Leaving in 30 days
+            ("sz98765", "IT - Database", "IT", "Database Admin", "Operations", nil),
+            ("sz24680", "HR - Recruitment", "HR", "HR Manager", "Support", nil)
         ]
         
         for testCase in testCases {
@@ -51,7 +51,8 @@ class TestDataGenerator {
                 department: testCase.dept,
                 jobRole: testCase.role,
                 division: testCase.div,
-                leaveDate: testCase.leaveDate
+                leaveDate: testCase.leaveDate,
+                departmentSimple: testCase.deptSimple
             )
             testData.append(hrData)
         }

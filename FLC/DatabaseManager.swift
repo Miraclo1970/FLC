@@ -44,17 +44,54 @@ struct ADRecord: Codable, FetchableRecord, PersistableRecord {
 }
 
 // HR record structure for database
-struct HRRecord: Codable, FetchableRecord, PersistableRecord {
+struct HRRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
     var id: Int64?
     let systemAccount: String
     let department: String?
     let jobRole: String?
     let division: String?
     let leaveDate: Date?
+    let departmentSimple: String?
     let importDate: Date
     let importSet: String
     
     static let databaseTableName = "hr_records"
+    
+    enum Columns {
+        static let id = Column("id")
+        static let systemAccount = Column("systemAccount")
+        static let department = Column("department")
+        static let jobRole = Column("jobRole")
+        static let division = Column("division")
+        static let leaveDate = Column("leaveDate")
+        static let departmentSimple = Column("departmentSimple")
+        static let importDate = Column("importDate")
+        static let importSet = Column("importSet")
+    }
+    
+    static let databaseColumnEncodingStrategy: DatabaseColumnEncodingStrategy = .custom { key in
+        switch key {
+        case CodingKeys.systemAccount: return "systemAccount"
+        case CodingKeys.jobRole: return "jobRole"
+        case CodingKeys.leaveDate: return "leaveDate"
+        case CodingKeys.departmentSimple: return "departmentSimple"
+        case CodingKeys.importDate: return "importDate"
+        case CodingKeys.importSet: return "importSet"
+        default: return key.stringValue
+        }
+    }
+    
+    static let databaseColumnDecodingStrategy: DatabaseColumnDecodingStrategy = .custom { key in
+        switch key {
+        case "systemAccount": return CodingKeys.systemAccount
+        case "jobRole": return CodingKeys.jobRole
+        case "leaveDate": return CodingKeys.leaveDate
+        case "departmentSimple": return CodingKeys.departmentSimple
+        case "importDate": return CodingKeys.importDate
+        case "importSet": return CodingKeys.importSet
+        default: return CodingKeys(stringValue: key) ?? CodingKeys.id
+        }
+    }
     
     init(from data: HRData) {
         self.id = nil
@@ -63,6 +100,7 @@ struct HRRecord: Codable, FetchableRecord, PersistableRecord {
         self.jobRole = data.jobRole
         self.division = data.division
         self.leaveDate = data.leaveDate
+        self.departmentSimple = data.departmentSimple
         self.importDate = Date()
         
         // Create a more descriptive import set identifier
@@ -129,6 +167,9 @@ class DatabaseManager {
         }
         
         try dbPool.write { db in
+            // Drop hr_records table if exists
+            try db.execute(sql: "DROP TABLE IF EXISTS hr_records")
+            
             // Create users table
             try db.create(table: "users", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
@@ -159,6 +200,7 @@ class DatabaseManager {
                 t.column("jobRole", .text)
                 t.column("division", .text)
                 t.column("leaveDate", .datetime)
+                t.column("departmentSimple", .text)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
             }
@@ -517,7 +559,7 @@ class DatabaseManager {
                     applicationPackageReadinessDate: packageRecord?.packageReadinessDate,
                     applicationTestStatus: testRecord?.testStatus,
                     applicationTestReadinessDate: testRecord?.testDate,
-                    departmentSimple: nil,
+                    departmentSimple: hrRecord?.departmentSimple,
                     migrationCluster: nil,
                     migrationReadiness: nil,
                     importDate: Date(),
