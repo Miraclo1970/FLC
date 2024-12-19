@@ -38,28 +38,20 @@ class TestDataGenerator {
         var testData: [HRData] = []
         
         // Test cases with various scenarios including leave dates
-        let testCases: [(systemAccount: String, dept: String, role: String, div: String, leaveDate: Date?, empNum: String)] = [
-            ("sz12345", "IT", "System Administrator", "Operations", nil, "EMP001"),
-            ("sz54321", "Finance", "Business Analyst", "Business", Date().addingTimeInterval(60*60*24*30), "EMP002"), // Leaving in 30 days
-            ("sz98765", "IT", "Database Admin", "Operations", nil, "EMP003"),
-            ("sz24680", "HR", "HR Manager", "Support", nil, "EMP004"),
-            ("sz13579", "IT", "Network Engineer", "Infrastructure", Date().addingTimeInterval(-60*60*24*30), "EMP005"), // Left 30 days ago
-            ("sz11111", "Finance", "SAP Specialist", "Business", nil, "EMP006"),
-            ("sz22222", "IT", "Database Manager", "Operations", nil, "EMP007"),
-            ("sz33333", "Operations", "System Engineer", "Infrastructure", nil, "EMP008"),
-            ("sz44444", "Development", "Software Engineer", "IT", Date().addingTimeInterval(60*60*24*60), "EMP009"), // Leaving in 60 days
-            ("sz55555", "IT", "System Architect", "Infrastructure", nil, "EMP010")
+        let testCases: [(systemAccount: String, dept: String, role: String, div: String, leaveDate: Date?)] = [
+            ("sz12345", "IT", "System Administrator", "Operations", nil),
+            ("sz54321", "Finance", "Business Analyst", "Business", Date().addingTimeInterval(60*60*24*30)), // Leaving in 30 days
+            ("sz98765", "IT", "Database Admin", "Operations", nil),
+            ("sz24680", "HR", "HR Manager", "Support", nil)
         ]
         
-        // Add all test cases
         for testCase in testCases {
             let hrData = HRData(
                 systemAccount: testCase.systemAccount,
                 department: testCase.dept,
                 jobRole: testCase.role,
                 division: testCase.div,
-                leaveDate: testCase.leaveDate,
-                employeeNumber: testCase.empNum
+                leaveDate: testCase.leaveDate
             )
             testData.append(hrData)
         }

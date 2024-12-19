@@ -257,8 +257,7 @@ struct DatabaseContentView: View {
             record.systemAccount.localizedCaseInsensitiveContains(searchText) ||
             (record.department ?? "").localizedCaseInsensitiveContains(searchText) ||
             (record.jobRole ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.division ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.employeeNumber ?? "").localizedCaseInsensitiveContains(searchText)
+            (record.division ?? "").localizedCaseInsensitiveContains(searchText)
         }
     }
     
@@ -275,8 +274,7 @@ struct DatabaseContentView: View {
             record.critical.localizedCaseInsensitiveContains(searchText) ||
             (record.department ?? "").localizedCaseInsensitiveContains(searchText) ||
             (record.jobRole ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.division ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.employeeNumber ?? "").localizedCaseInsensitiveContains(searchText)
+            (record.division ?? "").localizedCaseInsensitiveContains(searchText)
         }
     }
     
@@ -665,9 +663,6 @@ struct DatabaseHRRecordsView: View {
                         Text("Leave Date")
                             .frame(width: 120, alignment: .leading)
                             .font(.system(size: 11))
-                        Text("Employee #")
-                            .frame(width: 120, alignment: .leading)
-                            .font(.system(size: 11))
                         Text("Import Date")
                             .frame(width: 200, alignment: .leading)
                             .font(.system(size: 11))
@@ -700,9 +695,6 @@ struct DatabaseHRRecordsView: View {
                                         .frame(width: 200, alignment: .leading)
                                         .font(.system(size: 11))
                                     Text(record.leaveDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
-                                        .frame(width: 120, alignment: .leading)
-                                        .font(.system(size: 11))
-                                    Text(record.employeeNumber ?? "N/A")
                                         .frame(width: 120, alignment: .leading)
                                         .font(.system(size: 11))
                                     Text(dateFormatter.string(from: record.importDate))
@@ -774,8 +766,6 @@ struct DatabaseCombinedRecordsView: View {
                             Text("Division")
                                 .frame(width: 150, alignment: .leading)
                             Text("Leave Date")
-                                .frame(width: 100, alignment: .leading)
-                            Text("Employee #")
                                 .frame(width: 100, alignment: .leading)
                         }
                         .font(.system(size: 11))
@@ -864,8 +854,6 @@ struct DatabaseCombinedRecordsView: View {
                                         Text(record.division ?? "N/A")
                                             .frame(width: 150, alignment: .leading)
                                         Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                                            .frame(width: 100, alignment: .leading)
-                                        Text(record.employeeNumber ?? "N/A")
                                             .frame(width: 100, alignment: .leading)
                                     }
                                     .font(.system(size: 11))

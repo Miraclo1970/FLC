@@ -17,7 +17,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
     let jobRole: String?
     let division: String?
     let leaveDate: Date?
-    let employeeNumber: String?
     
     // Package tracking fields
     var applicationPackageStatus: String?
@@ -49,7 +48,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
          jobRole: String?,
          division: String?,
          leaveDate: Date?,
-         employeeNumber: String?,
          applicationPackageStatus: String?,
          applicationPackageReadinessDate: Date?,
          applicationTestStatus: String?,
@@ -70,7 +68,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.jobRole = jobRole
         self.division = division
         self.leaveDate = leaveDate
-        self.employeeNumber = employeeNumber
         self.applicationPackageStatus = applicationPackageStatus
         self.applicationPackageReadinessDate = applicationPackageReadinessDate
         self.applicationTestStatus = applicationTestStatus
@@ -98,7 +95,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.jobRole = hrRecord?.jobRole
         self.division = hrRecord?.division
         self.leaveDate = hrRecord?.leaveDate
-        self.employeeNumber = hrRecord?.employeeNumber
         
         // Package tracking fields (initialized as nil)
         self.applicationPackageStatus = nil
@@ -113,10 +109,10 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.migrationCluster = nil
         self.migrationReadiness = nil
         
-        // Use the most recent import date and create a combined import set
+        // Metadata
         self.importDate = Date()
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
-        self.importSet = "Combined_Import_\(dateFormatter.string(from: Date()))"
+        self.importSet = "Combined_\(dateFormatter.string(from: Date()))"
     }
 } 

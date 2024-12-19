@@ -51,7 +51,6 @@ struct HRRecord: Codable, FetchableRecord, PersistableRecord {
     let jobRole: String?
     let division: String?
     let leaveDate: Date?
-    let employeeNumber: String?
     let importDate: Date
     let importSet: String
     
@@ -64,7 +63,6 @@ struct HRRecord: Codable, FetchableRecord, PersistableRecord {
         self.jobRole = data.jobRole
         self.division = data.division
         self.leaveDate = data.leaveDate
-        self.employeeNumber = data.employeeNumber
         self.importDate = Date()
         
         // Create a more descriptive import set identifier
@@ -161,7 +159,6 @@ class DatabaseManager {
                 t.column("jobRole", .text)
                 t.column("division", .text)
                 t.column("leaveDate", .datetime)
-                t.column("employeeNumber", .text)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
             }
@@ -181,7 +178,6 @@ class DatabaseManager {
                 t.column("jobRole", .text)
                 t.column("division", .text)
                 t.column("leaveDate", .datetime)
-                t.column("employeeNumber", .text)
                 // Package tracking fields
                 t.column("applicationPackageStatus", .text)
                 t.column("applicationPackageReadinessDate", .datetime)
@@ -231,11 +227,7 @@ class DatabaseManager {
     
     // Save AD records to database with upsert behavior
     func saveADRecords(_ records: [ADData]) async throws -> (saved: Int, skipped: Int) {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.write { db -> (Int, Int) in
+        try await performDatabaseOperation("Save AD Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
@@ -264,11 +256,7 @@ class DatabaseManager {
     
     // Save HR records to database with upsert behavior
     func saveHRRecords(_ records: [HRData]) async throws -> (saved: Int, skipped: Int) {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.write { db -> (Int, Int) in
+        try await performDatabaseOperation("Save HR Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
@@ -294,69 +282,49 @@ class DatabaseManager {
     
     // Save package status records to database with upsert behavior
     func savePackageRecords(_ records: [PackageStatusData]) async throws -> (saved: Int, skipped: Int) {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        print("Attempting to save \(records.count) package status records")
-        
-        return try await dbPool.write { db -> (Int, Int) in
+        try await performDatabaseOperation("Save Package Records") { db in
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
                 let dbRecord = PackageRecord(from: record)
                 print("Processing package record for application: \(dbRecord.applicationName)")
                 
-                // Try to find existing record by applicationName only
                 if let existingRecord = try PackageRecord
                     .filter(Column("applicationName") == record.applicationName)
                     .fetchOne(db) {
-                    print("Found existing record for \(dbRecord.applicationName), updating...")
-                    // Update existing record with new data, preserving id
                     var updatedRecord = dbRecord
                     updatedRecord.id = existingRecord.id
                     try updatedRecord.update(db)
                     counts.saved += 1
                 } else {
-                    print("No existing record for \(dbRecord.applicationName), inserting new record...")
-                    // Insert new record
                     try dbRecord.insert(db)
                     counts.saved += 1
                 }
             }
             
-            print("Finished saving package records - Saved: \(counts.saved), Skipped: \(counts.skipped)")
             return counts
         }
     }
     
     // Fetch AD records with pagination
     func fetchADRecords(limit: Int = 1000, offset: Int = 0) async throws -> [ADRecord] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.read { db in
+        try await performDatabaseOperation("Fetch AD Records", write: false) { db in
             try ADRecord
                 .limit(limit, offset: offset)
                 .fetchAll(db)
         }
     }
     
-    // Fetch all HR records
+    // Fetch HR records
     func fetchHRRecords() async throws -> [HRRecord] {
-        try await dbPool?.read { db in
+        try await performDatabaseOperation("Fetch HR Records", write: false) { db in
             try HRRecord.fetchAll(db)
-        } ?? []
+        }
     }
     
     // Fetch package status records with pagination
     func fetchPackageRecords(limit: Int = 1000, offset: Int = 0) async throws -> [PackageRecord] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.read { db in
+        try await performDatabaseOperation("Fetch Package Records", write: false) { db in
             try PackageRecord
                 .order(sql: "applicationName ASC")
                 .limit(limit, offset: offset)
@@ -399,121 +367,95 @@ class DatabaseManager {
         }
     }
     
-    func validateUser(username: String, password: String) -> (success: Bool, userType: String?) {
-        do {
-            guard let dbPool = dbPool else {
-                print("No database connection")
-                return (false, nil)
-            }
-            
-            print("Attempting to validate user: \(username)")
-            
+    @MainActor
+    func validateUser(username: String, password: String) async throws -> (success: Bool, userType: String?) {
+        try await performDatabaseOperation("Validate User") { db in
             // Special case for admin - no password required
             if username == "admin" {
                 return (true, "admin")
             }
             
-            // For other users, check both username and password
-            let user = try dbPool.read { db in
-                try User.filter(Column("username") == username)
-                    .filter(Column("password") == password)
-                    .fetchOne(db)
-            }
+            let user = try User.filter(Column("username") == username)
+                .filter(Column("password") == password)
+                .fetchOne(db)
             
-            if let user = user {
-                print("User found: \(user.username) with type: \(user.userType)")
-                return (true, user.userType)
-            }
-            
-            print("Invalid credentials for user: \(username)")
-            return (false, nil)
-            
-        } catch {
-            print("Validate user error: \(error)")
-            return (false, nil)
+            return (user != nil, user?.userType)
         }
     }
     
-    func listAllUsers() {
-        do {
-            guard let dbPool = dbPool else { return }
-            
-            let users = try dbPool.read { db in
-                try User.fetchAll(db)
-            }
+    @MainActor
+    func listAllUsers() async throws {
+        _ = try await performDatabaseOperation("List Users", write: false) { db in
+            let users = try User.fetchAll(db)
             
             print("\n=== Current Users ===")
             for user in users {
                 print("Username: \(user.username), Type: \(user.userType)")
             }
             print("===================\n")
-        } catch {
-            print("Error listing users: \(error)")
+            return users  // Return the users array even though we're discarding it
         }
     }
     
     // Delete AD record
     func deleteADRecord(_ record: ADRecord) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Delete AD Record", write: true) { db in
             try record.delete(db)
+            return true
         }
     }
     
     // Delete HR record
     func deleteHRRecord(_ record: HRRecord) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Delete HR Record", write: true) { db in
             try record.delete(db)
+            return true
         }
     }
     
     // Clear all AD records
     func clearADRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Clear AD Records", write: true) { db in
             try db.execute(sql: "DELETE FROM ad_records")
+            return true
         }
     }
     
     // Clear all HR records
     func clearHRRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Clear HR Records", write: true) { db in
             try db.execute(sql: "DELETE FROM hr_records")
+            return true
         }
     }
     
     // Clear all package status records
     func clearPackageRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Clear Package Records", write: true) { db in
             try db.execute(sql: "DELETE FROM package_status_records")
+            return true
+        }
+    }
+    
+    // Clear all combined records
+    func clearCombinedRecords() async throws {
+        _ = try await performDatabaseOperation("Clear Combined Records", write: true) { db in
+            try db.execute(sql: "DELETE FROM combined_records")
+            return true
+        }
+    }
+    
+    // Clear all test records
+    func clearTestRecords() async throws {
+        _ = try await performDatabaseOperation("Clear Test Records", write: true) { db in
+            try db.execute(sql: "DELETE FROM test_records")
+            return true
         }
     }
     
     // Fetch combined records with pagination
     func fetchCombinedRecords(limit: Int = 1000, offset: Int = 0) async throws -> [CombinedRecord] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.read { db in
+        try await performDatabaseOperation("Fetch Combined Records", write: false) { db in
             try CombinedRecord
                 .limit(limit, offset: offset)
                 .fetchAll(db)
@@ -522,11 +464,7 @@ class DatabaseManager {
     
     // Generate combined records from AD and HR data
     func generateCombinedRecords() async throws -> Int {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.write { db -> Int in
+        try await performDatabaseOperation("Generate Combined Records", write: true) { db in
             // First, clear existing combined records
             try db.execute(sql: "DELETE FROM combined_records")
             
@@ -575,7 +513,6 @@ class DatabaseManager {
                     jobRole: hrRecord?.jobRole,
                     division: hrRecord?.division,
                     leaveDate: hrRecord?.leaveDate,
-                    employeeNumber: hrRecord?.employeeNumber,
                     applicationPackageStatus: packageRecord?.packageStatus,
                     applicationPackageReadinessDate: packageRecord?.packageReadinessDate,
                     applicationTestStatus: testRecord?.testStatus,
@@ -602,30 +539,15 @@ class DatabaseManager {
         }
     }
     
-    // Clear all combined records
-    func clearCombinedRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
-            try db.execute(sql: "DELETE FROM combined_records")
-        }
-    }
-    
     // Query execution methods
     func executeQuery(dataType: ImportProgress.DataType, 
                      field: String, 
                      operator: String, 
                      value: String) async throws -> [Any] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
         // First get the database state
         try await debugPrintRecords()
         
-        return try await dbPool.read { db in
+        return try await performDatabaseOperation("Execute Query", write: false) { db in
             // Build the SQL query based on data type
             let tableName: String
             switch dataType {
@@ -663,8 +585,6 @@ class DatabaseManager {
                 mappedColumnName = "applicationname"
             case "application_suite":
                 mappedColumnName = "applicationsuite"
-            case "employee_number":
-                mappedColumnName = "employeenumber"
             case "leave_date":
                 mappedColumnName = "leavedate"
             case "package_status":
@@ -774,9 +694,7 @@ class DatabaseManager {
     
     // Debug function to check database contents
     func debugPrintRecords() async throws {
-        guard let dbPool = dbPool else { return }
-        
-        try await dbPool.read { db in
+        _ = try await performDatabaseOperation("Debug Print Records", write: false) { db in
             print("\n=== Database Contents ===")
             
             // Check AD records
@@ -807,6 +725,7 @@ class DatabaseManager {
             }
             
             print("=====================\n")
+            return true  // Return a value even though we're discarding it
         }
     }
     
@@ -814,11 +733,7 @@ class DatabaseManager {
     
     // Package tracking updates
     func updatePackageStatus(forSystemAccount: String, adGroup: String, status: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Package Status", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -827,15 +742,12 @@ class DatabaseManager {
                     """,
                 arguments: [status, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     func updatePackageReadinessDate(forSystemAccount: String, adGroup: String, date: Date) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Package Readiness Date", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -844,16 +756,13 @@ class DatabaseManager {
                     """,
                 arguments: [date, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     // Test tracking updates
     func updateTestStatus(forSystemAccount: String, adGroup: String, status: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Test Status", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -862,15 +771,12 @@ class DatabaseManager {
                     """,
                 arguments: [status, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     func updateTestReadinessDate(forSystemAccount: String, adGroup: String, date: Date) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Test Readiness Date", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -879,16 +785,13 @@ class DatabaseManager {
                     """,
                 arguments: [date, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     // Department and Migration updates
     func updateDepartmentSimple(forSystemAccount: String, adGroup: String, department: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Department Simple", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -897,15 +800,12 @@ class DatabaseManager {
                     """,
                 arguments: [department, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     func updateMigrationCluster(forSystemAccount: String, adGroup: String, cluster: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Migration Cluster", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -914,15 +814,12 @@ class DatabaseManager {
                     """,
                 arguments: [cluster, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     func updateMigrationReadiness(forSystemAccount: String, adGroup: String, readiness: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Migration Readiness", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -931,6 +828,7 @@ class DatabaseManager {
                     """,
                 arguments: [readiness, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
@@ -947,11 +845,7 @@ class DatabaseManager {
     
     // Check database tables and contents
     func checkDatabaseState() async throws -> String {
-        guard let dbPool = dbPool else {
-            return "No database connection"
-        }
-        
-        return try await dbPool.read { db in
+        try await performDatabaseOperation("Check Database State", write: false) { db in
             var report = "\n=== Database State ===\n"
             
             // Check tables exist
@@ -1000,13 +894,7 @@ class DatabaseManager {
     
     // Generate package records from combined records
     func generatePackageRecords() async throws -> Int {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        print("Starting package records generation from combined records")
-        
-        return try await dbPool.write { db -> Int in
+        try await performDatabaseOperation("Generate Package Records", write: true) { db in
             // Get all combined records
             let combinedRecords = try CombinedRecord.fetchAll(db)
             var packageCount = 0
@@ -1052,13 +940,7 @@ class DatabaseManager {
     
     // Save test records to database with upsert behavior
     func saveTestRecords(_ records: [TestingData]) async throws -> (saved: Int, skipped: Int) {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        print("Attempting to save \(records.count) test records")
-        
-        return try await dbPool.write { db -> (Int, Int) in
+        try await performDatabaseOperation("Save Test Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
@@ -1090,11 +972,7 @@ class DatabaseManager {
     
     // Fetch test records with pagination
     func fetchTestRecords(limit: Int = 1000, offset: Int = 0) async throws -> [TestRecord] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.read { db in
+        try await performDatabaseOperation("Fetch Test Records", write: false) { db in
             try TestRecord
                 .order(sql: "applicationName ASC")
                 .limit(limit, offset: offset)
@@ -1102,26 +980,9 @@ class DatabaseManager {
         }
     }
     
-    // Clear all test records
-    func clearTestRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
-            try db.execute(sql: "DELETE FROM test_records")
-        }
-    }
-    
     // Generate test records from combined records
     func generateTestRecords() async throws -> Int {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        print("Starting test records generation from combined records")
-        
-        return try await dbPool.write { db -> Int in
+        try await performDatabaseOperation("Generate Test Records", write: true) { db in
             // Get all combined records
             let combinedRecords = try CombinedRecord.fetchAll(db)
             var testCount = 0
@@ -1161,6 +1022,28 @@ class DatabaseManager {
             
             print("Generated \(testCount) test records from \(combinedRecords.count) combined records")
             return testCount
+        }
+    }
+    
+    // Generic database operation handler with error handling
+    private func performDatabaseOperation<T>(_ operation: String, write: Bool = false, action: @escaping (Database) throws -> T) async throws -> T {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        do {
+            if write {
+                return try await dbPool.write { db in
+                    try action(db)
+                }
+            } else {
+                return try await dbPool.read { db in
+                    try action(db)
+                }
+            }
+        } catch {
+            print("Error during \(operation): \(error)")
+            throw error
         }
     }
 } 

@@ -38,7 +38,6 @@ struct QueryView: View {
         "Department": .text,
         "Job Role": .text,
         "Division": .text,
-        "Employee Number": .text,
         "Leave Date": .date,
         
         // Package Status fields
@@ -85,10 +84,10 @@ struct QueryView: View {
         case .ad:
             return ["AD Group", "System Account", "Application Name", "Application Suite", "OTAP", "Critical"]
         case .hr:
-            return ["System Account", "Department", "Job Role", "Division", "Employee Number", "Leave Date"]
+            return ["System Account", "Department", "Job Role", "Division", "Leave Date"]
         case .combined:
             return ["AD Group", "System Account", "Application Name", "Application Suite", "OTAP", "Critical",
-                   "Department", "Job Role", "Division", "Employee Number", "Leave Date"]
+                   "Department", "Job Role", "Division", "Leave Date"]
         case .packageStatus:
             return ["System Account", "Application Name", "Package Status", "Package Readiness Date"]
         case .testing:
@@ -413,8 +412,6 @@ struct HRResultsTableView: View {
                     .frame(width: 200, alignment: .leading)
                 Text("Leave Date")
                     .frame(width: 120, alignment: .leading)
-                Text("Employee #")
-                    .frame(width: 120, alignment: .leading)
             }
             .padding(.vertical, 4)
             .font(.system(size: 11, weight: .bold))
@@ -432,8 +429,6 @@ struct HRResultsTableView: View {
                     Text(record.division ?? "N/A")
                         .frame(width: 200, alignment: .leading)
                     Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                        .frame(width: 120, alignment: .leading)
-                    Text(record.employeeNumber ?? "N/A")
                         .frame(width: 120, alignment: .leading)
                 }
                 .frame(height: rowHeight)
@@ -482,8 +477,6 @@ struct CombinedResultsTableView: View {
                         .frame(width: 200, alignment: .leading)
                     Text("Leave Date")
                         .frame(width: 120, alignment: .leading)
-                    Text("Employee #")
-                        .frame(width: 120, alignment: .leading)
                 }
                 .background(Color.green.opacity(0.1))
             }
@@ -518,8 +511,6 @@ struct CombinedResultsTableView: View {
                         Text(record.division ?? "N/A")
                             .frame(width: 200, alignment: .leading)
                         Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                            .frame(width: 120, alignment: .leading)
-                        Text(record.employeeNumber ?? "N/A")
                             .frame(width: 120, alignment: .leading)
                     }
                     .background(Color.green.opacity(0.05))

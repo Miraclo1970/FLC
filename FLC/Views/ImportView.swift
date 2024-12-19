@@ -811,22 +811,16 @@ struct ImportView: View {
             }
             
             let systemAccount = fullRowContent[safe: columnMap["System Account"] ?? -1] ?? "N/A"
-            let department = fullRowContent[safe: columnMap["Department"] ?? -1] ?? "N/A"
-            let jobRole = fullRowContent[safe: columnMap["Job Role"] ?? -1] ?? "N/A"
-            let division = fullRowContent[safe: columnMap["Division"] ?? -1] ?? "N/A"
-            let leaveDateStr = fullRowContent[safe: columnMap["Leave Date"] ?? -1] ?? "N/A"
-            let employeeNumber = fullRowContent[safe: columnMap["Employee Number"] ?? -1] ?? "N/A"
-            
-            if index == 0 || index % 10000 == 0 {
-                print("Column Map: \(columnMap)")
-                print("Row \(index) values - System Account: \(systemAccount), Employee Number: \(employeeNumber)")
-                print("Leave Date Column Index: \(columnMap["Leave Date"] ?? -1)")
-                print("Leave Date Raw Value: \(leaveDateStr)")
-            }
+            let department = fullRowContent[safe: columnMap["Department"] ?? -1] != "N/A" ? fullRowContent[safe: columnMap["Department"] ?? -1] : nil
+            let jobRole = fullRowContent[safe: columnMap["Job Role"] ?? -1] != "N/A" ? fullRowContent[safe: columnMap["Job Role"] ?? -1] : nil
+            let division = fullRowContent[safe: columnMap["Division"] ?? -1] != "N/A" ? fullRowContent[safe: columnMap["Division"] ?? -1] : nil
+            let leaveDateStr = fullRowContent[safe: columnMap["Leave Date"] ?? -1] != "N/A" ? fullRowContent[safe: columnMap["Leave Date"] ?? -1] : nil
+
+            print("Row \(index) values - System Account: \(systemAccount)")
             
             // Parse leave date if present
             var leaveDate: Date? = nil
-            if leaveDateStr != "N/A" {
+            if let leaveDateStr = leaveDateStr {
                 print("Row \(index) - Attempting to parse leave date: '\(leaveDateStr)'")
                 // Try standard format first
                 if let date = DateFormatter.hrDateFormatter.date(from: leaveDateStr) {
@@ -852,11 +846,10 @@ struct ImportView: View {
             
             let record = HRData(
                 systemAccount: systemAccount,
-                department: department != "N/A" ? department : nil,
-                jobRole: jobRole != "N/A" ? jobRole : nil,
-                division: division != "N/A" ? division : nil,
-                leaveDate: leaveDate,
-                employeeNumber: employeeNumber != "N/A" ? employeeNumber : nil
+                department: department,
+                jobRole: jobRole,
+                division: division,
+                leaveDate: leaveDate
             )
             
             if record.isValid {
@@ -1003,11 +996,11 @@ struct ImportView: View {
             // Extract data from the correct columns
             let applicationName = rowData[0] ?? "N/A"
             let packageStatus = rowData[1] ?? "N/A"
-            let packageReadinessDateStr = rowData[2] ?? ""
+            let packageReadinessDateStr = rowData[2] ?? "N/A"
             
             // Parse the package readiness date
             var packageReadinessDate: Date? = nil
-            if !packageReadinessDateStr.isEmpty && packageReadinessDateStr != "N/A" {
+            if packageReadinessDateStr != "N/A" {
                 // Try different date formats
                 let dateFormatters = [
                     "dd-MM-yyyy",
@@ -1141,13 +1134,13 @@ struct ImportView: View {
             // Extract data from the correct columns (adjusted column indices)
             let applicationName = rowData[0] ?? "N/A"
             let testStatus = rowData[1] ?? "N/A"
-            let testDateStr = rowData[2] ?? ""
+            let testDateStr = rowData[2] ?? "N/A"
             let testResult = rowData[3] ?? "N/A"
-            let testComments = rowData[4]
+            let testComments = rowData[4] != "N/A" ? rowData[4] : nil
             
             // Parse the test date
             var testDate: Date = Date()
-            if !testDateStr.isEmpty && testDateStr != "N/A" {
+            if testDateStr != "N/A" {
                 let dateFormatters = [
                     "dd-MM-yyyy",
                     "yyyy-MM-dd",

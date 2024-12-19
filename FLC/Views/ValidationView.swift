@@ -13,8 +13,7 @@ struct ValidHRRecordsView: View {
             record.systemAccount.localizedCaseInsensitiveContains(searchText) ||
             (record.department ?? "").localizedCaseInsensitiveContains(searchText) ||
             (record.jobRole ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.division ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.employeeNumber ?? "").localizedCaseInsensitiveContains(searchText)
+            (record.division ?? "").localizedCaseInsensitiveContains(searchText)
         }
     }
     
@@ -37,9 +36,6 @@ struct ValidHRRecordsView: View {
                             .frame(width: 200, alignment: .leading)
                         Text("Leave Date")
                             .frame(width: 120, alignment: .leading)
-                        Text("Employee Number")
-                            .frame(width: 150, alignment: .leading)
-                        Spacer()
                     }
                     .padding(.vertical, 8)
                     .background(Color(NSColor.separatorColor).opacity(0.2))
@@ -67,9 +63,6 @@ struct ValidHRRecordsView: View {
                                     .lineLimit(1)
                                 Text(record.leaveDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
                                     .frame(width: 120, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.employeeNumber ?? "N/A")
-                                    .frame(width: 150, alignment: .leading)
                                     .lineLimit(1)
                                 Spacer()
                             }
