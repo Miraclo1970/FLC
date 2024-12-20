@@ -266,16 +266,27 @@ struct ImportView: View {
                     }
                     
                 case .packageStatus:
-                    let (valid, _, _) = try await processPackageStatusData(xlsx)
+                    let (valid, invalid, duplicates) = try await processPackageStatusData(xlsx)
                     await MainActor.run {
-                        print("Setting Package Status records - Valid: \(valid.count)")
+                        // First set the data type
                         progress.selectedDataType = .packageStatus
+                        
+                        // Then update the records
+                        progress.validPackageRecords = []  // Clear existing records
+                        progress.invalidPackageRecords = []
+                        progress.duplicatePackageRecords = []
+                        
+                        // Now set the new records
                         progress.validPackageRecords = valid
+                        progress.invalidPackageRecords = invalid
+                        progress.duplicatePackageRecords = duplicates
+                        
                         message = "Successfully processed Package Status data from: \(file.lastPathComponent)"
                         progress.isProcessing = false
-                        print("Processed Package Status records - Valid: \(valid.count)")
+                        print("Processed Package Status records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         print("Data type is now: \(progress.selectedDataType)")
-                        // Dismiss this view to return to the main navigation
+                        
+                        // Dismiss to return to validation view
                         dismiss()
                     }
                     
@@ -398,10 +409,22 @@ struct ImportView: View {
                 return (index: columnIndex, value: cellValue)
             }
             
-            // Convert to array with proper handling of missing cells
-            var fullRowContent: [String] = Array(repeating: "N/A", count: 20) // Ensure array is big enough
+            // Calculate the maximum column index needed
+            let maxColumnIndex = max(
+                rowContent.map { $0.index }.max() ?? 0,
+                50  // Minimum size to ensure we have enough space
+            )
+            
+            // Create array with sufficient size
+            var fullRowContent: [String] = Array(repeating: "N/A", count: maxColumnIndex + 1)
+            
+            // Safely populate the array
             for cell in rowContent {
-                fullRowContent[cell.index] = cell.value
+                if cell.index < fullRowContent.count {
+                    fullRowContent[cell.index] = cell.value
+                } else {
+                    print("WARNING: Column index \(cell.index) exceeds array size \(fullRowContent.count)")
+                }
             }
             
             if startDataIndex == -1 {
@@ -514,10 +537,22 @@ struct ImportView: View {
                 return (index: columnIndex, value: cellValue)
             }
             
-            // Convert to array with proper handling of missing cells
-            var fullRowContent: [String] = Array(repeating: "N/A", count: 20) // Ensure array is big enough
+            // Calculate the maximum column index needed
+            let maxColumnIndex = max(
+                rowContent.map { $0.index }.max() ?? 0,
+                50  // Minimum size to ensure we have enough space
+            )
+            
+            // Create array with sufficient size
+            var fullRowContent: [String] = Array(repeating: "N/A", count: maxColumnIndex + 1)
+            
+            // Safely populate the array
             for cell in rowContent {
-                fullRowContent[cell.index] = cell.value
+                if cell.index < fullRowContent.count {
+                    fullRowContent[cell.index] = cell.value
+                } else {
+                    print("WARNING: Column index \(cell.index) exceeds array size \(fullRowContent.count)")
+                }
             }
             
             // Skip completely empty rows
@@ -908,154 +943,335 @@ struct ImportView: View {
     
     private func processPackageStatusData(_ xlsx: XLSXFile) async throws -> ([PackageStatusData], [String], [String]) {
         var validRecords: [PackageStatusData] = []
-        let invalidRecords: [String] = []
-        let duplicateRecords: [String] = []
+        var invalidRecords: [String] = []
+        var duplicateRecords: [String] = []
+        var seenApplicationNames = Set<String>()
         
-        await MainActor.run {
-            progress.update(operation: "Phase 1/5: Reading worksheet data...", progress: 0.1)
-        }
-        
-        // Get the first worksheet
-        let worksheetPaths = try xlsx.parseWorksheetPaths()
-        guard let worksheetPath = worksheetPaths.first else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheet found in the file"])
-        }
-        
-        let worksheet = try xlsx.parseWorksheet(at: worksheetPath)
-        let sharedStrings = try xlsx.parseSharedStrings()
-        let totalRows = worksheet.data?.rows.count ?? 0
-        
-        // Validate header row
-        guard let firstRow = worksheet.data?.rows.first else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data found in worksheet"])
-        }
-        
-        let headers = firstRow.cells.map { cell -> String in
-            if let sharedStrings = sharedStrings,
-               case .sharedString = cell.type,
-               let value = cell.value,
-               let stringIndex = Int(value),
-               stringIndex < sharedStrings.items.count {
-                return sharedStrings.items[stringIndex].text ?? ""
+        do {
+            await MainActor.run {
+                progress.update(operation: "Phase 1/5: Opening worksheet...", progress: 0.1)
             }
-            return cell.value ?? ""
-        }
-        
-        // Check for Package Status header
-        let headerText = headers.joined(separator: " ").lowercased()
-        guard headerText.contains("package") && headerText.contains("status") else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid file format: Expected Package Status data but found different content"])
-        }
-        
-        await MainActor.run {
-            progress.update(operation: "Phase 2/5: Processing \(totalRows) rows...", progress: 0.2)
-        }
-        
-        // Process each row
-        var processedValidRows = 0
-        
-        // Skip first two rows (header and column names)
-        let dataRows = (worksheet.data?.rows ?? []).dropFirst(2)
-        
-        for (index, row) in dataRows.enumerated() {
-            let progressValue = 0.2 + (0.6 * Double(index) / Double(totalRows))
             
-            // Update progress periodically
-            if index % 100 == 0 {
-                let stats = """
-                Row: \(index) of \(totalRows)
-                Valid: \(processedValidRows)
-                """
-                await MainActor.run {
-                    progress.update(operation: stats, progress: progressValue)
+            print("Attempting to parse worksheet paths...")
+            let worksheetPaths = try xlsx.parseWorksheetPaths()
+            print("Found \(worksheetPaths.count) worksheet paths")
+            
+            guard let path = worksheetPaths.first else {
+                throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheets found"])
+            }
+            print("Using worksheet path: \(path)")
+            
+            print("Attempting to parse worksheet...")
+            let worksheet = try xlsx.parseWorksheet(at: path)
+            print("Successfully parsed worksheet")
+            
+            print("Attempting to parse shared strings...")
+            let sharedStrings = try xlsx.parseSharedStrings()
+            print("Successfully parsed shared strings")
+            
+            let rows = worksheet.data?.rows ?? []
+            print("Found \(rows.count) rows in worksheet")
+            
+            // Get headers for validation
+            guard let firstRow = worksheet.data?.rows.first else {
+                throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No rows found in worksheet"])
+            }
+            
+            print("Processing first row with \(firstRow.cells.count) cells")
+            let headers = try firstRow.cells.enumerated().map { (index, cell) -> String in
+                do {
+                    if let sharedStrings = sharedStrings,
+                       case .sharedString = cell.type,
+                       let value = cell.value,
+                       let stringIndex = Int(value) {
+                        print("Processing header cell \(index): type=\(String(describing: cell.type)), value=\(value), stringIndex=\(stringIndex)")
+                        guard stringIndex < sharedStrings.items.count else {
+                            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid shared string index: \(stringIndex), max: \(sharedStrings.items.count)"])
+                        }
+                        return sharedStrings.items[stringIndex].text ?? ""
+                    }
+                    print("Processing regular header cell \(index): type=\(String(describing: cell.type)), value=\(String(describing: cell.value))")
+                    return cell.value ?? ""
+                } catch {
+                    print("Error processing header cell \(index): \(error)")
+                    throw error
                 }
             }
             
-            let rowContent = row.cells.map { cell -> (columnIndex: Int, value: String) in
-                let cellValue: String
-                if let sharedStrings = sharedStrings,
-                   case .sharedString = cell.type,
-                   let value = cell.value,
-                   let stringIndex = Int(value),
-                   stringIndex < sharedStrings.items.count {
-                    let text = sharedStrings.items[stringIndex].text ?? ""
-                    cellValue = text.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : text
-                } else {
-                    let value = cell.value ?? ""
-                    cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
-                }
-                
-                let columnIndex = cell.reference.column.value.excelColumnToIndex()
-                return (columnIndex: columnIndex, value: cellValue)
-            }
+            print("Found headers: \(headers)")
             
-            // Create a dictionary for easier column access
-            var rowData: [Int: String] = [:]
-            for content in rowContent {
-                rowData[content.columnIndex] = content.value
-            }
+            // Validate data type
+            try validateDataType(headers, expected: .packageStatus)
             
-            // Extract data from the correct columns
-            let applicationName = rowData[0] ?? "N/A"
-            let packageStatus = rowData[1] ?? "N/A"
-            let packageReadinessDateStr = rowData[2] ?? "N/A"
+            // Find the start marker and header row
+            var headerRowIndex = -1
+            var startDataIndex = -1
+            var columnMap: [String: Int] = [:]
             
-            // Parse the package readiness date
-            var packageReadinessDate: Date? = nil
-            if packageReadinessDateStr != "N/A" {
-                // Try different date formats
-                let dateFormatters = [
-                    "dd-MM-yyyy",
-                    "yyyy-MM-dd",
-                    "MM/dd/yyyy",
-                    "dd/MM/yyyy"
-                ].map { format -> DateFormatter in
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = format
-                    return formatter
+            // Process each row to find start marker and headers
+            for (index, row) in (worksheet.data?.rows ?? []).enumerated() {
+                let rowContent = row.cells.map { cell -> (index: Int, value: String) in
+                    let cellValue: String
+                    if let sharedStrings = sharedStrings,
+                       case .sharedString = cell.type,
+                       let value = cell.value,
+                       let stringIndex = Int(value),
+                       stringIndex < sharedStrings.items.count {
+                        let text = sharedStrings.items[stringIndex].text ?? ""
+                        cellValue = text.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : text
+                    } else {
+                        let value = cell.value ?? ""
+                        cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
+                    }
+                    
+                    let columnIndex = cell.reference.column.value.excelColumnToIndex()
+                    print("Column reference: \(cell.reference.column.value), index: \(columnIndex)")
+                    return (index: columnIndex, value: cellValue)
                 }
                 
-                for formatter in dateFormatters {
-                    if let date = formatter.date(from: packageReadinessDateStr) {
-                        packageReadinessDate = date
-                        break
+                // Calculate the maximum column index needed
+                let maxColumnIndex = max(
+                    columnMap.values.max() ?? 19,
+                    rowContent.map { $0.index }.max() ?? 19
+                )
+                
+                // Create array with sufficient size
+                var fullRowContent: [String] = Array(repeating: "N/A", count: maxColumnIndex + 1)
+                
+                // Safely populate the array
+                for cell in rowContent {
+                    if cell.index < fullRowContent.count {
+                        fullRowContent[cell.index] = cell.value
+                    } else {
+                        print("WARNING: Skipping cell with index \(cell.index) as it exceeds array size \(fullRowContent.count)")
                     }
                 }
+                
+                if startDataIndex == -1 {
+                    let rowText = fullRowContent.joined(separator: " ")
+                        .trimmingCharacters(in: .whitespaces)
+                        .lowercased()
+                        .replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
+                    if rowText.contains("=startdatabelow=") || 
+                       rowText.contains("===startdatabelow===") ||
+                       rowText.contains("start data below") {
+                        startDataIndex = index
+                    }
+                } else if headerRowIndex == -1 {
+                    // Check for header row
+                    let headerVariations = ["Application Name", "ApplicationName", "Application-Name", "Application_Name", "App Name"]
+                    let foundHeader = fullRowContent.contains { content in
+                        let normalizedContent = content.lowercased().trimmingCharacters(in: .whitespaces)
+                        return headerVariations.contains { variation in
+                            normalizedContent == variation.lowercased()
+                        }
+                    }
+                    
+                    if foundHeader {
+                        headerRowIndex = index
+                        // Map column headers
+                        for (colIndex, header) in fullRowContent.enumerated() {
+                            let normalizedHeader = header.trimmingCharacters(in: .whitespaces)
+                            print("Processing header: '\(normalizedHeader)'")
+                            let standardHeader: String
+                            switch normalizedHeader.lowercased() {
+                            case "application name", "applicationname":
+                                standardHeader = "Application Name"
+                            case "package status", "packagestatus":
+                                standardHeader = "Package Status"
+                            case "package readiness date", "packagereadinessdate":
+                                standardHeader = "Readiness Date"
+                            default:
+                                standardHeader = normalizedHeader
+                                print("Unmatched header: '\(normalizedHeader)' -> '\(standardHeader)'")
+                            }
+                            columnMap[standardHeader] = colIndex
+                            print("Mapped '\(normalizedHeader)' to '\(standardHeader)' at index \(colIndex)")
+                        }
+                        
+                        print("Final Column Map:")
+                        for (header, index) in columnMap {
+                            print("\(header): \(index)")
+                        }
+                    }
+                }
+                
+                if startDataIndex != -1 && headerRowIndex != -1 {
+                    break
+                }
             }
             
-            // Validate the record
-            if applicationName != "N/A" && packageStatus != "N/A" {
+            guard startDataIndex != -1 else {
+                throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find '===START DATA BELOW===' marker"])
+            }
+            
+            guard headerRowIndex != -1 else {
+                throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find header row with required columns"])
+            }
+            
+            // Process only the rows after the header
+            let dataRows = rows.dropFirst(headerRowIndex + 1)
+            let totalRows = dataRows.count
+            
+            await MainActor.run {
+                progress.update(operation: "Phase 4/5: Found \(totalRows) rows to process...", progress: 0.72)
+            }
+            
+            var processedValidRows = 0
+            var processedInvalidRows = 0
+            var processedDuplicateRows = 0
+            
+            for (index, row) in dataRows.enumerated() {
+                if index % 50 == 0 {
+                    let progressValue = 0.72 + (0.18 * Double(index) / Double(max(1, totalRows)))
+                    let stats = """
+                    Phase 4/5: Processing rows...
+                    Row: \(index) of \(totalRows)
+                    Valid: \(processedValidRows)
+                    Invalid: \(processedInvalidRows)
+                    Duplicates: \(processedDuplicateRows)
+                    """
+                    await MainActor.run {
+                        progress.update(operation: stats, progress: progressValue)
+                    }
+                }
+                
+                let rowContent = row.cells.map { cell -> (index: Int, value: String) in
+                    let cellValue: String
+                    if let sharedStrings = sharedStrings,
+                       case .sharedString = cell.type,
+                       let value = cell.value,
+                       let stringIndex = Int(value),
+                       stringIndex < sharedStrings.items.count {
+                        let text = sharedStrings.items[stringIndex].text ?? ""
+                        cellValue = text.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : text
+                    } else {
+                        let value = cell.value ?? ""
+                        cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
+                    }
+                    
+                    let columnIndex = cell.reference.column.value.excelColumnToIndex()
+                    return (index: columnIndex, value: cellValue)
+                }
+                
+                var fullRowContent: [String] = Array(repeating: "N/A", count: 20)
+                for cell in rowContent {
+                    fullRowContent[cell.index] = cell.value
+                }
+                
+                // Skip empty rows
+                if fullRowContent.allSatisfy({ $0 == "N/A" }) {
+                    print("Skipping empty row at index \(index)")
+                    continue
+                }
+                
+                let applicationName = fullRowContent[safe: columnMap["Application Name"] ?? -1] ?? "N/A"
+                let packageStatus = fullRowContent[safe: columnMap["Package Status"] ?? -1] ?? "N/A"
+                let readinessDateStr = fullRowContent[safe: columnMap["Readiness Date"] ?? -1]
+                
+                print("Row \(index + 1) raw values:")
+                print("- Application Name: '\(applicationName)'")
+                print("- Package Status: '\(packageStatus)'")
+                print("- Readiness Date: '\(readinessDateStr.map { "'\($0)'" } ?? "nil")'")
+                
+                // Parse readiness date
+                var readinessDate: Date? = nil
+                if let dateStr = readinessDateStr, dateStr != "N/A" {
+                    print("Attempting to parse date: '\(dateStr)'")
+                    // Try different date formats
+                    let dateFormatters = [
+                        DateFormatter.hrDateFormatter,
+                        DateFormatter.hrDateParser
+                    ]
+                    
+                    for formatter in dateFormatters {
+                        if let date = formatter.date(from: dateStr) {
+                            readinessDate = date
+                            print("Successfully parsed date with formatter: \(date)")
+                            break
+                        }
+                    }
+                    
+                    // Try Excel serial date if other formats fail
+                    if readinessDate == nil, let serialNumber = Double(dateStr) {
+                        print("Attempting to parse Excel serial date: \(serialNumber)")
+                        let excelEpoch = DateComponents(year: 1899, month: 12, day: 30)
+                        if let excelBaseDate = Calendar.current.date(from: excelEpoch) {
+                            readinessDate = Calendar.current.date(byAdding: .day, value: Int(serialNumber), to: excelBaseDate)
+                            if let date = readinessDate {
+                                print("Successfully parsed Excel serial date: \(date)")
+                            }
+                        }
+                    }
+                    
+                    if readinessDate == nil {
+                        print("Failed to parse date: '\(dateStr)'")
+                    }
+                }
+                
                 let record = PackageStatusData(
                     id: nil,
-                    systemAccount: "", // Not used for package status
                     applicationName: applicationName,
                     packageStatus: packageStatus,
-                    packageReadinessDate: packageReadinessDate,
+                    packageReadinessDate: readinessDate,
                     importDate: Date(),
-                    importSet: UUID().uuidString
+                    importSet: "Import_\(DateFormatter.hrDateFormatter.string(from: Date()))"
                 )
-                validRecords.append(record)
-                processedValidRows += 1
+                
+                print("\nValidating record at row \(index + 1):")
+                print("- Application Name: '\(applicationName)'")
+                print("- Package Status: '\(packageStatus)'")
+                print("- Readiness Date: \(readinessDate.map { $0.description } ?? "nil")")
+                
+                if record.isValid {
+                    print("Record is valid")
+                    let normalizedName = record.normalizedApplicationName
+                    if seenApplicationNames.contains(normalizedName) {
+                        print("Found duplicate application name: '\(applicationName)' (normalized: '\(normalizedName)')")
+                        duplicateRecords.append("Row \(index + 1): Duplicate Application Name '\(applicationName)'")
+                        processedDuplicateRows += 1
+                    } else {
+                        print("New unique application name: '\(applicationName)' (normalized: '\(normalizedName)')")
+                        seenApplicationNames.insert(normalizedName)
+                        validRecords.append(record)
+                        processedValidRows += 1
+                    }
+                } else {
+                    print("Record is invalid: \(record.validationErrors)")
+                    invalidRecords.append("Row \(index + 1): \(record.validationErrors.joined(separator: ", "))")
+                    processedInvalidRows += 1
+                }
+                
+                // Log progress for every 10000 records
+                if index % 10000 == 0 {
+                    print("""
+                    Processing progress:
+                    Row: \(index)
+                    Valid: \(processedValidRows)
+                    Invalid: \(processedInvalidRows)
+                    Duplicates: \(processedDuplicateRows)
+                    Total processed: \(processedValidRows + processedInvalidRows + processedDuplicateRows)
+                    """)
+                }
             }
+            
+            // Final progress update
+            let summary = """
+            Phase 5/5: Import complete
+            Valid records: \(validRecords.count)
+            Invalid records: \(invalidRecords.count)
+            Duplicate records: \(duplicateRecords.count)
+            """
+            
+            await MainActor.run {
+                progress.update(operation: summary, progress: 1.0)
+            }
+            
+            return (validRecords, invalidRecords, duplicateRecords)
+        } catch {
+            print("Error processing package status data: \(error)")
+            return ([], [], [])
         }
-        
-        // Final progress update
-        let summary = """
-        Processing complete:
-        Valid records: \(processedValidRows)
-        Invalid records: \(invalidRecords.count)
-        Duplicate records: \(duplicateRecords.count)
-        """
-        
-        await MainActor.run {
-            progress.update(operation: summary, progress: 0.95)
-        }
-        
-        await MainActor.run {
-            progress.update(operation: "Phase 5/5: Import complete!", progress: 1.0)
-        }
-        
-        return (validRecords, invalidRecords, duplicateRecords)
     }
     
     private func processTestStatusData(_ xlsx: XLSXFile) async throws -> ([TestingData], [String], [String]) {

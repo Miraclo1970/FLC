@@ -81,7 +81,6 @@ class TestDataGenerator {
         for testCase in testCases {
             let packageData = PackageStatusData(
                 id: nil,
-                systemAccount: "",  // Not used for package status
                 applicationName: testCase.applicationName,
                 packageStatus: testCase.status,
                 packageReadinessDate: testCase.readinessDate,

@@ -113,7 +113,6 @@ struct HRRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
 // Package status record structure for database
 struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
     var id: Int64?
-    let systemAccount: String
     let applicationName: String
     let packageStatus: String
     let packageReadinessDate: Date?
@@ -124,7 +123,6 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
     
     init(from data: PackageStatusData) {
         self.id = data.id
-        self.systemAccount = data.systemAccount
         self.applicationName = data.applicationName
         self.packageStatus = data.packageStatus
         self.packageReadinessDate = data.packageReadinessDate
@@ -240,13 +238,12 @@ class DatabaseManager {
             // Create package status records table
             try db.create(table: "package_status_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
-                t.column("systemAccount", .text)
                 t.column("applicationName", .text).notNull()
                 t.column("packageStatus", .text).notNull()
                 t.column("packageReadinessDate", .datetime)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
-                // Create a unique index on applicationName only since systemAccount is not used
+                // Create a unique index on applicationName
                 t.uniqueKey(["applicationName"])
             }
             
@@ -953,7 +950,6 @@ class DatabaseManager {
                     
                     let packageStatusData = PackageStatusData(
                         id: nil,
-                        systemAccount: record.systemAccount,
                         applicationName: record.applicationName,
                         packageStatus: packageStatus,
                         packageReadinessDate: record.applicationPackageReadinessDate,

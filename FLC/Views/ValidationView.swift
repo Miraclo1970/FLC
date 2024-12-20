@@ -116,8 +116,8 @@ struct ValidationView: View {
                     progress.invalidPackageRecords.count +
                     progress.duplicatePackageRecords.count
             valid = progress.validPackageRecords.count
-            invalid = 0  // Package status doesn't track invalid records yet
-            duplicates = 0  // Package status doesn't track duplicates yet
+            invalid = progress.invalidPackageRecords.count
+            duplicates = progress.duplicatePackageRecords.count
         case .testing:
             total = progress.validTestRecords.count +
                     progress.invalidTestRecords.count +
@@ -162,6 +162,10 @@ struct ValidationView: View {
                         progress.selectedDataType = .ad
                     }
                     print("ValidationView - Data type changed from \(oldValue) to \(newValue)")
+                    print("ValidationView - Current record counts:")
+                    print("- Valid Package Records: \(progress.validPackageRecords.count)")
+                    print("- Invalid Package Records: \(progress.invalidPackageRecords.count)")
+                    print("- Duplicate Package Records: \(progress.duplicatePackageRecords.count)")
                 }
             }
             .padding(.horizontal)
@@ -242,10 +246,17 @@ struct ValidationView: View {
             TabView(selection: $selectedTab) {
                 // Valid Records Tab
                 Group {
-                    if progress.selectedDataType == .ad {
+                    switch progress.selectedDataType {
+                    case .ad:
                         ValidRecordsView(records: progress.validRecords, searchText: searchText)
-                    } else {
+                    case .hr:
                         ValidHRRecordsView(records: progress.validHRRecords, searchText: searchText)
+                    case .packageStatus:
+                        ValidPackageStatusRecordsView(records: progress.validPackageRecords, searchText: searchText)
+                    case .testing:
+                        Text("Test Status validation not implemented yet")
+                    case .combined:
+                        Text("Combined records cannot be validated")
                     }
                 }
                 .tabItem {
@@ -254,20 +265,36 @@ struct ValidationView: View {
                 .tag(0)
                 
                 // Invalid Records Tab
-                InvalidRecordsView(
-                    records: progress.selectedDataType == .ad ? progress.invalidRecords : progress.invalidHRRecords,
-                    searchText: searchText
-                )
+                Group {
+                    switch progress.selectedDataType {
+                    case .ad:
+                        InvalidRecordsView(records: progress.invalidRecords, searchText: searchText)
+                    case .hr:
+                        InvalidRecordsView(records: progress.invalidHRRecords, searchText: searchText)
+                    case .packageStatus:
+                        InvalidRecordsView(records: progress.invalidPackageRecords, searchText: searchText)
+                    default:
+                        Text("No invalid records to display")
+                    }
+                }
                 .tabItem {
                     Label("Invalid", systemImage: "xmark.circle")
                 }
                 .tag(1)
                 
                 // Duplicate Records Tab
-                DuplicateRecordsView(
-                    records: progress.selectedDataType == .ad ? progress.duplicateRecords : progress.duplicateHRRecords,
-                    searchText: searchText
-                )
+                Group {
+                    switch progress.selectedDataType {
+                    case .ad:
+                        DuplicateRecordsView(records: progress.duplicateRecords, searchText: searchText)
+                    case .hr:
+                        DuplicateRecordsView(records: progress.duplicateHRRecords, searchText: searchText)
+                    case .packageStatus:
+                        DuplicateRecordsView(records: progress.duplicatePackageRecords, searchText: searchText)
+                    default:
+                        Text("No duplicate records to display")
+                    }
+                }
                 .tabItem {
                     Label("Duplicates", systemImage: "doc.on.doc")
                 }
@@ -673,6 +700,78 @@ extension ValidationView {
             
             await MainActor.run {
                 isSaving = false
+            }
+        }
+    }
+}
+
+struct ValidPackageStatusRecordsView: View {
+    let records: [PackageStatusData]
+    let searchText: String
+    
+    var filteredRecords: [PackageStatusData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.packageStatus.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            if records.isEmpty {
+                Text("No package status records available")
+                    .foregroundColor(.secondary)
+                    .padding()
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        // Header
+                        HStack(spacing: 0) {
+                            Text("#")
+                                .frame(width: 50, alignment: .leading)
+                                .padding(.leading, 25)
+                            Text("Application Name")
+                                .frame(width: 250, alignment: .leading)
+                            Text("Package Status")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Readiness Date")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Import Date")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Import Set")
+                                .frame(width: 200, alignment: .leading)
+                        }
+                        .padding(.vertical, 8)
+                        .background(Color(NSColor.separatorColor).opacity(0.2))
+                        .font(.headline)
+                        
+                        // Records
+                        ForEach(Array(filteredRecords.enumerated()), id: \.1.uniqueIdentifier) { index, record in
+                            HStack(spacing: 0) {
+                                Text("#\(index + 1)")
+                                    .frame(width: 50, alignment: .leading)
+                                    .padding(.leading, 10)
+                                    .foregroundColor(.secondary)
+                                Text(record.applicationName)
+                                    .frame(width: 250, alignment: .leading)
+                                Text(record.packageStatus)
+                                    .frame(width: 150, alignment: .leading)
+                                Text(record.packageReadinessDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                                    .frame(width: 150, alignment: .leading)
+                                Text(DateFormatter.hrDateFormatter.string(from: record.importDate))
+                                    .frame(width: 150, alignment: .leading)
+                                Text(record.importSet)
+                                    .frame(width: 200, alignment: .leading)
+                            }
+                            .font(.system(.body, design: .monospaced))
+                            .padding(.vertical, 4)
+                            .background(index % 2 == 0 ? Color.clear : Color(NSColor.separatorColor).opacity(0.05))
+                        }
+                    }
+                }
             }
         }
     }

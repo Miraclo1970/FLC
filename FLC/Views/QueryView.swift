@@ -89,7 +89,7 @@ struct QueryView: View {
             return ["AD Group", "System Account", "Application Name", "Application Suite", "OTAP", "Critical",
                    "Department", "Job Role", "Division", "Leave Date"]
         case .packageStatus:
-            return ["System Account", "Application Name", "Package Status", "Package Readiness Date"]
+            return ["Application Name", "Package Status", "Package Readiness Date"]
         case .testing:
             return ["Test Record"]
         }
@@ -540,8 +540,6 @@ struct PackageResultsTableView: View {
         VStack(spacing: 0) {
             // Header
             HStack(spacing: 0) {
-                Text("System Account")
-                    .frame(width: 200, alignment: .leading)
                 Text("Application Name")
                     .frame(width: 200, alignment: .leading)
                 Text("Package Status")
@@ -556,8 +554,6 @@ struct PackageResultsTableView: View {
             // Results
             ForEach(results, id: \.id) { (record: PackageRecord) in
                 HStack(spacing: 0) {
-                    Text(record.systemAccount)
-                        .frame(width: 200, alignment: .leading)
                     Text(record.applicationName)
                         .frame(width: 200, alignment: .leading)
                     Text(record.packageStatus)
