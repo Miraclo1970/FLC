@@ -202,9 +202,11 @@ struct ValidationView: View {
                             .buttonStyle(.borderedProminent)
                             
                             if isSaving {
-                                ProgressView(value: saveProgress, total: 1.0)
-                                    .progressViewStyle(.linear)
-                                    .frame(width: 200)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Saving...")
+                                        .foregroundColor(.secondary)
+                                    ProgressView()
+                                }
                             }
                         }
                     }
@@ -726,50 +728,27 @@ struct ValidPackageStatusRecordsView: View {
                     .foregroundColor(.secondary)
                     .padding()
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        // Header
+                ScrollView {
+                    ForEach(Array(filteredRecords.enumerated()), id: \.1.applicationName) { index, record in
                         HStack(spacing: 0) {
-                            Text("#")
+                            Text("#\(index + 1)")
                                 .frame(width: 50, alignment: .leading)
-                                .padding(.leading, 25)
-                            Text("Application Name")
+                                .padding(.leading, 10)
+                                .foregroundColor(.secondary)
+                            Text(record.applicationName)
                                 .frame(width: 250, alignment: .leading)
-                            Text("Package Status")
+                            Text(record.packageStatus)
                                 .frame(width: 150, alignment: .leading)
-                            Text("Readiness Date")
+                            Text(record.packageReadinessDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
                                 .frame(width: 150, alignment: .leading)
-                            Text("Import Date")
+                            Text(DateFormatter.hrDateFormatter.string(from: record.importDate))
                                 .frame(width: 150, alignment: .leading)
-                            Text("Import Set")
+                            Text(record.importSet)
                                 .frame(width: 200, alignment: .leading)
                         }
-                        .padding(.vertical, 8)
-                        .background(Color(NSColor.separatorColor).opacity(0.2))
-                        .font(.headline)
-                        
-                        // Records
-                        ForEach(Array(filteredRecords.enumerated()), id: \.1.uniqueIdentifier) { index, record in
-                            HStack(spacing: 0) {
-                                Text("#\(index + 1)")
-                                    .frame(width: 50, alignment: .leading)
-                                    .padding(.leading, 10)
-                                    .foregroundColor(.secondary)
-                                Text(record.applicationName)
-                                    .frame(width: 250, alignment: .leading)
-                                Text(record.packageStatus)
-                                    .frame(width: 150, alignment: .leading)
-                                Text(record.packageReadinessDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
-                                    .frame(width: 150, alignment: .leading)
-                                Text(DateFormatter.hrDateFormatter.string(from: record.importDate))
-                                    .frame(width: 150, alignment: .leading)
-                                Text(record.importSet)
-                                    .frame(width: 200, alignment: .leading)
-                            }
-                            .font(.system(.body, design: .monospaced))
-                            .padding(.vertical, 4)
-                            .background(index % 2 == 0 ? Color.clear : Color(NSColor.separatorColor).opacity(0.05))
-                        }
+                        .font(.system(.body, design: .monospaced))
+                        .padding(.vertical, 4)
+                        .background(index % 2 == 0 ? Color.clear : Color(NSColor.separatorColor).opacity(0.05))
                     }
                 }
             }

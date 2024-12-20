@@ -321,24 +321,42 @@ class DatabaseManager {
     
     // Save package status records to database with upsert behavior
     func savePackageRecords(_ records: [PackageStatusData]) async throws -> (saved: Int, skipped: Int) {
-        try await performDatabaseOperation("Save Package Records") { db in
+        try await performDatabaseOperation("Save Package Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
                 let dbRecord = PackageRecord(from: record)
                 print("Processing package record for application: \(dbRecord.applicationName)")
                 
+                // First, save/update the package_status_records table
                 if let existingRecord = try PackageRecord
                     .filter(Column("applicationName") == record.applicationName)
                     .fetchOne(db) {
                     var updatedRecord = dbRecord
                     updatedRecord.id = existingRecord.id
                     try updatedRecord.update(db)
-                    counts.saved += 1
                 } else {
                     try dbRecord.insert(db)
-                    counts.saved += 1
                 }
+                
+                // Then, update ALL corresponding records in the combined_records table that match the applicationName
+                let matchingRecords = try CombinedRecord
+                    .filter(Column("applicationName") == record.applicationName)
+                    .fetchAll(db)
+                
+                print("Found \(matchingRecords.count) matching combined records for application: \(record.applicationName)")
+                
+                try db.execute(
+                    sql: """
+                        UPDATE combined_records
+                        SET applicationPackageStatus = ?,
+                            applicationPackageReadinessDate = ?
+                        WHERE applicationName = ?
+                        """,
+                    arguments: [record.packageStatus, record.packageReadinessDate, record.applicationName]
+                )
+                
+                counts.saved += 1
             }
             
             return counts
