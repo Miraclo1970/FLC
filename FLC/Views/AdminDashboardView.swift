@@ -33,6 +33,10 @@ struct AdminDashboardView: View {
                 NavigationLink(value: "admin") {
                     Label("Admin Stuff", systemImage: "gear")
                 }
+                
+                NavigationLink(value: "dbtest") {
+                    Label("Database Test Panel", systemImage: "wrench.and.screwdriver")
+                }
             }
             .listStyle(SidebarListStyle())
             .frame(minWidth: 200)
@@ -68,6 +72,8 @@ struct AdminDashboardView: View {
                     case "reports":
                         Text("Reports")
                     case "admin":
+                        AdminStuffView()
+                    case "dbtest":
                         TestDataGeneratorView()
                     default:
                         Text("Select an option from the sidebar")

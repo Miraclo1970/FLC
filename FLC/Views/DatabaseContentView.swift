@@ -151,14 +151,7 @@ struct DatabaseContentView: View {
                             })
                     case .combined:
                         DatabaseCombinedRecordsView(
-                            records: filteredCombinedRecords,
-                            onScrolledNearBottom: {
-                                if !isLoadingMore && hasMoreData {
-                                    Task {
-                                        await loadMoreCombinedRecords()
-                                    }
-                                }
-                            }
+                            records: filteredCombinedRecords
                         )
                         .environment(\.refresh, {
                             Task {
@@ -347,7 +340,7 @@ struct DatabaseContentView: View {
                     print("Loaded \(hrRecords.count) HR records")
                 }
             case .combined:
-                print("Loading combined records page \(currentPage)...")
+                print("Loading combined records...")
                 // First, ensure combined records are generated
                 if resetData {
                     let count = try await DatabaseManager.shared.generateCombinedRecords()
@@ -356,22 +349,10 @@ struct DatabaseContentView: View {
                     }
                 }
                 
-                let newRecords = try await DatabaseManager.shared.fetchCombinedRecords(limit: pageSize, offset: currentPage * pageSize)
+                let newRecords = try await DatabaseManager.shared.fetchCombinedRecords()
                 if !Task.isCancelled {  // Check again after fetch
-                    if resetData {
-                        combinedRecords = newRecords
-                    } else {
-                        combinedRecords.append(contentsOf: newRecords)
-                    }
-                    hasMoreData = !newRecords.isEmpty && newRecords.count == pageSize
-                    
-                    // If we have more data, immediately load the next batch
-                    if hasMoreData && !resetData && !Task.isCancelled {
-                        currentPage += 1
-                        await loadData(resetData: false)
-                    }
-                    
-                    print("Loaded \(newRecords.count) combined records, total: \(combinedRecords.count), hasMore: \(hasMoreData)")
+                    combinedRecords = newRecords
+                    print("Loaded \(newRecords.count) combined records")
                 }
             case .packageStatus:
                 print("Loading package records page \(currentPage)...")
@@ -659,7 +640,6 @@ struct DatabaseHRRecordsView: View {
 
 struct DatabaseCombinedRecordsView: View {
     let records: [CombinedRecord]
-    let onScrolledNearBottom: () -> Void
     private let rowHeight: CGFloat = 18
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -849,14 +829,6 @@ struct DatabaseCombinedRecordsView: View {
                                 .frame(height: rowHeight)
                                 .padding(.vertical, 0)
                                 .background(Color(NSColor.controlBackgroundColor))
-                                .onAppear {
-                                    // If this is one of the last 20 items, trigger loading more
-                                    let thresholdIndex = records.count - 20
-                                    if let recordIndex = records.firstIndex(where: { $0.id == record.id }),
-                                       recordIndex >= thresholdIndex {
-                                        onScrolledNearBottom()
-                                    }
-                                }
                             }
                         }
                     }

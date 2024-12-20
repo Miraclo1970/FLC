@@ -459,6 +459,7 @@ class DatabaseManager {
     func clearADRecords() async throws {
         _ = try await performDatabaseOperation("Clear AD Records", write: true) { db in
             try db.execute(sql: "DELETE FROM ad_records")
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='ad_records'")
             return true
         }
     }
@@ -467,6 +468,7 @@ class DatabaseManager {
     func clearHRRecords() async throws {
         _ = try await performDatabaseOperation("Clear HR Records", write: true) { db in
             try db.execute(sql: "DELETE FROM hr_records")
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='hr_records'")
             return true
         }
     }
@@ -475,6 +477,7 @@ class DatabaseManager {
     func clearPackageRecords() async throws {
         _ = try await performDatabaseOperation("Clear Package Records", write: true) { db in
             try db.execute(sql: "DELETE FROM package_status_records")
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='package_status_records'")
             return true
         }
     }
@@ -483,6 +486,7 @@ class DatabaseManager {
     func clearCombinedRecords() async throws {
         _ = try await performDatabaseOperation("Clear Combined Records", write: true) { db in
             try db.execute(sql: "DELETE FROM combined_records")
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='combined_records'")
             return true
         }
     }
@@ -491,16 +495,15 @@ class DatabaseManager {
     func clearTestRecords() async throws {
         _ = try await performDatabaseOperation("Clear Test Records", write: true) { db in
             try db.execute(sql: "DELETE FROM test_records")
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='test_records'")
             return true
         }
     }
     
-    // Fetch combined records with pagination
+    // Fetch combined records without pagination
     func fetchCombinedRecords(limit: Int = 1000, offset: Int = 0) async throws -> [CombinedRecord] {
         try await performDatabaseOperation("Fetch Combined Records", write: false) { db in
-            try CombinedRecord
-                .limit(limit, offset: offset)
-                .fetchAll(db)
+            try CombinedRecord.fetchAll(db)  // Fetch all records without limit
         }
     }
     
