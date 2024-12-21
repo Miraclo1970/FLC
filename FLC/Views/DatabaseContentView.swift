@@ -9,6 +9,7 @@ struct DatabaseContentView: View {
     @State private var combinedRecords: [CombinedRecord] = []
     @State private var packageRecords: [PackageRecord] = []
     @State private var testRecords: [TestRecord] = []
+    @State private var migrationRecords: [MigrationRecord] = []
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
@@ -49,6 +50,7 @@ struct DatabaseContentView: View {
                     Text("HR Data").tag(ImportProgress.DataType.hr)
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
                     Text("Testing").tag(ImportProgress.DataType.testing)
+                    Text("Migration").tag(ImportProgress.DataType.migration)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -74,6 +76,7 @@ struct DatabaseContentView: View {
                         case .combined: return "\(combinedRecords.count)"
                         case .packageStatus: return "\(packageRecords.count)"
                         case .testing: return "\(testRecords.count)"
+                        case .migration: return "\(migrationRecords.count)"
                         }
                     }(),
                     icon: "doc.text"
@@ -93,6 +96,7 @@ struct DatabaseContentView: View {
                     case .combined: return combinedRecords.isEmpty
                     case .packageStatus: return packageRecords.isEmpty
                     case .testing: return testRecords.isEmpty
+                    case .migration: return migrationRecords.isEmpty
                     }
                 }())
             }
@@ -172,6 +176,13 @@ struct DatabaseContentView: View {
                                     await loadData(resetData: true)
                                 }
                             })
+                    case .migration:
+                        DatabaseMigrationRecordsView(records: filteredMigrationRecords)
+                            .environment(\.refresh, {
+                                Task {
+                                    await loadData(resetData: true)
+                                }
+                            })
                     }
                 }
                 
@@ -189,6 +200,7 @@ struct DatabaseContentView: View {
                     case .combined: return "Total Records: \(combinedRecords.count)"
                     case .packageStatus: return "Total Records: \(packageRecords.count)"
                     case .testing: return "Total Records: \(testRecords.count)"
+                    case .migration: return "Total Records: \(migrationRecords.count)"
                     }
                 }())
                     .font(.caption)
@@ -295,6 +307,20 @@ struct DatabaseContentView: View {
         }
     }
     
+    private var filteredMigrationRecords: [MigrationRecord] {
+        if searchText.isEmpty {
+            return migrationRecords
+        }
+        return migrationRecords.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.applicationSuiteNew.localizedCaseInsensitiveContains(searchText) ||
+            record.willBe.localizedCaseInsensitiveContains(searchText) ||
+            record.inScopeOutScopeDivision.localizedCaseInsensitiveContains(searchText) ||
+            record.migrationPlatform.localizedCaseInsensitiveContains(searchText) ||
+            record.migrationApplicationReadiness.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
     private func loadData(resetData: Bool = false) async {
         // Check if task is cancelled
         guard !Task.isCancelled else { return }
@@ -308,6 +334,7 @@ struct DatabaseContentView: View {
             combinedRecords = []
             packageRecords = []
             testRecords = []
+            migrationRecords = []
             hasMoreData = true
         }
         
@@ -408,6 +435,31 @@ struct DatabaseContentView: View {
                     
                     print("Loaded \(newRecords.count) test records, total: \(testRecords.count), hasMore: \(hasMoreData)")
                 }
+            case .migration:
+                print("Loading migration records page \(currentPage)...")
+                // First, ensure migration records are generated
+                if resetData {
+                    // Migration records don't need generation as they are imported directly
+                    print("Migration records don't require generation")
+                }
+                
+                let newRecords = try await DatabaseManager.shared.fetchMigrationRecords(limit: pageSize)
+                if !Task.isCancelled {  // Check again after fetch
+                    if resetData {
+                        migrationRecords = newRecords
+                    } else {
+                        migrationRecords.append(contentsOf: newRecords)
+                    }
+                    hasMoreData = !newRecords.isEmpty && newRecords.count == pageSize
+                    
+                    // If we have more data, immediately load the next batch
+                    if hasMoreData && !resetData && !Task.isCancelled {
+                        currentPage += 1
+                        await loadData(resetData: false)
+                    }
+                    
+                    print("Loaded \(newRecords.count) migration records, total: \(migrationRecords.count), hasMore: \(hasMoreData)")
+                }
             }
         } catch {
             if !Task.isCancelled {  // Only show error if not cancelled
@@ -470,6 +522,9 @@ struct DatabaseContentView: View {
                 case .combined:
                     try await DatabaseManager.shared.clearCombinedRecords()
                     combinedRecords = []
+                case .migration:
+                    try await DatabaseManager.shared.clearMigrationRecords()
+                    migrationRecords = []
                 }
                 showAlert(title: "Success", message: "All records cleared successfully")
             } catch {
@@ -611,29 +666,71 @@ struct ContentHeightPreferenceKey: PreferenceKey {
 
 struct DatabaseHRRecordsView: View {
     let records: [HRRecord]
+    private let rowHeight: CGFloat = 18
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter
+    }()
     
     var body: some View {
-        Table(records, selection: .constant(Set<HRRecord.ID>())) {
-            TableColumn("System Account", value: \.systemAccount)
-            TableColumn("Department") { record in
-                Text(record.department ?? "N/A")
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("ID")
+                    .frame(width: 80, alignment: .leading)
+                    .padding(.leading, 16)
+                Text("System Account")
+                    .frame(width: 150, alignment: .leading)
+                Text("Department")
+                    .frame(width: 200, alignment: .leading)
+                Text("Job Role")
+                    .frame(width: 150, alignment: .leading)
+                Text("Division")
+                    .frame(width: 150, alignment: .leading)
+                Text("Department Simple")
+                    .frame(width: 150, alignment: .leading)
+                Text("Leave Date")
+                    .frame(width: 150, alignment: .leading)
+                Text("Import Date")
+                    .frame(width: 200, alignment: .leading)
+                Text("Import Set")
+                    .frame(width: 150, alignment: .leading)
             }
-            TableColumn("Job Role") { record in
-                Text(record.jobRole ?? "N/A")
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(records, id: \.id) { record in
+                        HStack(spacing: 0) {
+                            Text(String(format: "%.0f", Double(record.id ?? -1)))
+                                .frame(width: 80, alignment: .leading)
+                                .padding(.leading, 16)
+                            Text(record.systemAccount)
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.department ?? "N/A")
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.jobRole ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.division ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.departmentSimple ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                            Text(dateFormatter.string(from: record.importDate))
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.importSet)
+                                .frame(width: 150, alignment: .leading)
+                        }
+                        .frame(height: rowHeight)
+                        .font(.system(size: 11))
+                    }
+                }
             }
-            TableColumn("Division") { record in
-                Text(record.division ?? "N/A")
-            }
-            TableColumn("Department Simple") { record in
-                Text(record.departmentSimple ?? "N/A")
-            }
-            TableColumn("Leave Date") { record in
-                Text(record.leaveDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
-            }
-            TableColumn("Import Date") { record in
-                Text(DateFormatter.hrDateFormatter.string(from: record.importDate))
-            }
-            TableColumn("Import Set", value: \.importSet)
         }
     }
 }
@@ -995,6 +1092,64 @@ struct DatabaseTestRecordsView: View {
                                 .background(Color(NSColor.controlBackgroundColor))
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct DatabaseMigrationRecordsView: View {
+    let records: [MigrationRecord]
+    private let rowHeight: CGFloat = 18
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("ID")
+                    .frame(width: 80, alignment: .leading)
+                    .padding(.leading, 16)
+                Text("Application Name")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application Suite New")
+                    .frame(width: 200, alignment: .leading)
+                Text("Will Be")
+                    .frame(width: 150, alignment: .leading)
+                Text("In/Out Scope Division")
+                    .frame(width: 200, alignment: .leading)
+                Text("Migration Platform")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application Readiness")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(records, id: \.id) { record in
+                        HStack(spacing: 0) {
+                            Text(String(format: "%.0f", Double(record.id ?? -1)))
+                                .frame(width: 80, alignment: .leading)
+                                .padding(.leading, 16)
+                            Text(record.applicationName)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.applicationSuiteNew)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.willBe)
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.inScopeOutScopeDivision)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.migrationPlatform)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.migrationApplicationReadiness)
+                                .frame(width: 200, alignment: .leading)
+                        }
+                        .frame(height: rowHeight)
+                        .font(.system(size: 11))
                     }
                 }
             }

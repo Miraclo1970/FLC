@@ -6,6 +6,7 @@ class ImportProgress: ObservableObject {
         case hr = "HR"
         case packageStatus = "Package Status"
         case testing = "Testing"
+        case migration = "Migration"
         case combined = "Combined"
     }
     
@@ -34,6 +35,11 @@ class ImportProgress: ObservableObject {
     @Published var invalidTestRecords: [String] = []
     @Published var duplicateTestRecords: [String] = []
     
+    // Migration Records
+    @Published var validMigrationRecords: [MigrationData] = []
+    @Published var invalidMigrationRecords: [String] = []
+    @Published var duplicateMigrationRecords: [String] = []
+    
     func reset() {
         isProcessing = false
         progressValue = 0.0
@@ -50,6 +56,9 @@ class ImportProgress: ObservableObject {
         validTestRecords = []
         invalidTestRecords = []
         duplicateTestRecords = []
+        validMigrationRecords = []
+        invalidMigrationRecords = []
+        duplicateMigrationRecords = []
     }
     
     func update(operation: String, progress: Double) {

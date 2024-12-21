@@ -252,13 +252,28 @@ class DatabaseManager {
                 t.autoIncrementedPrimaryKey("id")
                 t.column("applicationName", .text).notNull()
                 t.column("testStatus", .text).notNull()
-                t.column("testDate", .date).notNull()
+                t.column("testDate", .datetime).notNull()
                 t.column("testResult", .text).notNull()
                 t.column("testComments", .text)
-                t.column("importDate", .date).notNull()
+                t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
-                // Create a unique index on applicationName and importSet
-                t.uniqueKey(["applicationName", "importSet"])
+                // Create a unique index on applicationName
+                t.uniqueKey(["applicationName"])
+            }
+            
+            // Create migration_records table
+            try db.create(table: "migration_records", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("applicationName", .text).notNull()
+                t.column("applicationSuiteNew", .text).notNull()
+                t.column("willBe", .text).notNull()
+                t.column("inScopeOutScopeDivision", .text).notNull()
+                t.column("migrationPlatform", .text).notNull()
+                t.column("migrationApplicationReadiness", .text).notNull()
+                t.column("importDate", .datetime).notNull()
+                t.column("importSet", .text).notNull()
+                // Create a unique index on applicationName
+                t.uniqueKey(["applicationName"])
             }
         }
         print("Database setup completed successfully")
@@ -621,6 +636,8 @@ class DatabaseManager {
                 tableName = "package_status_records"
             case .testing:
                 tableName = "test_records"
+            case .migration:
+                tableName = "migration_records"
             }
             
             // Convert field name to database column name
@@ -748,6 +765,10 @@ class DatabaseManager {
                 let testResults = try TestRecord.fetchAll(db, sql: sql, arguments: arguments)
                 print("Found \(testResults.count) test records")
                 return testResults as [Any]
+            case .migration:
+                let migrationResults = try MigrationRecord.fetchAll(db, sql: sql, arguments: arguments)
+                print("Found \(migrationResults.count) migration records")
+                return migrationResults as [Any]
             }
         }
     }
@@ -1081,6 +1102,57 @@ class DatabaseManager {
             
             print("Generated \(testCount) test records from \(combinedRecords.count) combined records")
             return testCount
+        }
+    }
+    
+    // Save migration records
+    func saveMigrationRecords(_ records: [MigrationData]) async throws -> (saved: Int, skipped: Int) {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        return try await dbPool.write { db in
+            var saved = 0
+            var skipped = 0
+            
+            for data in records {
+                let record = MigrationRecord(from: data)
+                do {
+                    try record.insert(db)
+                    saved += 1
+                } catch let error as DatabaseError where error.resultCode == .SQLITE_CONSTRAINT {
+                    // Record already exists
+                    skipped += 1
+                }
+            }
+            
+            return (saved: saved, skipped: skipped)
+        }
+    }
+    
+    // Clear migration records
+    func clearMigrationRecords() async throws {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        try await dbPool.write { db in
+            _ = try MigrationRecord.deleteAll(db)
+        }
+    }
+    
+    // Fetch migration records
+    func fetchMigrationRecords(limit: Int? = nil) async throws -> [MigrationRecord] {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        return try await dbPool.read { db in
+            if let limit = limit {
+                return try MigrationRecord.limit(limit).fetchAll(db)
+            } else {
+                return try MigrationRecord.fetchAll(db)
+            }
         }
     }
     

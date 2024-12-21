@@ -54,6 +54,8 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
     }
 }
 
+// Test data structure with basic validation
+// Only records with non-empty required fields will be imported into the database
 struct TestingData: Identifiable, Codable {
     let id: UUID
     let applicationName: String
@@ -62,6 +64,8 @@ struct TestingData: Identifiable, Codable {
     let testResult: String
     let testComments: String?
     
+    // Basic validation to ensure required fields are not empty
+    // Records that don't pass validation will be skipped during import
     var validationErrors: [String] {
         var errors: [String] = []
         

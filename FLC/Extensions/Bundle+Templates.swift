@@ -12,6 +12,8 @@ extension Bundle {
             fileName = "PackageStatus_template"
         case .testing:
             fileName = "TestStatus_template"
+        case .migration:
+            fileName = "Migration_template"
         }
         
         print("\n=== Template Search Debug ===")

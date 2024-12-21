@@ -125,6 +125,13 @@ struct ValidationView: View {
             valid = progress.validTestRecords.count
             invalid = progress.invalidTestRecords.count
             duplicates = progress.duplicateTestRecords.count
+        case .migration:
+            total = progress.validMigrationRecords.count +
+                    progress.invalidMigrationRecords.count +
+                    progress.duplicateMigrationRecords.count
+            valid = progress.validMigrationRecords.count
+            invalid = progress.invalidMigrationRecords.count
+            duplicates = progress.duplicateMigrationRecords.count
         case .combined:
             total = 0  // Combined view doesn't have its own records
         }
@@ -150,6 +157,8 @@ struct ValidationView: View {
                     Text("AD Data").tag(ImportProgress.DataType.ad)
                     Text("HR Data").tag(ImportProgress.DataType.hr)
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
+                    Text("Testing").tag(ImportProgress.DataType.testing)
+                    Text("Migration").tag(ImportProgress.DataType.migration)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -166,6 +175,9 @@ struct ValidationView: View {
                     print("- Valid Package Records: \(progress.validPackageRecords.count)")
                     print("- Invalid Package Records: \(progress.invalidPackageRecords.count)")
                     print("- Duplicate Package Records: \(progress.duplicatePackageRecords.count)")
+                    print("- Valid Migration Records: \(progress.validMigrationRecords.count)")
+                    print("- Invalid Migration Records: \(progress.invalidMigrationRecords.count)")
+                    print("- Duplicate Migration Records: \(progress.duplicateMigrationRecords.count)")
                 }
             }
             .padding(.horizontal)
@@ -256,7 +268,9 @@ struct ValidationView: View {
                     case .packageStatus:
                         ValidPackageStatusRecordsView(records: progress.validPackageRecords, searchText: searchText)
                     case .testing:
-                        Text("Test Status validation not implemented yet")
+                        ValidTestRecordsView(records: progress.validTestRecords, searchText: searchText)
+                    case .migration:
+                        ValidMigrationRecordsView(records: progress.validMigrationRecords, searchText: searchText)
                     case .combined:
                         Text("Combined records cannot be validated")
                     }
@@ -275,6 +289,10 @@ struct ValidationView: View {
                         InvalidRecordsView(records: progress.invalidHRRecords, searchText: searchText)
                     case .packageStatus:
                         InvalidRecordsView(records: progress.invalidPackageRecords, searchText: searchText)
+                    case .testing:
+                        InvalidRecordsView(records: progress.invalidTestRecords, searchText: searchText)
+                    case .migration:
+                        InvalidRecordsView(records: progress.invalidMigrationRecords, searchText: searchText)
                     default:
                         Text("No invalid records to display")
                     }
@@ -293,6 +311,10 @@ struct ValidationView: View {
                         DuplicateRecordsView(records: progress.duplicateHRRecords, searchText: searchText)
                     case .packageStatus:
                         DuplicateRecordsView(records: progress.duplicatePackageRecords, searchText: searchText)
+                    case .testing:
+                        DuplicateRecordsView(records: progress.duplicateTestRecords, searchText: searchText)
+                    case .migration:
+                        DuplicateRecordsView(records: progress.duplicateMigrationRecords, searchText: searchText)
                     default:
                         Text("No duplicate records to display")
                     }
@@ -521,6 +543,8 @@ extension ValidationView {
             return !progress.validPackageRecords.isEmpty
         case .testing:
             return !progress.validTestRecords.isEmpty
+        case .migration:
+            return !progress.validMigrationRecords.isEmpty
         case .combined:
             return false  // Combined view doesn't have its own records
         }
@@ -540,6 +564,9 @@ extension ValidationView {
         case .testing:
             return !progress.invalidTestRecords.isEmpty ||
                    !progress.duplicateTestRecords.isEmpty
+        case .migration:
+            return !progress.invalidMigrationRecords.isEmpty ||
+                   !progress.duplicateMigrationRecords.isEmpty
         case .combined:
             return false  // Combined view doesn't have its own records
         }
@@ -690,6 +717,31 @@ extension ValidationView {
                         saveProgress = 1.0
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
+                case .migration:
+                    let records = progress.validMigrationRecords
+                    var totalSaved = 0
+                    var totalSkipped = 0
+                    let totalBatches = Int(ceil(Double(records.count) / Double(batchSize)))
+                    
+                    for batchIndex in 0..<totalBatches {
+                        let start = batchIndex * batchSize
+                        let end = min(start + batchSize, records.count)
+                        let batch = Array(records[start..<end])
+                        
+                        let (saved, skipped) = try await DatabaseManager.shared.saveMigrationRecords(batch)
+                        totalSaved += saved
+                        totalSkipped += skipped
+                        
+                        await MainActor.run {
+                            saveProgress = Double(end) / Double(records.count)
+                            saveResult = "Processing: \(end)/\(records.count) records..."
+                        }
+                    }
+                    
+                    await MainActor.run {
+                        saveProgress = 1.0
+                        saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
+                    }
                 case .combined:
                     break  // Combined view doesn't have its own records to save
                 }
@@ -749,6 +801,161 @@ struct ValidPackageStatusRecordsView: View {
                         .font(.system(.body, design: .monospaced))
                         .padding(.vertical, 4)
                         .background(index % 2 == 0 ? Color.clear : Color(NSColor.separatorColor).opacity(0.05))
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ValidMigrationRecordsView: View {
+    let records: [MigrationData]
+    let searchText: String
+    
+    var filteredRecords: [MigrationData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.applicationSuiteNew.localizedCaseInsensitiveContains(searchText) ||
+            record.willBe.localizedCaseInsensitiveContains(searchText) ||
+            record.inScopeOutScopeDivision.localizedCaseInsensitiveContains(searchText) ||
+            record.migrationPlatform.localizedCaseInsensitiveContains(searchText) ||
+            record.migrationApplicationReadiness.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("#")
+                            .frame(width: 50, alignment: .leading)
+                            .padding(.leading, 25)
+                        Text("Application Name")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Application Suite New")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Will Be")
+                            .frame(width: 150, alignment: .leading)
+                        Text("In/Out Scope Division")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Migration Platform")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Application Readiness")
+                            .frame(width: 200, alignment: .leading)
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.separatorColor).opacity(0.2))
+                    .font(.headline)
+                    
+                    // Records
+                    List {
+                        ForEach(Array(filteredRecords.enumerated()), id: \.1.applicationName) { index, record in
+                            HStack(spacing: 0) {
+                                Text("#\(index + 1)")
+                                    .frame(width: 50, alignment: .leading)
+                                    .padding(.leading, 10)
+                                    .foregroundColor(.secondary)
+                                Text(record.applicationName)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.applicationSuiteNew)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.willBe)
+                                    .frame(width: 150, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.inScopeOutScopeDivision)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.migrationPlatform)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.migrationApplicationReadiness)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Spacer()
+                            }
+                            .font(.system(.body, design: .monospaced))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ValidTestRecordsView: View {
+    let records: [TestingData]
+    let searchText: String
+    
+    var filteredRecords: [TestingData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.testStatus.localizedCaseInsensitiveContains(searchText) ||
+            record.testResult.localizedCaseInsensitiveContains(searchText) ||
+            (record.testComments ?? "").localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("#")
+                            .frame(width: 50, alignment: .leading)
+                            .padding(.leading, 25)
+                        Text("Application Name")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Test Status")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Test Date")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Test Result")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Comments")
+                            .frame(width: 200, alignment: .leading)
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.separatorColor).opacity(0.2))
+                    .font(.headline)
+                    
+                    // Records
+                    List {
+                        ForEach(Array(filteredRecords.enumerated()), id: \.1.applicationName) { index, record in
+                            HStack(spacing: 0) {
+                                Text("#\(index + 1)")
+                                    .frame(width: 50, alignment: .leading)
+                                    .padding(.leading, 10)
+                                    .foregroundColor(.secondary)
+                                Text(record.applicationName)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.testStatus)
+                                    .frame(width: 150, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(DateFormatter.hrDateFormatter.string(from: record.testDate))
+                                    .frame(width: 150, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.testResult)
+                                    .frame(width: 150, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.testComments ?? "")
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Spacer()
+                            }
+                            .font(.system(.body, design: .monospaced))
+                        }
                     }
                 }
             }

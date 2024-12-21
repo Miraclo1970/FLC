@@ -136,6 +136,11 @@ struct UserDashboardView: View {
                 selectedItem = "validation"
             }
         }
+        .onChange(of: progress.validMigrationRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
     }
     
     private func toggleSidebar() {

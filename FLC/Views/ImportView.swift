@@ -14,6 +14,7 @@ struct ImportView: View {
         case ad
         case packageStatus
         case testing
+        case migration
     }
     
     private enum DataTypeValidationError: Error {
@@ -39,6 +40,8 @@ struct ImportView: View {
             return .packageStatus
         } else if firstRow.contains("test") || firstRow.contains("status") {
             return .testing
+        } else if firstRow.contains("migration") || firstRow.contains("platform") {
+            return .migration
         }
         
         return nil
@@ -66,6 +69,8 @@ struct ImportView: View {
             fileName = "PackageStatus_template"
         case .testing:
             fileName = "TestStatus_template"
+        case .migration:
+            fileName = "MigrationStatus_template"
         }
         
         // First try to find the template in the bundle
@@ -119,6 +124,11 @@ struct ImportView: View {
                             openTemplate(type: .testing)
                         }
                         .buttonStyle(.bordered)
+                        
+                        Button("Open Migration Template") {
+                            openTemplate(type: .migration)
+                        }
+                        .buttonStyle(.bordered)
                     }
                     .padding(.bottom, 8)
                     
@@ -147,6 +157,13 @@ struct ImportView: View {
                         
                         Button("Import Test Status") {
                             importType = .testing
+                            showFileImporter = true
+                        }
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.bordered)
+                        
+                        Button("Import Migration Data") {
+                            importType = .migration
                             showFileImporter = true
                         }
                         .frame(maxWidth: .infinity)
@@ -299,6 +316,20 @@ struct ImportView: View {
                         message = "Successfully processed Test Status data from: \(file.lastPathComponent)"
                         progress.isProcessing = false
                         print("Processed Test Status records - Valid: \(valid.count)")
+                        print("Data type is now: \(progress.selectedDataType)")
+                        // Dismiss this view to return to the main navigation
+                        dismiss()
+                    }
+                    
+                case .migration:
+                    let (valid, _, _) = try await processMigrationData(xlsx)
+                    await MainActor.run {
+                        print("Setting Migration records - Valid: \(valid.count)")
+                        progress.selectedDataType = .migration
+                        progress.validMigrationRecords = valid
+                        message = "Successfully processed Migration data from: \(file.lastPathComponent)"
+                        progress.isProcessing = false
+                        print("Processed Migration records - Valid: \(valid.count)")
                         print("Data type is now: \(progress.selectedDataType)")
                         // Dismiss this view to return to the main navigation
                         dismiss()
@@ -1406,6 +1437,144 @@ struct ImportView: View {
         Valid records: \(processedValidRows)
         Invalid records: \(invalidRecords.count)
         Duplicate records: \(duplicateRecords.count)
+        """
+        
+        await MainActor.run {
+            progress.update(operation: summary, progress: 0.95)
+        }
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 5/5: Import complete!", progress: 1.0)
+        }
+        
+        return (validRecords, invalidRecords, duplicateRecords)
+    }
+    
+    private func processMigrationData(_ xlsx: XLSXFile) async throws -> ([MigrationData], [String], [String]) {
+        var validRecords: [MigrationData] = []
+        var invalidRecords: [String] = []
+        var duplicateRecords: [String] = []
+        var seenApplicationNames = Set<String>()
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 1/5: Reading worksheet data...", progress: 0.1)
+        }
+        
+        // Get the first worksheet
+        let worksheetPaths = try xlsx.parseWorksheetPaths()
+        guard let worksheetPath = worksheetPaths.first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheet found in the file"])
+        }
+        
+        let worksheet = try xlsx.parseWorksheet(at: worksheetPath)
+        let sharedStrings = try xlsx.parseSharedStrings()
+        let totalRows = worksheet.data?.rows.count ?? 0
+        
+        // Validate header row
+        guard let firstRow = worksheet.data?.rows.first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data found in worksheet"])
+        }
+        
+        let headers = firstRow.cells.map { cell -> String in
+            if let sharedStrings = sharedStrings,
+               case .sharedString = cell.type,
+               let value = cell.value,
+               let stringIndex = Int(value),
+               stringIndex < sharedStrings.items.count {
+                return sharedStrings.items[stringIndex].text ?? ""
+            }
+            return cell.value ?? ""
+        }
+        
+        // Check for Migration header
+        let headerText = headers.joined(separator: " ").lowercased()
+        guard headerText.contains("migration") || headerText.contains("platform") else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid file format: Expected Migration data but found different content"])
+        }
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 2/5: Processing \(totalRows) rows...", progress: 0.2)
+        }
+        
+        // Process each row
+        var processedValidRows = 0
+        var processedInvalidRows = 0
+        var processedDuplicateRows = 0
+        
+        // Skip first two rows (header and column names)
+        let dataRows = (worksheet.data?.rows ?? []).dropFirst(2)
+        
+        for (index, row) in dataRows.enumerated() {
+            let rowContent = row.cells.map { cell -> (columnIndex: Int, value: String) in
+                var cellValue = ""
+                
+                if let sharedStrings = sharedStrings,
+                   case .sharedString = cell.type,
+                   let value = cell.value,
+                   let stringIndex = Int(value),
+                   stringIndex < sharedStrings.items.count {
+                    cellValue = sharedStrings.items[stringIndex].text ?? ""
+                } else if let value = cell.value {
+                    cellValue = value
+                }
+                
+                let columnIndex = cell.reference.column.value.excelColumnToIndex()
+                return (columnIndex: columnIndex, value: cellValue.trimmingCharacters(in: .whitespaces))
+            }
+            
+            // Create a dictionary for easier column access
+            var rowData: [Int: String] = [:]
+            for content in rowContent {
+                rowData[content.columnIndex] = content.value
+            }
+            
+            // Extract data from the correct columns
+            let applicationName = rowData[0] ?? "N/A"
+            let applicationSuiteNew = rowData[1] ?? "N/A"
+            let willBe = rowData[2] ?? "N/A"
+            let inScopeOutScopeDivision = rowData[3] ?? "N/A"
+            let migrationPlatform = rowData[4] ?? "N/A"
+            let migrationApplicationReadiness = rowData[5] ?? "N/A"
+            
+            // Create and validate the record
+            let record = MigrationData(
+                applicationName: applicationName,
+                applicationSuiteNew: applicationSuiteNew,
+                willBe: willBe,
+                inScopeOutScopeDivision: inScopeOutScopeDivision,
+                migrationPlatform: migrationPlatform,
+                migrationApplicationReadiness: migrationApplicationReadiness
+            )
+            
+            if record.isValid {
+                if seenApplicationNames.contains(applicationName) {
+                    duplicateRecords.append("Row \(index + 1): Duplicate Application Name '\(applicationName)'")
+                    processedDuplicateRows += 1
+                } else {
+                    seenApplicationNames.insert(applicationName)
+                    validRecords.append(record)
+                    processedValidRows += 1
+                }
+            } else {
+                invalidRecords.append("Row \(index + 1): \(record.validationErrors.joined(separator: ", "))")
+                processedInvalidRows += 1
+            }
+            
+            // Update progress
+            if index % 100 == 0 {
+                await MainActor.run {
+                    let progress = Double(index) / Double(totalRows)
+                    self.progress.update(operation: "Phase 2/5: Processing row \(index) of \(totalRows)...", progress: 0.2 + (progress * 0.6))
+                }
+            }
+        }
+        
+        // Final progress update
+        let summary = """
+        Processing complete:
+        Valid records: \(processedValidRows)
+        Invalid records: \(processedInvalidRows)
+        Duplicate records: \(processedDuplicateRows)
         """
         
         await MainActor.run {

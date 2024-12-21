@@ -91,7 +91,9 @@ struct QueryView: View {
         case .packageStatus:
             return ["Application Name", "Package Status", "Package Readiness Date"]
         case .testing:
-            return ["Test Record"]
+            return ["Application Name", "Test Status", "Test Date", "Test Result", "Test Comments"]
+        case .migration:
+            return ["Application Name", "Application Suite New", "Will Be", "In/Out Scope Division", "Migration Platform", "Migration Application Readiness"]
         }
     }
     
@@ -109,6 +111,7 @@ struct QueryView: View {
                     Text("Combined Data").tag(ImportProgress.DataType.combined)
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
                     Text("Testing").tag(ImportProgress.DataType.testing)
+                    Text("Migration").tag(ImportProgress.DataType.migration)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -250,43 +253,12 @@ struct QueryView: View {
                                     PackageResultsTableView(results: results)
                                 }
                             case .testing:
-                                if let results = queryResults as? [TestingData] {
-                                    VStack(spacing: 0) {
-                                        // Header
-                                        HStack(spacing: 0) {
-                                            Text("Application Name")
-                                                .frame(width: 200, alignment: .leading)
-                                            Text("Test Status")
-                                                .frame(width: 150, alignment: .leading)
-                                            Text("Test Date")
-                                                .frame(width: 150, alignment: .leading)
-                                            Text("Test Result")
-                                                .frame(width: 150, alignment: .leading)
-                                            Text("Comments")
-                                                .frame(width: 200, alignment: .leading)
-                                        }
-                                        .padding(.vertical, 4)
-                                        .font(.system(size: 11, weight: .bold))
-                                        .background(Color(NSColor.windowBackgroundColor))
-                                        
-                                        // Results
-                                        ForEach(results) { record in
-                                            HStack(spacing: 0) {
-                                                Text(record.applicationName)
-                                                    .frame(width: 200, alignment: .leading)
-                                                Text(record.testStatus)
-                                                    .frame(width: 150, alignment: .leading)
-                                                Text(dateFormatter.string(from: record.testDate))
-                                                    .frame(width: 150, alignment: .leading)
-                                                Text(record.testResult)
-                                                    .frame(width: 150, alignment: .leading)
-                                                Text(record.testComments ?? "")
-                                                    .frame(width: 200, alignment: .leading)
-                                            }
-                                            .padding(.vertical, 4)
-                                            .font(.system(size: 11))
-                                        }
-                                    }
+                                if let results = queryResults as? [TestRecord] {
+                                    TestResultsTableView(results: results)
+                                }
+                            case .migration:
+                                if let results = queryResults as? [MigrationRecord] {
+                                    MigrationResultsTableView(results: results)
                                 }
                             }
                         }
@@ -562,6 +534,96 @@ struct PackageResultsTableView: View {
                         .frame(width: 120, alignment: .leading)
                 }
                 .frame(height: rowHeight)
+                .font(.system(size: 11))
+            }
+        }
+    }
+}
+
+struct TestResultsTableView: View {
+    let results: [TestRecord]
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("Application Name")
+                    .frame(width: 200, alignment: .leading)
+                Text("Test Status")
+                    .frame(width: 150, alignment: .leading)
+                Text("Test Date")
+                    .frame(width: 150, alignment: .leading)
+                Text("Test Result")
+                    .frame(width: 150, alignment: .leading)
+                Text("Comments")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ForEach(results, id: \.id) { record in
+                HStack(spacing: 0) {
+                    Text(record.applicationName)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.testStatus)
+                        .frame(width: 150, alignment: .leading)
+                    Text(DateFormatter.hrDateFormatter.string(from: record.testDate))
+                        .frame(width: 150, alignment: .leading)
+                    Text(record.testResult)
+                        .frame(width: 150, alignment: .leading)
+                    Text(record.testComments ?? "")
+                        .frame(width: 200, alignment: .leading)
+                }
+                .padding(.vertical, 4)
+                .font(.system(size: 11))
+            }
+        }
+    }
+}
+
+struct MigrationResultsTableView: View {
+    let results: [MigrationRecord]
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("Application Name")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application Suite New")
+                    .frame(width: 200, alignment: .leading)
+                Text("Will Be")
+                    .frame(width: 150, alignment: .leading)
+                Text("In/Out Scope Division")
+                    .frame(width: 200, alignment: .leading)
+                Text("Migration Platform")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application Readiness")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ForEach(results, id: \.id) { record in
+                HStack(spacing: 0) {
+                    Text(record.applicationName)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.applicationSuiteNew)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.willBe)
+                        .frame(width: 150, alignment: .leading)
+                    Text(record.inScopeOutScopeDivision)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.migrationPlatform)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.migrationApplicationReadiness)
+                        .frame(width: 200, alignment: .leading)
+                }
+                .padding(.vertical, 4)
                 .font(.system(size: 11))
             }
         }
