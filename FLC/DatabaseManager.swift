@@ -275,6 +275,19 @@ class DatabaseManager {
                 // Create a unique index on applicationName
                 t.uniqueKey(["applicationName"])
             }
+            
+            // Create cluster_records table
+            try db.create(table: "cluster_records", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("department", .text).notNull()
+                t.column("departmentSimple", .text).notNull()
+                t.column("domain", .text).notNull()
+                t.column("migrationCluster", .text).notNull()
+                t.column("importDate", .datetime).notNull()
+                t.column("importSet", .text).notNull()
+                // Create a unique index on department
+                t.uniqueKey(["department"])
+            }
         }
         print("Database setup completed successfully")
     }
@@ -638,6 +651,8 @@ class DatabaseManager {
                 tableName = "test_records"
             case .migration:
                 tableName = "migration_records"
+            case .cluster:
+                tableName = "cluster_records"
             }
             
             // Convert field name to database column name
@@ -769,6 +784,10 @@ class DatabaseManager {
                 let migrationResults = try MigrationRecord.fetchAll(db, sql: sql, arguments: arguments)
                 print("Found \(migrationResults.count) migration records")
                 return migrationResults as [Any]
+            case .cluster:
+                let clusterResults = try ClusterRecord.fetchAll(db, sql: sql, arguments: arguments)
+                print("Found \(clusterResults.count) cluster records")
+                return clusterResults as [Any]
             }
         }
     }
@@ -1153,6 +1172,52 @@ class DatabaseManager {
             } else {
                 return try MigrationRecord.fetchAll(db)
             }
+        }
+    }
+    
+    // Save cluster records to database with upsert behavior
+    func saveClusterRecords(_ records: [ClusterData]) async throws -> (saved: Int, skipped: Int) {
+        try await performDatabaseOperation("Save Cluster Records", write: true) { db in
+            var counts = (saved: 0, skipped: 0)
+            
+            for record in records {
+                let dbRecord = ClusterRecord(from: record)
+                
+                // Try to find existing record by department
+                if let existingRecord = try ClusterRecord
+                    .filter(Column("department") == record.department)
+                    .fetchOne(db) {
+                    // Update existing record with new data, preserving id
+                    var updatedRecord = dbRecord
+                    updatedRecord.id = existingRecord.id
+                    try updatedRecord.update(db)
+                    counts.saved += 1
+                } else {
+                    // Insert new record
+                    try dbRecord.insert(db)
+                    counts.saved += 1
+                }
+            }
+            
+            return counts
+        }
+    }
+    
+    // Fetch cluster records with pagination
+    func fetchClusterRecords(limit: Int = 1000, offset: Int = 0) async throws -> [ClusterRecord] {
+        try await performDatabaseOperation("Fetch Cluster Records", write: false) { db in
+            try ClusterRecord
+                .order(sql: "department ASC")
+                .limit(limit, offset: offset)
+                .fetchAll(db)
+        }
+    }
+    
+    // Clear cluster records
+    func clearClusterRecords() async throws {
+        try await performDatabaseOperation("Clear Cluster Records", write: true) { db in
+            try db.execute(sql: "DELETE FROM cluster_records")
+            return
         }
     }
     

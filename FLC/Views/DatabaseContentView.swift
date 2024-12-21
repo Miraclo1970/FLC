@@ -10,6 +10,7 @@ struct DatabaseContentView: View {
     @State private var packageRecords: [PackageRecord] = []
     @State private var testRecords: [TestRecord] = []
     @State private var migrationRecords: [MigrationRecord] = []
+    @State private var clusterRecords: [ClusterRecord] = []
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
@@ -51,6 +52,7 @@ struct DatabaseContentView: View {
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
                     Text("Testing").tag(ImportProgress.DataType.testing)
                     Text("Migration").tag(ImportProgress.DataType.migration)
+                    Text("Cluster").tag(ImportProgress.DataType.cluster)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -77,6 +79,7 @@ struct DatabaseContentView: View {
                         case .packageStatus: return "\(packageRecords.count)"
                         case .testing: return "\(testRecords.count)"
                         case .migration: return "\(migrationRecords.count)"
+                        case .cluster: return "\(clusterRecords.count)"
                         }
                     }(),
                     icon: "doc.text"
@@ -97,6 +100,7 @@ struct DatabaseContentView: View {
                     case .packageStatus: return packageRecords.isEmpty
                     case .testing: return testRecords.isEmpty
                     case .migration: return migrationRecords.isEmpty
+                    case .cluster: return clusterRecords.isEmpty
                     }
                 }())
             }
@@ -183,6 +187,12 @@ struct DatabaseContentView: View {
                                     await loadData(resetData: true)
                                 }
                             })
+                    case .cluster:
+                        DatabaseClusterRecordsView(records: filteredClusterRecords) {
+                            Task {
+                                await loadData(resetData: false)
+                            }
+                        }
                     }
                 }
                 
@@ -201,6 +211,7 @@ struct DatabaseContentView: View {
                     case .packageStatus: return "Total Records: \(packageRecords.count)"
                     case .testing: return "Total Records: \(testRecords.count)"
                     case .migration: return "Total Records: \(migrationRecords.count)"
+                    case .cluster: return "Total Records: \(clusterRecords.count)"
                     }
                 }())
                     .font(.caption)
@@ -321,6 +332,18 @@ struct DatabaseContentView: View {
         }
     }
     
+    private var filteredClusterRecords: [ClusterRecord] {
+        if searchText.isEmpty {
+            return clusterRecords
+        }
+        return clusterRecords.filter { record in
+            record.department.localizedCaseInsensitiveContains(searchText) ||
+            record.departmentSimple.localizedCaseInsensitiveContains(searchText) ||
+            record.domain.localizedCaseInsensitiveContains(searchText) ||
+            record.migrationCluster.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
     private func loadData(resetData: Bool = false) async {
         // Check if task is cancelled
         guard !Task.isCancelled else { return }
@@ -335,6 +358,7 @@ struct DatabaseContentView: View {
             packageRecords = []
             testRecords = []
             migrationRecords = []
+            clusterRecords = []
             hasMoreData = true
         }
         
@@ -460,6 +484,25 @@ struct DatabaseContentView: View {
                     
                     print("Loaded \(newRecords.count) migration records, total: \(migrationRecords.count), hasMore: \(hasMoreData)")
                 }
+            case .cluster:
+                print("Loading cluster records page \(currentPage)...")
+                let newRecords = try await DatabaseManager.shared.fetchClusterRecords(limit: pageSize, offset: currentPage * pageSize)
+                if !Task.isCancelled {  // Check again after fetch
+                    if resetData {
+                        clusterRecords = newRecords
+                    } else {
+                        clusterRecords.append(contentsOf: newRecords)
+                    }
+                    hasMoreData = !newRecords.isEmpty && newRecords.count == pageSize
+                    
+                    // If we have more data, immediately load the next batch
+                    if hasMoreData && !resetData && !Task.isCancelled {
+                        currentPage += 1
+                        await loadData(resetData: false)
+                    }
+                    
+                    print("Loaded \(newRecords.count) cluster records, total: \(clusterRecords.count), hasMore: \(hasMoreData)")
+                }
             }
         } catch {
             if !Task.isCancelled {  // Only show error if not cancelled
@@ -525,6 +568,9 @@ struct DatabaseContentView: View {
                 case .migration:
                     try await DatabaseManager.shared.clearMigrationRecords()
                     migrationRecords = []
+                case .cluster:
+                    try await DatabaseManager.shared.clearClusterRecords()
+                    clusterRecords = []
                 }
                 showAlert(title: "Success", message: "All records cleared successfully")
             } catch {
@@ -1152,6 +1198,84 @@ struct DatabaseMigrationRecordsView: View {
                         .font(.system(size: 11))
                     }
                 }
+            }
+        }
+    }
+}
+
+struct DatabaseClusterRecordsView: View {
+    let records: [ClusterRecord]
+    private let rowHeight: CGFloat = 18
+    let onScrolledNearBottom: () -> Void
+    @State private var autoLoadTimer: Timer? = nil
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("ID")
+                    .frame(width: 80, alignment: .leading)
+                    .padding(.leading, 16)
+                Text("Department")
+                    .frame(width: 200, alignment: .leading)
+                Text("Department Simple")
+                    .frame(width: 200, alignment: .leading)
+                Text("Domain")
+                    .frame(width: 150, alignment: .leading)
+                Text("Migration Cluster")
+                    .frame(width: 200, alignment: .leading)
+                Text("Import Date")
+                    .frame(width: 200, alignment: .leading)
+                Text("Import Set")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(records, id: \.id) { record in
+                        HStack(spacing: 0) {
+                            Text("\(record.id ?? 0)")
+                                .frame(width: 80, alignment: .leading)
+                                .padding(.leading, 16)
+                            Text(record.department)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.departmentSimple)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.domain)
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.migrationCluster)
+                                .frame(width: 200, alignment: .leading)
+                            Text(dateFormatter.string(from: record.importDate))
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.importSet)
+                                .frame(width: 200, alignment: .leading)
+                        }
+                        .frame(height: rowHeight)
+                        .font(.system(size: 11))
+                        .background(records.firstIndex(where: { $0.id == record.id })!.isMultiple(of: 2) ? Color(NSColor.controlBackgroundColor) : Color.clear)
+                    }
+                }
+            }
+            .onAppear {
+                // Start auto-loading timer
+                autoLoadTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+                    onScrolledNearBottom()
+                }
+            }
+            .onDisappear {
+                // Clean up timer
+                autoLoadTimer?.invalidate()
+                autoLoadTimer = nil
             }
         }
     }

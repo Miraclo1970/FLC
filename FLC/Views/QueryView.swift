@@ -94,6 +94,8 @@ struct QueryView: View {
             return ["Application Name", "Test Status", "Test Date", "Test Result", "Test Comments"]
         case .migration:
             return ["Application Name", "Application Suite New", "Will Be", "In/Out Scope Division", "Migration Platform", "Migration Application Readiness"]
+        case .cluster:
+            return ["Department", "Department Simple", "Domain", "Migration Cluster"]
         }
     }
     
@@ -112,6 +114,7 @@ struct QueryView: View {
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
                     Text("Testing").tag(ImportProgress.DataType.testing)
                     Text("Migration").tag(ImportProgress.DataType.migration)
+                    Text("Cluster").tag(ImportProgress.DataType.cluster)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -259,6 +262,10 @@ struct QueryView: View {
                             case .migration:
                                 if let results = queryResults as? [MigrationRecord] {
                                     MigrationResultsTableView(results: results)
+                                }
+                            case .cluster:
+                                if let results = queryResults as? [ClusterRecord] {
+                                    ClusterResultsTableView(results: results)
                                 }
                             }
                         }
@@ -621,6 +628,45 @@ struct MigrationResultsTableView: View {
                     Text(record.migrationPlatform)
                         .frame(width: 200, alignment: .leading)
                     Text(record.migrationApplicationReadiness)
+                        .frame(width: 200, alignment: .leading)
+                }
+                .padding(.vertical, 4)
+                .font(.system(size: 11))
+            }
+        }
+    }
+}
+
+struct ClusterResultsTableView: View {
+    let results: [ClusterRecord]
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("Department")
+                    .frame(width: 200, alignment: .leading)
+                Text("Department Simple")
+                    .frame(width: 200, alignment: .leading)
+                Text("Domain")
+                    .frame(width: 200, alignment: .leading)
+                Text("Migration Cluster")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ForEach(results, id: \.id) { record in
+                HStack(spacing: 0) {
+                    Text(record.department)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.departmentSimple)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.domain)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.migrationCluster)
                         .frame(width: 200, alignment: .leading)
                 }
                 .padding(.vertical, 4)

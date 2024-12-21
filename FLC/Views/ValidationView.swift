@@ -132,6 +132,13 @@ struct ValidationView: View {
             valid = progress.validMigrationRecords.count
             invalid = progress.invalidMigrationRecords.count
             duplicates = progress.duplicateMigrationRecords.count
+        case .cluster:
+            total = progress.validClusterRecords.count +
+                    progress.invalidClusterRecords.count +
+                    progress.duplicateClusterRecords.count
+            valid = progress.validClusterRecords.count
+            invalid = progress.invalidClusterRecords.count
+            duplicates = progress.duplicateClusterRecords.count
         case .combined:
             total = 0  // Combined view doesn't have its own records
         }
@@ -159,6 +166,7 @@ struct ValidationView: View {
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
                     Text("Testing").tag(ImportProgress.DataType.testing)
                     Text("Migration").tag(ImportProgress.DataType.migration)
+                    Text("Cluster").tag(ImportProgress.DataType.cluster)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -271,6 +279,8 @@ struct ValidationView: View {
                         ValidTestRecordsView(records: progress.validTestRecords, searchText: searchText)
                     case .migration:
                         ValidMigrationRecordsView(records: progress.validMigrationRecords, searchText: searchText)
+                    case .cluster:
+                        ValidClusterRecordsView(records: progress.validClusterRecords, searchText: searchText)
                     case .combined:
                         Text("Combined records cannot be validated")
                     }
@@ -293,6 +303,8 @@ struct ValidationView: View {
                         InvalidRecordsView(records: progress.invalidTestRecords, searchText: searchText)
                     case .migration:
                         InvalidRecordsView(records: progress.invalidMigrationRecords, searchText: searchText)
+                    case .cluster:
+                        InvalidRecordsView(records: progress.invalidClusterRecords, searchText: searchText)
                     default:
                         Text("No invalid records to display")
                     }
@@ -315,6 +327,8 @@ struct ValidationView: View {
                         DuplicateRecordsView(records: progress.duplicateTestRecords, searchText: searchText)
                     case .migration:
                         DuplicateRecordsView(records: progress.duplicateMigrationRecords, searchText: searchText)
+                    case .cluster:
+                        DuplicateRecordsView(records: progress.duplicateClusterRecords, searchText: searchText)
                     default:
                         Text("No duplicate records to display")
                     }
@@ -545,6 +559,8 @@ extension ValidationView {
             return !progress.validTestRecords.isEmpty
         case .migration:
             return !progress.validMigrationRecords.isEmpty
+        case .cluster:
+            return !progress.validClusterRecords.isEmpty
         case .combined:
             return false  // Combined view doesn't have its own records
         }
@@ -567,6 +583,9 @@ extension ValidationView {
         case .migration:
             return !progress.invalidMigrationRecords.isEmpty ||
                    !progress.duplicateMigrationRecords.isEmpty
+        case .cluster:
+            return !progress.invalidClusterRecords.isEmpty ||
+                   !progress.duplicateClusterRecords.isEmpty
         case .combined:
             return false  // Combined view doesn't have its own records
         }
@@ -729,6 +748,31 @@ extension ValidationView {
                         let batch = Array(records[start..<end])
                         
                         let (saved, skipped) = try await DatabaseManager.shared.saveMigrationRecords(batch)
+                        totalSaved += saved
+                        totalSkipped += skipped
+                        
+                        await MainActor.run {
+                            saveProgress = Double(end) / Double(records.count)
+                            saveResult = "Processing: \(end)/\(records.count) records..."
+                        }
+                    }
+                    
+                    await MainActor.run {
+                        saveProgress = 1.0
+                        saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
+                    }
+                case .cluster:
+                    let records = progress.validClusterRecords
+                    var totalSaved = 0
+                    var totalSkipped = 0
+                    let totalBatches = Int(ceil(Double(records.count) / Double(batchSize)))
+                    
+                    for batchIndex in 0..<totalBatches {
+                        let start = batchIndex * batchSize
+                        let end = min(start + batchSize, records.count)
+                        let batch = Array(records[start..<end])
+                        
+                        let (saved, skipped) = try await DatabaseManager.shared.saveClusterRecords(batch)
                         totalSaved += saved
                         totalSkipped += skipped
                         
@@ -956,6 +1000,63 @@ struct ValidTestRecordsView: View {
                             }
                             .font(.system(.body, design: .monospaced))
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ValidClusterRecordsView: View {
+    let records: [ClusterData]
+    let searchText: String
+    
+    var filteredRecords: [ClusterData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.department.localizedCaseInsensitiveContains(searchText) ||
+            record.departmentSimple.localizedCaseInsensitiveContains(searchText) ||
+            record.domain.localizedCaseInsensitiveContains(searchText) ||
+            record.migrationCluster.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("Department")
+                    .frame(width: 200, alignment: .leading)
+                Text("Department Simple")
+                    .frame(width: 200, alignment: .leading)
+                Text("Domain")
+                    .frame(width: 150, alignment: .leading)
+                Text("Migration Cluster")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(filteredRecords) { record in
+                        HStack(spacing: 0) {
+                            Text(record.department)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.departmentSimple)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.domain)
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.migrationCluster)
+                                .frame(width: 200, alignment: .leading)
+                        }
+                        .frame(height: 18)
+                        .font(.system(size: 11))
+                        .background(filteredRecords.firstIndex(where: { $0.id == record.id })!.isMultiple(of: 2) ? Color(NSColor.controlBackgroundColor) : Color.clear)
                     }
                 }
             }

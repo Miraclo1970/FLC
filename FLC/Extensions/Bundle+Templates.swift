@@ -13,7 +13,9 @@ extension Bundle {
         case .testing:
             fileName = "TestStatus_template"
         case .migration:
-            fileName = "Migration_template"
+            fileName = "MigrationStatus_template"
+        case .cluster:
+            fileName = "Cluster_template"
         }
         
         print("\n=== Template Search Debug ===")

@@ -8,6 +8,7 @@ class ImportProgress: ObservableObject {
         case testing = "Testing"
         case migration = "Migration"
         case combined = "Combined"
+        case cluster = "Cluster"
     }
     
     @Published var isProcessing = false
@@ -40,6 +41,11 @@ class ImportProgress: ObservableObject {
     @Published var invalidMigrationRecords: [String] = []
     @Published var duplicateMigrationRecords: [String] = []
     
+    // Cluster Records
+    @Published var validClusterRecords: [ClusterData] = []
+    @Published var invalidClusterRecords: [String] = []
+    @Published var duplicateClusterRecords: [String] = []
+    
     func reset() {
         isProcessing = false
         progressValue = 0.0
@@ -59,6 +65,9 @@ class ImportProgress: ObservableObject {
         validMigrationRecords = []
         invalidMigrationRecords = []
         duplicateMigrationRecords = []
+        validClusterRecords = []
+        invalidClusterRecords = []
+        duplicateClusterRecords = []
     }
     
     func update(operation: String, progress: Double) {
