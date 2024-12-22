@@ -78,11 +78,24 @@ class ValidationConfigStore: ObservableObject {
             ValidationConfig(
                 title: "Migration",
                 rules: ValidationConfig.createRules([
-                    "All fields are optional",
-                    "Updated through Combined Records"
+                    "Application Name is required and must be unique",
+                    "Application New is required",
+                    "Application Suite New is required",
+                    "Will Be is required",
+                    "In Scope/Out Scope Division is required",
+                    "Migration Platform is required",
+                    "Migration Application Readiness is required"
                 ]),
-                requiredFields: [],
-                optionalFields: ["Department Simple", "Migration Cluster", "Migration Readiness"]
+                requiredFields: [
+                    "Application Name",
+                    "Application New",
+                    "Application Suite New",
+                    "Will Be",
+                    "In Scope/Out Scope Division",
+                    "Migration Platform",
+                    "Migration Application Readiness"
+                ],
+                optionalFields: []
             )
         ]
     }

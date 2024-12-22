@@ -1524,7 +1524,7 @@ struct ImportView: View {
         var processedInvalidRows = 0
         var processedDuplicateRows = 0
         
-        // Skip first two rows (header and column names)
+        // Skip first two rows (header and column names), matching Testing import process
         let dataRows = (worksheet.data?.rows ?? []).dropFirst(2)
         
         for (index, row) in dataRows.enumerated() {
@@ -1552,16 +1552,18 @@ struct ImportView: View {
             }
             
             // Extract data from the correct columns
-            let applicationName = rowData[0] ?? "N/A"
-            let applicationSuiteNew = rowData[1] ?? "N/A"
-            let willBe = rowData[2] ?? "N/A"
-            let inScopeOutScopeDivision = rowData[3] ?? "N/A"
-            let migrationPlatform = rowData[4] ?? "N/A"
-            let migrationApplicationReadiness = rowData[5] ?? "N/A"
+            let applicationName = rowData[0] ?? "N/A"  // Column A
+            let applicationNew = rowData[1] ?? ""      // Column B
+            let applicationSuiteNew = rowData[2] ?? "" // Column C
+            let willBe = rowData[3] ?? ""             // Column D
+            let inScopeOutScopeDivision = rowData[4] ?? "" // Column E
+            let migrationPlatform = rowData[5] ?? ""  // Column F
+            let migrationApplicationReadiness = rowData[6] ?? "" // Column G
             
             // Create and validate the record
             let record = MigrationData(
                 applicationName: applicationName,
+                applicationNew: applicationNew,
                 applicationSuiteNew: applicationSuiteNew,
                 willBe: willBe,
                 inScopeOutScopeDivision: inScopeOutScopeDivision,

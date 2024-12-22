@@ -862,6 +862,7 @@ struct ValidMigrationRecordsView: View {
         }
         return records.filter { record in
             record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.applicationNew.localizedCaseInsensitiveContains(searchText) ||
             record.applicationSuiteNew.localizedCaseInsensitiveContains(searchText) ||
             record.willBe.localizedCaseInsensitiveContains(searchText) ||
             record.inScopeOutScopeDivision.localizedCaseInsensitiveContains(searchText) ||
@@ -872,60 +873,57 @@ struct ValidMigrationRecordsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Header
-                    HStack(spacing: 0) {
-                        Text("#")
-                            .frame(width: 50, alignment: .leading)
-                            .padding(.leading, 25)
-                        Text("Application Name")
-                            .frame(width: 200, alignment: .leading)
-                        Text("Application Suite New")
-                            .frame(width: 200, alignment: .leading)
-                        Text("Will Be")
-                            .frame(width: 150, alignment: .leading)
-                        Text("In/Out Scope Division")
-                            .frame(width: 200, alignment: .leading)
-                        Text("Migration Platform")
-                            .frame(width: 200, alignment: .leading)
-                        Text("Application Readiness")
-                            .frame(width: 200, alignment: .leading)
-                    }
-                    .padding(.vertical, 8)
-                    .background(Color(NSColor.separatorColor).opacity(0.2))
-                    .font(.headline)
-                    
-                    // Records
-                    List {
-                        ForEach(Array(filteredRecords.enumerated()), id: \.1.applicationName) { index, record in
-                            HStack(spacing: 0) {
-                                Text("#\(index + 1)")
-                                    .frame(width: 50, alignment: .leading)
-                                    .padding(.leading, 10)
-                                    .foregroundColor(.secondary)
-                                Text(record.applicationName)
-                                    .frame(width: 200, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.applicationSuiteNew)
-                                    .frame(width: 200, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.willBe)
-                                    .frame(width: 150, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.inScopeOutScopeDivision)
-                                    .frame(width: 200, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.migrationPlatform)
-                                    .frame(width: 200, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.migrationApplicationReadiness)
-                                    .frame(width: 200, alignment: .leading)
-                                    .lineLimit(1)
-                                Spacer()
-                            }
-                            .font(.system(.body, design: .monospaced))
+            // Header
+            HStack(spacing: 0) {
+                Text("#")
+                    .frame(width: 50, alignment: .leading)
+                    .padding(.leading, 10)
+                Text("Application Name")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application New")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application Suite New")
+                    .frame(width: 200, alignment: .leading)
+                Text("Will Be")
+                    .frame(width: 150, alignment: .leading)
+                Text("In/Out Scope Division")
+                    .frame(width: 200, alignment: .leading)
+                Text("Migration Platform")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application Readiness")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(VisualEffectView(material: .headerView, blendingMode: .withinWindow))
+            
+            // Results
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(filteredRecords.enumerated()), id: \.element.id) { index, record in
+                        HStack(spacing: 0) {
+                            Text("\(index + 1)")
+                                .frame(width: 50, alignment: .leading)
+                                .padding(.leading, 10)
+                                .foregroundColor(.secondary)
+                            Text(record.applicationName)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.applicationNew)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.applicationSuiteNew)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.willBe)
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.inScopeOutScopeDivision)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.migrationPlatform)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.migrationApplicationReadiness)
+                                .frame(width: 200, alignment: .leading)
                         }
+                        .frame(height: 18)
+                        .font(.system(size: 11))
+                        .background(index.isMultiple(of: 2) ? Color(NSColor.controlBackgroundColor) : Color.clear)
                     }
                 }
             }
@@ -1061,6 +1059,24 @@ struct ValidClusterRecordsView: View {
                 }
             }
         }
+    }
+}
+
+struct VisualEffectView: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+    
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let visualEffectView = NSVisualEffectView()
+        visualEffectView.material = material
+        visualEffectView.blendingMode = blendingMode
+        visualEffectView.state = .active
+        return visualEffectView
+    }
+    
+    func updateNSView(_ visualEffectView: NSVisualEffectView, context: Context) {
+        visualEffectView.material = material
+        visualEffectView.blendingMode = blendingMode
     }
 }
 

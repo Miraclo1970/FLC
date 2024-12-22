@@ -857,6 +857,24 @@ struct DatabaseCombinedRecordsView: View {
                         .font(.system(size: 11))
                         .background(Color.purple.opacity(0.1))
                         
+                        // Migration Section
+                        Group {
+                            Text("Application New")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Application Suite New")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Will Be")
+                                .frame(width: 120, alignment: .leading)
+                            Text("In/Out Scope Division")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Migration Platform")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Migration App Readiness")
+                                .frame(width: 150, alignment: .leading)
+                        }
+                        .font(.system(size: 11))
+                        .background(Color.red.opacity(0.1))
+                        
                         // Department and Migration Section
                         Group {
                             Text("Dept Simple")
@@ -946,6 +964,24 @@ struct DatabaseCombinedRecordsView: View {
                                     }
                                     .font(.system(size: 11))
                                     .background(Color.purple.opacity(0.05))
+                                    
+                                    // Migration Section
+                                    Group {
+                                        Text(record.applicationNew ?? "N/A")
+                                            .frame(width: 150, alignment: .leading)
+                                        Text(record.applicationSuiteNew ?? "N/A")
+                                            .frame(width: 150, alignment: .leading)
+                                        Text(record.willBe ?? "N/A")
+                                            .frame(width: 120, alignment: .leading)
+                                        Text(record.inScopeOutScopeDivision ?? "N/A")
+                                            .frame(width: 150, alignment: .leading)
+                                        Text(record.migrationPlatform ?? "N/A")
+                                            .frame(width: 150, alignment: .leading)
+                                        Text(record.migrationApplicationReadiness ?? "N/A")
+                                            .frame(width: 150, alignment: .leading)
+                                    }
+                                    .font(.system(size: 11))
+                                    .background(Color.red.opacity(0.05))
                                     
                                     // Department and Migration Section
                                     Group {

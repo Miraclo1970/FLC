@@ -134,7 +134,7 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
 class DatabaseManager {
     public static let shared: DatabaseManager = DatabaseManager()
     private var dbPool: DatabasePool?
-    private let currentVersion = 3  // Incremented version for test_records table
+    private let currentVersion = 4  // Increment version to force schema update
     
     private init() {
         do {
@@ -149,24 +149,39 @@ class DatabaseManager {
         guard let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find Application Support directory"])
         }
+        print("Application Support directory: \(appSupportDir.path)")
         
         // Create FLC directory if it doesn't exist
         let flcDir = appSupportDir.appendingPathComponent("FLC")
+        print("FLC directory path: \(flcDir.path)")
         try? FileManager.default.createDirectory(at: flcDir, withIntermediateDirectories: true)
         
         // Set up database path
         let dbPath = flcDir.appendingPathComponent("database.sqlite").path
+        print("Database path: \(dbPath)")
+        print("Checking if database exists: \(FileManager.default.fileExists(atPath: dbPath))")
         
         // Create or open database
         dbPool = try DatabasePool(path: dbPath)
+        print("Database pool created successfully")
         
         guard let dbPool = dbPool else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
         }
         
         try dbPool.write { db in
-            // Drop hr_records table if exists
+            print("Starting database setup...")
+            print("Dropping existing tables...")
+            // Drop tables if they exist
             try db.execute(sql: "DROP TABLE IF EXISTS hr_records")
+            try db.execute(sql: "DROP TABLE IF EXISTS combined_records")
+            try db.execute(sql: "DROP TABLE IF EXISTS ad_records")
+            try db.execute(sql: "DROP TABLE IF EXISTS package_status_records")
+            try db.execute(sql: "DROP TABLE IF EXISTS test_records")
+            try db.execute(sql: "DROP TABLE IF EXISTS migration_records")
+            try db.execute(sql: "DROP TABLE IF EXISTS cluster_records")
+            try db.execute(sql: "DROP TABLE IF EXISTS users")
+            print("All tables dropped successfully")
             
             // Create users table
             try db.create(table: "users", ifNotExists: true) { t in
@@ -224,6 +239,13 @@ class DatabaseManager {
                 // Test tracking fields
                 t.column("applicationTestStatus", .text)
                 t.column("applicationTestReadinessDate", .datetime)
+                // Migration fields
+                t.column("applicationNew", .text)
+                t.column("applicationSuiteNew", .text)
+                t.column("willBe", .text)
+                t.column("inScopeOutScopeDivision", .text)
+                t.column("migrationPlatform", .text)
+                t.column("migrationApplicationReadiness", .text)
                 // Department and Migration fields
                 t.column("departmentSimple", .text)
                 t.column("migrationCluster", .text)
@@ -265,6 +287,7 @@ class DatabaseManager {
             try db.create(table: "migration_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("applicationName", .text).notNull()
+                t.column("applicationNew", .text).notNull()
                 t.column("applicationSuiteNew", .text).notNull()
                 t.column("willBe", .text).notNull()
                 t.column("inScopeOutScopeDivision", .text).notNull()
@@ -285,8 +308,11 @@ class DatabaseManager {
                 t.column("migrationCluster", .text).notNull()
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
-                // Create a unique index on department
+                // Create indexes for commonly searched fields
                 t.uniqueKey(["department"])
+                t.index(["departmentSimple"])
+                t.index(["domain"])
+                t.index(["migrationCluster"])
             }
         }
         print("Database setup completed successfully")
@@ -553,16 +579,14 @@ class DatabaseManager {
     // Generate combined records from AD and HR data
     func generateCombinedRecords() async throws -> Int {
         try await performDatabaseOperation("Generate Combined Records", write: true) { db in
-            // First, clear existing combined records
-            try db.execute(sql: "DELETE FROM combined_records")
-            
-            // Fetch all AD records, HR records, and Package Status records
+            // Fetch all records
             let adRecords = try ADRecord.fetchAll(db)
             let hrRecords = try HRRecord.fetchAll(db)
             let packageRecords = try PackageRecord.fetchAll(db)
             let testRecords = try TestRecord.fetchAll(db)
+            let migrationRecords = try MigrationRecord.fetchAll(db)
             
-            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, and \(testRecords.count) test records")
+            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, \(testRecords.count) test records, and \(migrationRecords.count) migration records")
             
             // Create dictionaries for faster lookup
             let hrBySystemAccount = Dictionary(
@@ -574,23 +598,29 @@ class DatabaseManager {
             let testByAppName = Dictionary(
                 uniqueKeysWithValues: testRecords.map { ($0.applicationName, $0) }
             )
+            let migrationByAppName = Dictionary(
+                uniqueKeysWithValues: migrationRecords.map { ($0.applicationName, $0) }
+            )
             
             var combinedCount = 0
             
-            // For each AD record, create a combined record with HR and Package Status data if available
+            // Process AD records to create or update Combined records
             for adRecord in adRecords {
-                // Find matching HR record
+                // Find matching records
                 let hrRecord = hrBySystemAccount[adRecord.systemAccount]
-                
-                // Find matching Package Status record
                 let packageRecord = packageByAppName[adRecord.applicationName]
-                
-                // Find matching Test record
                 let testRecord = testByAppName[adRecord.applicationName]
+                let migrationRecord = migrationByAppName[adRecord.applicationName]
                 
-                // Create combined record with optional HR, Package Status, and Test data
+                // Try to find existing record by adGroup and systemAccount
+                let existingRecord = try CombinedRecord
+                    .filter(Column("adGroup") == adRecord.adGroup)
+                    .filter(Column("systemAccount") == adRecord.systemAccount)
+                    .fetchOne(db)
+                
+                // Create combined record preserving existing data where possible
                 let combinedRecord = CombinedRecord(
-                    id: nil,
+                    id: existingRecord?.id,
                     adGroup: adRecord.adGroup,
                     systemAccount: adRecord.systemAccount,
                     applicationName: adRecord.applicationName,
@@ -601,28 +631,37 @@ class DatabaseManager {
                     jobRole: hrRecord?.jobRole,
                     division: hrRecord?.division,
                     leaveDate: hrRecord?.leaveDate,
-                    applicationPackageStatus: packageRecord?.packageStatus,
-                    applicationPackageReadinessDate: packageRecord?.packageReadinessDate,
-                    applicationTestStatus: testRecord?.testStatus,
-                    applicationTestReadinessDate: testRecord?.testDate,
-                    departmentSimple: hrRecord?.departmentSimple,
-                    migrationCluster: nil,
-                    migrationReadiness: nil,
+                    applicationPackageStatus: packageRecord?.packageStatus ?? existingRecord?.applicationPackageStatus,
+                    applicationPackageReadinessDate: packageRecord?.packageReadinessDate ?? existingRecord?.applicationPackageReadinessDate,
+                    applicationTestStatus: testRecord?.testStatus ?? existingRecord?.applicationTestStatus,
+                    applicationTestReadinessDate: testRecord?.testDate ?? existingRecord?.applicationTestReadinessDate,
+                    applicationNew: migrationRecord?.applicationNew ?? existingRecord?.applicationNew,
+                    applicationSuiteNew: migrationRecord?.applicationSuiteNew ?? existingRecord?.applicationSuiteNew,
+                    willBe: migrationRecord?.willBe ?? existingRecord?.willBe,
+                    inScopeOutScopeDivision: migrationRecord?.inScopeOutScopeDivision ?? existingRecord?.inScopeOutScopeDivision,
+                    migrationPlatform: migrationRecord?.migrationPlatform ?? existingRecord?.migrationPlatform,
+                    migrationApplicationReadiness: migrationRecord?.migrationApplicationReadiness ?? existingRecord?.migrationApplicationReadiness,
+                    departmentSimple: hrRecord?.departmentSimple ?? existingRecord?.departmentSimple,
+                    migrationCluster: existingRecord?.migrationCluster,
+                    migrationReadiness: existingRecord?.migrationReadiness,
                     importDate: Date(),
                     importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
                 )
                 
-                // Insert the combined record
-                try combinedRecord.insert(db)
+                if existingRecord != nil {
+                    try combinedRecord.update(db)
+                } else {
+                    try combinedRecord.insert(db)
+                }
                 combinedCount += 1
                 
-                // Print progress every 10000 records
-                if combinedCount % 10000 == 0 {
+                // Print progress every 1000 records
+                if combinedCount % 1000 == 0 {
                     print("Processed \(combinedCount) combined records...")
                 }
             }
             
-            print("Generated \(combinedCount) combined records from \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, and \(testRecords.count) test records")
+            print("Generated \(combinedCount) combined records from \(adRecords.count) AD records, \(hrRecords.count) HR records")
             return combinedCount
         }
     }
@@ -1203,11 +1242,11 @@ class DatabaseManager {
         }
     }
     
-    // Fetch cluster records with pagination
+    // Fetch cluster records with pagination and optimized query
     func fetchClusterRecords(limit: Int = 1000, offset: Int = 0) async throws -> [ClusterRecord] {
         try await performDatabaseOperation("Fetch Cluster Records", write: false) { db in
             try ClusterRecord
-                .order(sql: "department ASC")
+                .order(Column("department").asc())  // Use indexed column for sorting
                 .limit(limit, offset: offset)
                 .fetchAll(db)
         }

@@ -26,6 +26,14 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
     var applicationTestStatus: String?
     var applicationTestReadinessDate: Date?
     
+    // Migration fields
+    var applicationNew: String?
+    var applicationSuiteNew: String?
+    var willBe: String?
+    var inScopeOutScopeDivision: String?
+    var migrationPlatform: String?
+    var migrationApplicationReadiness: String?
+    
     // Department and Migration fields
     var departmentSimple: String?
     var migrationCluster: String?
@@ -36,6 +44,144 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
     let importSet: String
     
     static let databaseTableName = "combined_records"
+    
+    // Define CodingKeys for proper encoding/decoding
+    enum CodingKeys: String, CodingKey {
+        case id
+        // AD fields
+        case adGroup
+        case applicationName
+        case applicationSuite
+        case otap
+        case critical
+        // HR fields
+        case systemAccount
+        case department
+        case jobRole
+        case division
+        case leaveDate
+        // Package tracking fields
+        case applicationPackageStatus
+        case applicationPackageReadinessDate
+        // Test tracking fields
+        case applicationTestStatus
+        case applicationTestReadinessDate
+        // Migration fields
+        case applicationNew
+        case applicationSuiteNew
+        case willBe
+        case inScopeOutScopeDivision
+        case migrationPlatform
+        case migrationApplicationReadiness
+        // Department and Migration fields
+        case departmentSimple
+        case migrationCluster
+        case migrationReadiness
+        // Metadata
+        case importDate
+        case importSet
+    }
+    
+    // Explicitly define the columns for GRDB
+    enum Columns {
+        static let id = Column("id")
+        // AD fields
+        static let adGroup = Column("adGroup")
+        static let applicationName = Column("applicationName")
+        static let applicationSuite = Column("applicationSuite")
+        static let otap = Column("otap")
+        static let critical = Column("critical")
+        // HR fields
+        static let systemAccount = Column("systemAccount")
+        static let department = Column("department")
+        static let jobRole = Column("jobRole")
+        static let division = Column("division")
+        static let leaveDate = Column("leaveDate")
+        // Package tracking fields
+        static let applicationPackageStatus = Column("applicationPackageStatus")
+        static let applicationPackageReadinessDate = Column("applicationPackageReadinessDate")
+        // Test tracking fields
+        static let applicationTestStatus = Column("applicationTestStatus")
+        static let applicationTestReadinessDate = Column("applicationTestReadinessDate")
+        // Migration fields
+        static let applicationNew = Column("applicationNew")
+        static let applicationSuiteNew = Column("applicationSuiteNew")
+        static let willBe = Column("willBe")
+        static let inScopeOutScopeDivision = Column("inScopeOutScopeDivision")
+        static let migrationPlatform = Column("migrationPlatform")
+        static let migrationApplicationReadiness = Column("migrationApplicationReadiness")
+        // Department and Migration fields
+        static let departmentSimple = Column("departmentSimple")
+        static let migrationCluster = Column("migrationCluster")
+        static let migrationReadiness = Column("migrationReadiness")
+        // Metadata
+        static let importDate = Column("importDate")
+        static let importSet = Column("importSet")
+    }
+    
+    // Define persistence behavior
+    func encode(to container: inout PersistenceContainer) {
+        container[Columns.id] = id
+        // AD fields
+        container[Columns.adGroup] = adGroup
+        container[Columns.applicationName] = applicationName
+        container[Columns.applicationSuite] = applicationSuite
+        container[Columns.otap] = otap
+        container[Columns.critical] = critical
+        // HR fields
+        container[Columns.systemAccount] = systemAccount
+        container[Columns.department] = department
+        container[Columns.jobRole] = jobRole
+        container[Columns.division] = division
+        container[Columns.leaveDate] = leaveDate
+        // Package tracking fields
+        container[Columns.applicationPackageStatus] = applicationPackageStatus
+        container[Columns.applicationPackageReadinessDate] = applicationPackageReadinessDate
+        // Test tracking fields
+        container[Columns.applicationTestStatus] = applicationTestStatus
+        container[Columns.applicationTestReadinessDate] = applicationTestReadinessDate
+        // Migration fields
+        container[Columns.applicationNew] = applicationNew
+        container[Columns.applicationSuiteNew] = applicationSuiteNew
+        container[Columns.willBe] = willBe
+        container[Columns.inScopeOutScopeDivision] = inScopeOutScopeDivision
+        container[Columns.migrationPlatform] = migrationPlatform
+        container[Columns.migrationApplicationReadiness] = migrationApplicationReadiness
+        // Department and Migration fields
+        container[Columns.departmentSimple] = departmentSimple
+        container[Columns.migrationCluster] = migrationCluster
+        container[Columns.migrationReadiness] = migrationReadiness
+        // Metadata
+        container[Columns.importDate] = importDate
+        container[Columns.importSet] = importSet
+    }
+    
+    // Define custom column encoding strategy
+    static let databaseColumnEncodingStrategy: DatabaseColumnEncodingStrategy = .custom { key in
+        switch key {
+        case CodingKeys.adGroup: return "adGroup"
+        case CodingKeys.systemAccount: return "systemAccount"
+        case CodingKeys.applicationName: return "applicationName"
+        case CodingKeys.applicationSuite: return "applicationSuite"
+        case CodingKeys.jobRole: return "jobRole"
+        case CodingKeys.leaveDate: return "leaveDate"
+        case CodingKeys.applicationPackageStatus: return "applicationPackageStatus"
+        case CodingKeys.applicationPackageReadinessDate: return "applicationPackageReadinessDate"
+        case CodingKeys.applicationTestStatus: return "applicationTestStatus"
+        case CodingKeys.applicationTestReadinessDate: return "applicationTestReadinessDate"
+        case CodingKeys.applicationNew: return "applicationNew"
+        case CodingKeys.applicationSuiteNew: return "applicationSuiteNew"
+        case CodingKeys.inScopeOutScopeDivision: return "inScopeOutScopeDivision"
+        case CodingKeys.migrationPlatform: return "migrationPlatform"
+        case CodingKeys.migrationApplicationReadiness: return "migrationApplicationReadiness"
+        case CodingKeys.departmentSimple: return "departmentSimple"
+        case CodingKeys.migrationCluster: return "migrationCluster"
+        case CodingKeys.migrationReadiness: return "migrationReadiness"
+        case CodingKeys.importDate: return "importDate"
+        case CodingKeys.importSet: return "importSet"
+        default: return key.stringValue
+        }
+    }
     
     init(id: Int64?,
          adGroup: String,
@@ -52,6 +198,12 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
          applicationPackageReadinessDate: Date?,
          applicationTestStatus: String?,
          applicationTestReadinessDate: Date?,
+         applicationNew: String?,
+         applicationSuiteNew: String?,
+         willBe: String?,
+         inScopeOutScopeDivision: String?,
+         migrationPlatform: String?,
+         migrationApplicationReadiness: String?,
          departmentSimple: String?,
          migrationCluster: String?,
          migrationReadiness: String?,
@@ -72,6 +224,12 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.applicationPackageReadinessDate = applicationPackageReadinessDate
         self.applicationTestStatus = applicationTestStatus
         self.applicationTestReadinessDate = applicationTestReadinessDate
+        self.applicationNew = applicationNew
+        self.applicationSuiteNew = applicationSuiteNew
+        self.willBe = willBe
+        self.inScopeOutScopeDivision = inScopeOutScopeDivision
+        self.migrationPlatform = migrationPlatform
+        self.migrationApplicationReadiness = migrationApplicationReadiness
         self.departmentSimple = departmentSimple
         self.migrationCluster = migrationCluster
         self.migrationReadiness = migrationReadiness
