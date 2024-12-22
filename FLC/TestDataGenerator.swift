@@ -124,4 +124,45 @@ class TestDataGenerator {
         
         return testData
     }
+    
+    static func generateClusterTestData() -> [ClusterData] {
+        var testData: [ClusterData] = []
+        
+        // Test cases with various scenarios
+        let testCases: [(department: String, departmentSimple: String?, domain: String?, migrationCluster: String?, migrationClusterReadiness: String?)] = [
+            // Regular cases with all fields filled
+            ("IT - Infrastructure", "IT", "Technology", "Cluster A", "Ready"),
+            ("Finance - Accounting", "Finance", "Business", "Cluster B", "In Progress"),
+            ("HR - Recruitment", "HR", "Support", "Cluster C", "Not Started"),
+            
+            // Cases with missing optional fields
+            ("Marketing - Digital", "Marketing", nil, "Cluster D", "Ready"),
+            ("Sales - Europe", "Sales", "Business", nil, "Not Started"),
+            ("Legal - Compliance", "Legal", "Support", "Cluster E", nil),
+            
+            // Cases with only required fields
+            ("Operations - Logistics", "Operations", nil, nil, nil),
+            
+            // Cases with special characters and spaces
+            ("R&D - Innovation Lab", "R&D", "Technology & Research", "Cluster F", "Ready"),
+            
+            // Cases with different readiness states
+            ("IT - Security", "IT", "Technology", "Cluster G", "Blocked"),
+            ("IT - Development", "IT", "Technology", "Cluster G", "In Review")
+        ]
+        
+        // Add all test cases
+        for testCase in testCases {
+            let clusterData = ClusterData(
+                department: testCase.department,
+                departmentSimple: testCase.departmentSimple,
+                domain: testCase.domain,
+                migrationCluster: testCase.migrationCluster,
+                migrationClusterReadiness: testCase.migrationClusterReadiness
+            )
+            testData.append(clusterData)
+        }
+        
+        return testData
+    }
 } 

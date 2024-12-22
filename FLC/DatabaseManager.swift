@@ -134,7 +134,7 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
 class DatabaseManager {
     public static let shared: DatabaseManager = DatabaseManager()
     private var dbPool: DatabasePool?
-    private let currentVersion = 4  // Increment version to force schema update
+    private let currentVersion = 7  // Increment version to force schema update
     
     private init() {
         do {
@@ -171,26 +171,16 @@ class DatabaseManager {
         
         try dbPool.write { db in
             print("Starting database setup...")
-            print("Dropping existing tables...")
-            // Drop tables if they exist
-            try db.execute(sql: "DROP TABLE IF EXISTS hr_records")
-            try db.execute(sql: "DROP TABLE IF EXISTS combined_records")
-            try db.execute(sql: "DROP TABLE IF EXISTS ad_records")
-            try db.execute(sql: "DROP TABLE IF EXISTS package_status_records")
-            try db.execute(sql: "DROP TABLE IF EXISTS test_records")
-            try db.execute(sql: "DROP TABLE IF EXISTS migration_records")
-            try db.execute(sql: "DROP TABLE IF EXISTS cluster_records")
-            try db.execute(sql: "DROP TABLE IF EXISTS users")
-            print("All tables dropped successfully")
             
-            // Create users table
+            // Create users table if it doesn't exist
             try db.create(table: "users", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("username", .text).notNull().unique()
                 t.column("password", .text).notNull()
+                t.column("userType", .text).notNull()
             }
             
-            // Create AD records table
+            // Create AD records table if it doesn't exist
             try db.create(table: "ad_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("adGroup", .text).notNull()
@@ -205,7 +195,7 @@ class DatabaseManager {
                 t.uniqueKey(["adGroup", "systemAccount"])
             }
             
-            // Create HR records table
+            // Create HR records table if it doesn't exist
             try db.create(table: "hr_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("systemAccount", .text).notNull().unique()
@@ -218,7 +208,7 @@ class DatabaseManager {
                 t.column("importSet", .text).notNull()
             }
             
-            // Create combined records table
+            // Create combined records table if it doesn't exist
             try db.create(table: "combined_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 // AD fields
@@ -248,6 +238,7 @@ class DatabaseManager {
                 t.column("migrationApplicationReadiness", .text)
                 // Department and Migration fields
                 t.column("departmentSimple", .text)
+                t.column("domain", .text)
                 t.column("migrationCluster", .text)
                 t.column("migrationReadiness", .text)
                 // Metadata
@@ -257,7 +248,7 @@ class DatabaseManager {
                 t.uniqueKey(["adGroup", "systemAccount"])
             }
             
-            // Create package status records table
+            // Create package status records table if it doesn't exist
             try db.create(table: "package_status_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("applicationName", .text).notNull()
@@ -269,7 +260,7 @@ class DatabaseManager {
                 t.uniqueKey(["applicationName"])
             }
             
-            // Create test_records table
+            // Create test_records table if it doesn't exist
             try db.create(table: "test_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("applicationName", .text).notNull()
@@ -283,7 +274,7 @@ class DatabaseManager {
                 t.uniqueKey(["applicationName"])
             }
             
-            // Create migration_records table
+            // Create migration_records table if it doesn't exist
             try db.create(table: "migration_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("applicationName", .text).notNull()
@@ -299,23 +290,22 @@ class DatabaseManager {
                 t.uniqueKey(["applicationName"])
             }
             
-            // Create cluster_records table
+            // Create cluster_records table if it doesn't exist
             try db.create(table: "cluster_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("department", .text).notNull()
-                t.column("departmentSimple", .text).notNull()
-                t.column("domain", .text).notNull()
-                t.column("migrationCluster", .text).notNull()
+                t.column("departmentSimple", .text)
+                t.column("domain", .text)
+                t.column("migrationCluster", .text)
+                t.column("migrationClusterReadiness", .text)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
-                // Create indexes for commonly searched fields
+                // Create a unique index on department
                 t.uniqueKey(["department"])
-                t.index(["departmentSimple"])
-                t.index(["domain"])
-                t.index(["migrationCluster"])
             }
+            
+            print("Database setup completed successfully")
         }
-        print("Database setup completed successfully")
     }
     
     // Save AD records to database with upsert behavior
@@ -393,13 +383,8 @@ class DatabaseManager {
                     try dbRecord.insert(db)
                 }
                 
-                // Then, update ALL corresponding records in the combined_records table that match the applicationName
-                let matchingRecords = try CombinedRecord
-                    .filter(Column("applicationName") == record.applicationName)
-                    .fetchAll(db)
-                
-                print("Found \(matchingRecords.count) matching combined records for application: \(record.applicationName)")
-                
+                // Then update ALL matching records in combined_records table
+                // This ensures consistency across all instances of the same application
                 try db.execute(
                     sql: """
                         UPDATE combined_records
@@ -407,10 +392,19 @@ class DatabaseManager {
                             applicationPackageReadinessDate = ?
                         WHERE applicationName = ?
                         """,
-                    arguments: [record.packageStatus, record.packageReadinessDate, record.applicationName]
+                    arguments: [
+                        record.packageStatus,
+                        record.packageReadinessDate,
+                        record.applicationName
+                    ]
                 )
                 
                 counts.saved += 1
+                
+                // Print progress every 100 records
+                if counts.saved % 100 == 0 {
+                    print("Processed \(counts.saved) package records...")
+                }
             }
             
             return counts
@@ -585,8 +579,9 @@ class DatabaseManager {
             let packageRecords = try PackageRecord.fetchAll(db)
             let testRecords = try TestRecord.fetchAll(db)
             let migrationRecords = try MigrationRecord.fetchAll(db)
+            let clusterRecords = try ClusterRecord.fetchAll(db)
             
-            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, \(testRecords.count) test records, and \(migrationRecords.count) migration records")
+            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, \(testRecords.count) test records, \(migrationRecords.count) migration records, and \(clusterRecords.count) cluster records")
             
             // Create dictionaries for faster lookup
             let hrBySystemAccount = Dictionary(
@@ -601,6 +596,9 @@ class DatabaseManager {
             let migrationByAppName = Dictionary(
                 uniqueKeysWithValues: migrationRecords.map { ($0.applicationName, $0) }
             )
+            let clusterByDepartment = Dictionary(
+                uniqueKeysWithValues: clusterRecords.map { ($0.department, $0) }
+            )
             
             var combinedCount = 0
             
@@ -611,6 +609,7 @@ class DatabaseManager {
                 let packageRecord = packageByAppName[adRecord.applicationName]
                 let testRecord = testByAppName[adRecord.applicationName]
                 let migrationRecord = migrationByAppName[adRecord.applicationName]
+                let clusterRecord = hrRecord.flatMap { clusterByDepartment[$0.department ?? ""] }
                 
                 // Try to find existing record by adGroup and systemAccount
                 let existingRecord = try CombinedRecord
@@ -641,9 +640,10 @@ class DatabaseManager {
                     inScopeOutScopeDivision: migrationRecord?.inScopeOutScopeDivision ?? existingRecord?.inScopeOutScopeDivision,
                     migrationPlatform: migrationRecord?.migrationPlatform ?? existingRecord?.migrationPlatform,
                     migrationApplicationReadiness: migrationRecord?.migrationApplicationReadiness ?? existingRecord?.migrationApplicationReadiness,
-                    departmentSimple: hrRecord?.departmentSimple ?? existingRecord?.departmentSimple,
-                    migrationCluster: existingRecord?.migrationCluster,
-                    migrationReadiness: existingRecord?.migrationReadiness,
+                    departmentSimple: hrRecord?.departmentSimple ?? clusterRecord?.departmentSimple ?? existingRecord?.departmentSimple,
+                    domain: clusterRecord?.domain ?? existingRecord?.domain,
+                    migrationCluster: clusterRecord?.migrationCluster ?? existingRecord?.migrationCluster,
+                    migrationReadiness: clusterRecord?.migrationClusterReadiness ?? existingRecord?.migrationReadiness,
                     importDate: Date(),
                     importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
                 )
@@ -1219,34 +1219,34 @@ class DatabaseManager {
         try await performDatabaseOperation("Save Cluster Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
+            // Get all HR departments for validation
+            let hrDepartments = try HRRecord
+                .select(Column("department"))
+                .filter(Column("department") != nil)
+                .asRequest(of: String.self)
+                .fetchSet(db)
+            
             for record in records {
-                let dbRecord = ClusterRecord(from: record)
-                
-                // Try to find existing record by department
-                if let existingRecord = try ClusterRecord
-                    .filter(Column("department") == record.department)
-                    .fetchOne(db) {
-                    // Update existing record with new data, preserving id
-                    var updatedRecord = dbRecord
-                    updatedRecord.id = existingRecord.id
-                    try updatedRecord.update(db)
-                    counts.saved += 1
-                } else {
-                    // Insert new record
-                    try dbRecord.insert(db)
-                    counts.saved += 1
+                // Validate department exists in HR records
+                if !hrDepartments.contains(record.department) {
+                    counts.skipped += 1
+                    continue
                 }
+                
+                let dbRecord = ClusterRecord(from: record)
+                try dbRecord.insert(db)
+                counts.saved += 1
             }
             
             return counts
         }
     }
     
-    // Fetch cluster records with pagination and optimized query
+    // Fetch cluster records with pagination
     func fetchClusterRecords(limit: Int = 1000, offset: Int = 0) async throws -> [ClusterRecord] {
         try await performDatabaseOperation("Fetch Cluster Records", write: false) { db in
             try ClusterRecord
-                .order(Column("department").asc())  // Use indexed column for sorting
+                .order(sql: "department ASC")
                 .limit(limit, offset: offset)
                 .fetchAll(db)
         }
@@ -1280,5 +1280,16 @@ class DatabaseManager {
             print("Error during \(operation): \(error)")
             throw error
         }
+    }
+    
+    public func reinitialize() async throws {
+        // Close existing connection if any
+        dbPool = nil
+        
+        // Set up fresh database
+        try setupDatabase()
+        
+        // Ensure initial data is seeded
+        ensureInitialData()
     }
 } 

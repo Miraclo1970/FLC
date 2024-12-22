@@ -96,6 +96,21 @@ class ValidationConfigStore: ObservableObject {
                     "Migration Application Readiness"
                 ],
                 optionalFields: []
+            ),
+            ValidationConfig(
+                title: "Cluster",
+                rules: ValidationConfig.createRules([
+                    "Department is required and must match an existing HR Department"
+                ]),
+                requiredFields: [
+                    "Department"
+                ],
+                optionalFields: [
+                    "Department Simple",
+                    "Domain",
+                    "Migration Cluster",
+                    "Migration Cluster Readiness"
+                ]
             )
         ]
     }

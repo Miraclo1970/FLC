@@ -5,9 +5,10 @@ import GRDB
 struct ClusterRecord: Codable, FetchableRecord, PersistableRecord {
     var id: Int64?
     let department: String
-    let departmentSimple: String
-    let domain: String
-    let migrationCluster: String
+    let departmentSimple: String?
+    let domain: String?
+    let migrationCluster: String?
+    let migrationClusterReadiness: String?
     let importDate: Date
     let importSet: String
     
@@ -20,6 +21,7 @@ struct ClusterRecord: Codable, FetchableRecord, PersistableRecord {
         static let departmentSimple = Column("departmentSimple")
         static let domain = Column("domain")
         static let migrationCluster = Column("migrationCluster")
+        static let migrationClusterReadiness = Column("migrationClusterReadiness")
         static let importDate = Column("importDate")
         static let importSet = Column("importSet")
     }
@@ -31,6 +33,7 @@ struct ClusterRecord: Codable, FetchableRecord, PersistableRecord {
         container[Columns.departmentSimple] = departmentSimple
         container[Columns.domain] = domain
         container[Columns.migrationCluster] = migrationCluster
+        container[Columns.migrationClusterReadiness] = migrationClusterReadiness
         container[Columns.importDate] = importDate
         container[Columns.importSet] = importSet
     }
@@ -38,9 +41,10 @@ struct ClusterRecord: Codable, FetchableRecord, PersistableRecord {
     init(from data: ClusterData) {
         self.id = nil
         self.department = data.department
-        self.departmentSimple = data.departmentSimple
-        self.domain = data.domain
-        self.migrationCluster = data.migrationCluster
+        self.departmentSimple = data.departmentSimple == "N/A" ? "" : data.departmentSimple
+        self.domain = data.domain == "N/A" ? "" : data.domain
+        self.migrationCluster = data.migrationCluster == "N/A" ? "" : data.migrationCluster
+        self.migrationClusterReadiness = data.migrationClusterReadiness == "N/A" ? "" : data.migrationClusterReadiness
         self.importDate = Date()
         
         // Create a descriptive import set identifier
@@ -54,9 +58,10 @@ struct ClusterRecord: Codable, FetchableRecord, PersistableRecord {
 struct ClusterData: Identifiable, Codable {
     let id: UUID
     let department: String
-    let departmentSimple: String
-    let domain: String
-    let migrationCluster: String
+    let departmentSimple: String?
+    let domain: String?
+    let migrationCluster: String?
+    let migrationClusterReadiness: String?
     
     // Basic validation to ensure required fields are not empty
     var validationErrors: [String] {
@@ -66,18 +71,6 @@ struct ClusterData: Identifiable, Codable {
             errors.append("Department is required")
         }
         
-        if departmentSimple.isEmpty {
-            errors.append("Department Simple is required")
-        }
-        
-        if domain.isEmpty {
-            errors.append("Domain is required")
-        }
-        
-        if migrationCluster.isEmpty {
-            errors.append("Migration Cluster is required")
-        }
-        
         return errors
     }
     
@@ -85,11 +78,12 @@ struct ClusterData: Identifiable, Codable {
         return validationErrors.isEmpty
     }
     
-    init(department: String, departmentSimple: String, domain: String, migrationCluster: String) {
+    init(department: String, departmentSimple: String? = nil, domain: String? = nil, migrationCluster: String? = nil, migrationClusterReadiness: String? = nil) {
         self.id = UUID()
         self.department = department
-        self.departmentSimple = departmentSimple
-        self.domain = domain
-        self.migrationCluster = migrationCluster
+        self.departmentSimple = departmentSimple == "N/A" ? "" : departmentSimple
+        self.domain = domain == "N/A" ? "" : domain
+        self.migrationCluster = migrationCluster == "N/A" ? "" : migrationCluster
+        self.migrationClusterReadiness = migrationClusterReadiness == "N/A" ? "" : migrationClusterReadiness
     }
 } 

@@ -92,12 +92,14 @@ struct TestDataGeneratorView: View {
             let hrTestData = TestDataGenerator.generateHRTestData()
             let packageTestData = TestDataGenerator.generatePackageStatusData()
             let testingData = TestDataGenerator.generateTestingData()
+            let clusterData = TestDataGenerator.generateClusterTestData()
             
             // Save to database
             let adResult = try await DatabaseManager.shared.saveADRecords(adTestData)
             let hrResult = try await DatabaseManager.shared.saveHRRecords(hrTestData)
             let packageResult = try await DatabaseManager.shared.savePackageRecords(packageTestData)
             let testResult = try await DatabaseManager.shared.saveTestRecords(testingData)
+            let clusterResult = try await DatabaseManager.shared.saveClusterRecords(clusterData)
             
             message = """
             Imported:
@@ -105,6 +107,7 @@ struct TestDataGeneratorView: View {
             - \(hrResult.saved) HR records
             - \(packageResult.saved) Package Status records
             - \(testResult.saved) Test records
+            - \(clusterResult.saved) Cluster records
             """
             await checkDatabase()
         } catch {
@@ -184,13 +187,48 @@ struct TestDataGeneratorView: View {
         message = "Clearing all test data..."
         
         do {
+            // Clear all tables first
             try await DatabaseManager.shared.clearADRecords()
             try await DatabaseManager.shared.clearHRRecords()
             try await DatabaseManager.shared.clearPackageRecords()
             try await DatabaseManager.shared.clearTestRecords()
             try await DatabaseManager.shared.clearCombinedRecords()
+            try await DatabaseManager.shared.clearMigrationRecords()
+            try await DatabaseManager.shared.clearClusterRecords()
             
-            message = "Successfully cleared all test data"
+            // Get the Application Support directory
+            guard let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+                throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find Application Support directory"])
+            }
+            
+            // Get the FLC directory
+            let flcDir = appSupportDir.appendingPathComponent("FLC")
+            
+            // Delete the database file
+            let dbPath = flcDir.appendingPathComponent("database.sqlite")
+            if FileManager.default.fileExists(atPath: dbPath.path) {
+                try FileManager.default.removeItem(at: dbPath)
+                message = "Successfully cleared all test data and deleted database file"
+            } else {
+                message = "Successfully cleared all test data (database file not found)"
+            }
+            
+            // Also delete any journal or temporary files
+            let dbPathStr = dbPath.path
+            for suffix in ["-wal", "-shm"] {
+                let extraFile = dbPathStr + suffix
+                if FileManager.default.fileExists(atPath: extraFile) {
+                    try FileManager.default.removeItem(atPath: extraFile)
+                }
+            }
+            
+            // Add a small delay to ensure files are fully deleted
+            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
+            
+            // Force DatabaseManager to reinitialize
+            try await DatabaseManager.shared.reinitialize()
+            
+            // Now check the database state
             await checkDatabase()
         } catch {
             message = "Error clearing test data: \(error.localizedDescription)"

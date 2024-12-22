@@ -7,8 +7,8 @@ struct ManagerDashboardView: View {
     @State private var isEnglish = true
     
     var body: some View {
-        NavigationSplitView {
-            // Sidebar
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            // Sidebar with fixed width
             List(selection: $selectedItem) {
                 NavigationLink(value: "import") {
                     Label(isEnglish ? "Import" : "Importeren", 
@@ -27,35 +27,28 @@ struct ManagerDashboardView: View {
                 
                 NavigationLink(value: "projects") {
                     Label(isEnglish ? "Project Management" : "Projectbeheer", 
-                          systemImage: "list.bullet.clipboard")
+                          systemImage: "folder")
                 }
                 
                 NavigationLink(value: "team") {
                     Label(isEnglish ? "Team Overview" : "Team Overzicht", 
-                          systemImage: "person.3")
+                          systemImage: "person.2")
+                }
+                
+                Divider()
+                
+                Button(action: {
+                    isLoggedIn = false
+                }) {
+                    Label(isEnglish ? "Logout" : "Uitloggen", 
+                          systemImage: "rectangle.portrait.and.arrow.right")
                 }
             }
+            .frame(minWidth: 200, maxWidth: 200)
             .listStyle(SidebarListStyle())
-            .frame(minWidth: 200)
-            .navigationTitle(isEnglish ? "Manager Dashboard" : "Manager Dashboard")
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button(action: toggleSidebar) {
-                        Image(systemName: "sidebar.left")
-                    }
-                }
-                ToolbarItem(placement: .automatic) {
-                    Button(action: {
-                        isLoggedIn = false
-                    }) {
-                        Label(isEnglish ? "Logout" : "Uitloggen", 
-                              systemImage: "rectangle.portrait.and.arrow.right")
-                            .foregroundColor(.red)
-                    }
-                }
-            }
         } detail: {
-            NavigationStack {
+            // Detail view
+            ZStack {
                 if let selectedItem {
                     switch selectedItem {
                     case "import":
@@ -69,13 +62,6 @@ struct ManagerDashboardView: View {
                         VStack(spacing: 20) {
                             Text(isEnglish ? "Project Management" : "Projectbeheer")
                                 .font(.largeTitle)
-                                .padding(.top)
-                            
-                            DashboardCard(
-                                title: isEnglish ? "Active Projects" : "Actieve Projecten",
-                                value: "5",
-                                icon: "folder"
-                            )
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding()
@@ -83,13 +69,6 @@ struct ManagerDashboardView: View {
                         VStack(spacing: 20) {
                             Text(isEnglish ? "Team Overview" : "Team Overzicht")
                                 .font(.largeTitle)
-                                .padding(.top)
-                            
-                            DashboardCard(
-                                title: isEnglish ? "Team Members" : "Teamleden",
-                                value: "8",
-                                icon: "person.2"
-                            )
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding()
@@ -107,6 +86,7 @@ struct ManagerDashboardView: View {
                 }
             }
         }
+        .navigationSplitViewStyle(.automatic)
         .frame(minWidth: 800, minHeight: 600)
         .onChange(of: progress.validRecords.count) { oldValue, newValue in
             if newValue > 0 {
@@ -118,15 +98,26 @@ struct ManagerDashboardView: View {
                 selectedItem = "validation"
             }
         }
+        .onChange(of: progress.validPackageRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
         .onChange(of: progress.validMigrationRecords.count) { oldValue, newValue in
             if newValue > 0 {
                 selectedItem = "validation"
             }
         }
-    }
-    
-    private func toggleSidebar() {
-        NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)), with: nil)
+        .onChange(of: progress.validTestRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
+        .onChange(of: progress.validClusterRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
     }
 }
 

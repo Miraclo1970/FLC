@@ -652,6 +652,8 @@ struct ClusterResultsTableView: View {
                     .frame(width: 200, alignment: .leading)
                 Text("Migration Cluster")
                     .frame(width: 200, alignment: .leading)
+                Text("Migration Cluster Readiness")
+                    .frame(width: 200, alignment: .leading)
             }
             .padding(.vertical, 4)
             .font(.system(size: 11, weight: .bold))
@@ -662,11 +664,13 @@ struct ClusterResultsTableView: View {
                 HStack(spacing: 0) {
                     Text(record.department)
                         .frame(width: 200, alignment: .leading)
-                    Text(record.departmentSimple)
+                    Text(record.departmentSimple ?? "")
                         .frame(width: 200, alignment: .leading)
-                    Text(record.domain)
+                    Text(record.domain ?? "")
                         .frame(width: 200, alignment: .leading)
-                    Text(record.migrationCluster)
+                    Text(record.migrationCluster ?? "")
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.migrationClusterReadiness ?? "")
                         .frame(width: 200, alignment: .leading)
                 }
                 .padding(.vertical, 4)

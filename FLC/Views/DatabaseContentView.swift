@@ -45,64 +45,27 @@ struct DatabaseContentView: View {
                     .font(.headline)
                     .foregroundColor(.secondary)
                 
-                Picker("Data Type", selection: $selectedDataType) {
-                    Text("Combined Data").tag(ImportProgress.DataType.combined)
-                    Text("AD Data").tag(ImportProgress.DataType.ad)
-                    Text("HR Data").tag(ImportProgress.DataType.hr)
-                    Text("Package Status").tag(ImportProgress.DataType.packageStatus)
-                    Text("Testing").tag(ImportProgress.DataType.testing)
-                    Text("Migration").tag(ImportProgress.DataType.migration)
-                    Text("Cluster").tag(ImportProgress.DataType.cluster)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Picker("Data Type", selection: $selectedDataType) {
+                        Text("Combined Data").tag(ImportProgress.DataType.combined)
+                        Text("AD Data").tag(ImportProgress.DataType.ad)
+                        Text("HR Data").tag(ImportProgress.DataType.hr)
+                        Text("Package Status").tag(ImportProgress.DataType.packageStatus)
+                        Text("Testing").tag(ImportProgress.DataType.testing)
+                        Text("Migration").tag(ImportProgress.DataType.migration)
+                        Text("Cluster").tag(ImportProgress.DataType.cluster)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
                 }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding(.horizontal)
-                .padding(.vertical, 8)
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(8)
-                .onChange(of: selectedDataType) { oldValue, newValue in
+                .onChange(of: selectedDataType, initial: false) { oldValue, newValue in
                     Task {
                         await loadData(resetData: true)
                     }
                 }
-            }
-            .padding(.horizontal)
-            
-            // Stats Cards and Clear Button
-            HStack(spacing: 20) {
-                DashboardCard(
-                    title: "Total Records",
-                    value: {
-                        switch selectedDataType {
-                        case .ad: return "\(adRecords.count)"
-                        case .hr: return "\(hrRecords.count)"
-                        case .combined: return "\(combinedRecords.count)"
-                        case .packageStatus: return "\(packageRecords.count)"
-                        case .testing: return "\(testRecords.count)"
-                        case .migration: return "\(migrationRecords.count)"
-                        case .cluster: return "\(clusterRecords.count)"
-                        }
-                    }(),
-                    icon: "doc.text"
-                )
-                
-                Button(action: {
-                    showingDeleteAlert = true
-                }) {
-                    Label("Clear All Records", systemImage: "trash")
-                        .foregroundColor(.red)
-                }
-                .buttonStyle(.bordered)
-                .disabled({
-                    switch selectedDataType {
-                    case .ad: return adRecords.isEmpty
-                    case .hr: return hrRecords.isEmpty
-                    case .combined: return combinedRecords.isEmpty
-                    case .packageStatus: return packageRecords.isEmpty
-                    case .testing: return testRecords.isEmpty
-                    case .migration: return migrationRecords.isEmpty
-                    case .cluster: return clusterRecords.isEmpty
-                    }
-                }())
             }
             .padding()
             
@@ -120,7 +83,7 @@ struct DatabaseContentView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .padding(.horizontal)
+            .padding()
             
             if isLoading {
                 ProgressView("Loading records...")
@@ -133,65 +96,74 @@ struct DatabaseContentView: View {
             } else {
                 // Records View with improved loading
                 Group {
-                    switch selectedDataType {
-                    case .ad:
-                        DatabaseADRecordsView(
-                            records: filteredADRecords,
-                            onScrolledNearBottom: {
-                                if !isLoadingMore && hasMoreData {
-                                    Task {
-                                        await loadMoreADRecords()
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        switch selectedDataType {
+                        case .ad:
+                            DatabaseADRecordsView(
+                                records: filteredADRecords,
+                                onScrolledNearBottom: {
+                                    if !isLoadingMore && hasMoreData {
+                                        Task {
+                                            await loadMoreADRecords()
+                                        }
                                     }
                                 }
-                            }
-                        )
-                        .environment(\.refresh, {
-                            Task {
-                                await loadData(resetData: true)
-                            }
-                        })
-                    case .hr:
-                        DatabaseHRRecordsView(records: filteredHRRecords)
+                            )
                             .environment(\.refresh, {
                                 Task {
                                     await loadData(resetData: true)
                                 }
                             })
-                    case .combined:
-                        DatabaseCombinedRecordsView(
-                            records: filteredCombinedRecords
-                        )
-                        .environment(\.refresh, {
-                            Task {
-                                await loadData(resetData: true)
+                            .frame(minWidth: 800)
+                        case .hr:
+                            DatabaseHRRecordsView(records: filteredHRRecords)
+                                .environment(\.refresh, {
+                                    Task {
+                                        await loadData(resetData: true)
+                                    }
+                                })
+                                .frame(minWidth: 800)
+                        case .combined:
+                            DatabaseCombinedRecordsView(
+                                records: filteredCombinedRecords
+                            )
+                            .environment(\.refresh, {
+                                Task {
+                                    await loadData(resetData: true)
+                                }
+                            })
+                            .frame(minWidth: 800)
+                        case .packageStatus:
+                            DatabasePackageRecordsView(records: filteredPackageRecords)
+                                .environment(\.refresh, {
+                                    Task {
+                                        await loadData(resetData: true)
+                                    }
+                                })
+                                .frame(minWidth: 800)
+                        case .testing:
+                            DatabaseTestRecordsView(records: filteredTestRecords)
+                                .environment(\.refresh, {
+                                    Task {
+                                        await loadData(resetData: true)
+                                    }
+                                })
+                                .frame(minWidth: 800)
+                        case .migration:
+                            DatabaseMigrationRecordsView(records: filteredMigrationRecords)
+                                .environment(\.refresh, {
+                                    Task {
+                                        await loadData(resetData: true)
+                                    }
+                                })
+                                .frame(minWidth: 800)
+                        case .cluster:
+                            DatabaseClusterRecordsView(records: filteredClusterRecords) {
+                                Task {
+                                    await loadData(resetData: false)
+                                }
                             }
-                        })
-                    case .packageStatus:
-                        DatabasePackageRecordsView(records: filteredPackageRecords)
-                            .environment(\.refresh, {
-                                Task {
-                                    await loadData(resetData: true)
-                                }
-                            })
-                    case .testing:
-                        DatabaseTestRecordsView(records: filteredTestRecords)
-                            .environment(\.refresh, {
-                                Task {
-                                    await loadData(resetData: true)
-                                }
-                            })
-                    case .migration:
-                        DatabaseMigrationRecordsView(records: filteredMigrationRecords)
-                            .environment(\.refresh, {
-                                Task {
-                                    await loadData(resetData: true)
-                                }
-                            })
-                    case .cluster:
-                        DatabaseClusterRecordsView(records: filteredClusterRecords) {
-                            Task {
-                                await loadData(resetData: false)
-                            }
+                            .frame(minWidth: 800)
                         }
                     }
                 }
@@ -241,13 +213,6 @@ struct DatabaseContentView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Are you sure you want to clear all records? This action cannot be undone.")
-        }
-        .alert(isPresented: $showingAlert) {
-            Alert(
-                title: Text(alertTitle),
-                message: Text(alertMessage),
-                dismissButton: .default(Text("OK"))
-            )
         }
     }
     
@@ -338,9 +303,9 @@ struct DatabaseContentView: View {
         }
         return clusterRecords.filter { record in
             record.department.localizedCaseInsensitiveContains(searchText) ||
-            record.departmentSimple.localizedCaseInsensitiveContains(searchText) ||
-            record.domain.localizedCaseInsensitiveContains(searchText) ||
-            record.migrationCluster.localizedCaseInsensitiveContains(searchText)
+            (record.departmentSimple ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.domain ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.migrationCluster ?? "").localizedCaseInsensitiveContains(searchText)
         }
     }
     
@@ -801,7 +766,6 @@ struct DatabaseCombinedRecordsView: View {
                         Text("ID")
                             .frame(width: 80, alignment: .leading)
                             .padding(.leading, 16)
-                            .font(.system(size: 11))
                         
                         // AD Data Section
                         Group {
@@ -809,9 +773,9 @@ struct DatabaseCombinedRecordsView: View {
                                 .frame(width: 150, alignment: .leading)
                             Text("System Account")
                                 .frame(width: 150, alignment: .leading)
-                            Text("Application")
+                            Text("Application Name")
                                 .frame(width: 150, alignment: .leading)
-                            Text("Suite")
+                            Text("Application Suite")
                                 .frame(width: 150, alignment: .leading)
                             Text("OTAP")
                                 .frame(width: 80, alignment: .leading)
@@ -830,29 +794,31 @@ struct DatabaseCombinedRecordsView: View {
                             Text("Division")
                                 .frame(width: 150, alignment: .leading)
                             Text("Leave Date")
-                                .frame(width: 100, alignment: .leading)
+                                .frame(width: 150, alignment: .leading)
                             Text("Department Simple")
                                 .frame(width: 150, alignment: .leading)
+                            Text("Domain")
+                                .frame(width: 150, alignment: .leading)
                         }
-                        .font(.system(size: 11))
-                        .background(Color.green.opacity(0.1))
+                        .font(.system(size: 11, weight: .bold))
+                        .background(Color.green.opacity(0.05))
                         
-                        // Package Tracking Section
+                        // Package Status Section
                         Group {
                             Text("Package Status")
-                                .frame(width: 120, alignment: .leading)
-                            Text("Package Ready Date")
-                                .frame(width: 120, alignment: .leading)
+                                .frame(width: 150, alignment: .leading)
+                            Text("Package Readiness Date")
+                                .frame(width: 200, alignment: .leading)
                         }
                         .font(.system(size: 11))
                         .background(Color.orange.opacity(0.1))
                         
-                        // Test Tracking Section
+                        // Test Status Section
                         Group {
                             Text("Test Status")
-                                .frame(width: 120, alignment: .leading)
-                            Text("Test Ready Date")
-                                .frame(width: 120, alignment: .leading)
+                                .frame(width: 150, alignment: .leading)
+                            Text("Test Readiness Date")
+                                .frame(width: 200, alignment: .leading)
                         }
                         .font(.system(size: 11))
                         .background(Color.purple.opacity(0.1))
@@ -864,28 +830,30 @@ struct DatabaseCombinedRecordsView: View {
                             Text("Application Suite New")
                                 .frame(width: 150, alignment: .leading)
                             Text("Will Be")
-                                .frame(width: 120, alignment: .leading)
-                            Text("In/Out Scope Division")
                                 .frame(width: 150, alignment: .leading)
+                            Text("In/Out Scope Division")
+                                .frame(width: 200, alignment: .leading)
                             Text("Migration Platform")
                                 .frame(width: 150, alignment: .leading)
                             Text("Migration App Readiness")
-                                .frame(width: 150, alignment: .leading)
-                        }
-                        .font(.system(size: 11))
-                        .background(Color.red.opacity(0.1))
-                        
-                        // Department and Migration Section
-                        Group {
-                            Text("Dept Simple")
-                                .frame(width: 120, alignment: .leading)
-                            Text("Migration Cluster")
-                                .frame(width: 120, alignment: .leading)
-                            Text("Migration Readiness")
-                                .frame(width: 120, alignment: .leading)
+                                .frame(width: 200, alignment: .leading)
                         }
                         .font(.system(size: 11))
                         .background(Color.yellow.opacity(0.1))
+                        
+                        // Department and Migration Section
+                        Group {
+                            Text("Department Simple")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Domain")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Migration Cluster")
+                                .frame(width: 150, alignment: .leading)
+                            Text("Migration Readiness")
+                                .frame(width: 150, alignment: .leading)
+                        }
+                        .font(.system(size: 11, weight: .bold))
+                        .background(Color.red.opacity(0.05))
                         
                         // Metadata Section
                         Group {
@@ -938,29 +906,31 @@ struct DatabaseCombinedRecordsView: View {
                                         Text(record.division ?? "N/A")
                                             .frame(width: 150, alignment: .leading)
                                         Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                                            .frame(width: 100, alignment: .leading)
+                                            .frame(width: 150, alignment: .leading)
                                         Text(record.departmentSimple ?? "N/A")
+                                            .frame(width: 150, alignment: .leading)
+                                        Text(record.domain ?? "N/A")
                                             .frame(width: 150, alignment: .leading)
                                     }
                                     .font(.system(size: 11))
                                     .background(Color.green.opacity(0.05))
                                     
-                                    // Package Tracking Section
+                                    // Package Status Section
                                     Group {
                                         Text(record.applicationPackageStatus ?? "N/A")
-                                            .frame(width: 120, alignment: .leading)
+                                            .frame(width: 150, alignment: .leading)
                                         Text(record.applicationPackageReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                                            .frame(width: 120, alignment: .leading)
+                                            .frame(width: 200, alignment: .leading)
                                     }
                                     .font(.system(size: 11))
                                     .background(Color.orange.opacity(0.05))
                                     
-                                    // Test Tracking Section
+                                    // Test Status Section
                                     Group {
                                         Text(record.applicationTestStatus ?? "N/A")
-                                            .frame(width: 120, alignment: .leading)
+                                            .frame(width: 150, alignment: .leading)
                                         Text(record.applicationTestReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                                            .frame(width: 120, alignment: .leading)
+                                            .frame(width: 200, alignment: .leading)
                                     }
                                     .font(.system(size: 11))
                                     .background(Color.purple.opacity(0.05))
@@ -972,28 +942,30 @@ struct DatabaseCombinedRecordsView: View {
                                         Text(record.applicationSuiteNew ?? "N/A")
                                             .frame(width: 150, alignment: .leading)
                                         Text(record.willBe ?? "N/A")
-                                            .frame(width: 120, alignment: .leading)
-                                        Text(record.inScopeOutScopeDivision ?? "N/A")
                                             .frame(width: 150, alignment: .leading)
+                                        Text(record.inScopeOutScopeDivision ?? "N/A")
+                                            .frame(width: 200, alignment: .leading)
                                         Text(record.migrationPlatform ?? "N/A")
                                             .frame(width: 150, alignment: .leading)
                                         Text(record.migrationApplicationReadiness ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
+                                            .frame(width: 200, alignment: .leading)
                                     }
                                     .font(.system(size: 11))
-                                    .background(Color.red.opacity(0.05))
+                                    .background(Color.yellow.opacity(0.05))
                                     
                                     // Department and Migration Section
                                     Group {
                                         Text(record.departmentSimple ?? "N/A")
-                                            .frame(width: 120, alignment: .leading)
+                                            .frame(width: 150, alignment: .leading)
+                                        Text(record.domain ?? "N/A")
+                                            .frame(width: 150, alignment: .leading)
                                         Text(record.migrationCluster ?? "N/A")
-                                            .frame(width: 120, alignment: .leading)
+                                            .frame(width: 150, alignment: .leading)
                                         Text(record.migrationReadiness ?? "N/A")
-                                            .frame(width: 120, alignment: .leading)
+                                            .frame(width: 150, alignment: .leading)
                                     }
                                     .font(.system(size: 11))
-                                    .background(Color.yellow.opacity(0.05))
+                                    .background(Color.red.opacity(0.05))
                                     
                                     // Metadata Section
                                     Group {
@@ -1285,11 +1257,13 @@ struct DatabaseClusterRecordsView: View {
                                 .padding(.leading, 16)
                             Text(record.department)
                                 .frame(width: 200, alignment: .leading)
-                            Text(record.departmentSimple)
+                            Text(record.departmentSimple ?? "")
                                 .frame(width: 200, alignment: .leading)
-                            Text(record.domain)
+                            Text(record.domain ?? "")
                                 .frame(width: 150, alignment: .leading)
-                            Text(record.migrationCluster)
+                            Text(record.migrationCluster ?? "")
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.migrationClusterReadiness ?? "")
                                 .frame(width: 200, alignment: .leading)
                             Text(dateFormatter.string(from: record.importDate))
                                 .frame(width: 200, alignment: .leading)

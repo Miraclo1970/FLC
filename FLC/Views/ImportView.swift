@@ -1743,12 +1743,11 @@ struct ImportView: View {
         
         var validRecords: [ClusterData] = []
         var invalidRecords: [String] = []
-        var duplicateRecords: [String] = []
-        var seenDepartments = Set<String>()
+        let duplicateRecords: [String] = []
         
         var processedValidRows = 0
         var processedInvalidRows = 0
-        var processedDuplicateRows = 0
+        let processedDuplicateRows = 0
         
         for (index, row) in dataRows.enumerated() {
             if index % 50 == 0 {
@@ -1790,24 +1789,30 @@ struct ImportView: View {
                 }
             }
             
-            let department = columnMap["Department"].map { fullRowContent[$0] } ?? "N/A"
-            let departmentSimple = columnMap["Department Simple"].map { fullRowContent[$0] } ?? "N/A"
-            let domain = columnMap["Domain"].map { fullRowContent[$0] } ?? "N/A"
-            let migrationCluster = columnMap["Migration Cluster"].map { fullRowContent[$0] } ?? "N/A"
+            let department = columnMap["Department"].map { fullRowContent[$0] } ?? ""
+            let departmentSimple = columnMap["Department Simple"].map { fullRowContent[$0] } ?? ""
+            let domain = columnMap["Domain"].map { fullRowContent[$0] } ?? ""
+            let migrationCluster = columnMap["Migration Cluster"].map { fullRowContent[$0] } ?? ""
+            let migrationClusterReadiness = columnMap["Migration Cluster Readiness"].map { fullRowContent[$0] } ?? ""
             
+            // Skip empty rows
+            if department.isEmpty || department == "N/A" {
+                continue
+            }
+            
+            // Create and validate the record
             let record = ClusterData(
                 department: department,
                 departmentSimple: departmentSimple,
                 domain: domain,
-                migrationCluster: migrationCluster
+                migrationCluster: migrationCluster,
+                migrationClusterReadiness: migrationClusterReadiness
             )
             
             if record.isValid {
-                if seenDepartments.contains(department) {
-                    duplicateRecords.append("Row \(index + 1): Duplicate Department '\(department)'")
-                    processedDuplicateRows += 1
-                } else {
-                    seenDepartments.insert(department)
+                // Only validate that the department exists in HR records
+                let normalizedDepartment = department.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !normalizedDepartment.isEmpty {
                     validRecords.append(record)
                     processedValidRows += 1
                 }

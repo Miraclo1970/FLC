@@ -36,6 +36,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
     
     // Department and Migration fields
     var departmentSimple: String?
+    var domain: String?
     var migrationCluster: String?
     var migrationReadiness: String?
     
@@ -75,6 +76,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         case migrationApplicationReadiness
         // Department and Migration fields
         case departmentSimple
+        case domain
         case migrationCluster
         case migrationReadiness
         // Metadata
@@ -112,6 +114,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         static let migrationApplicationReadiness = Column("migrationApplicationReadiness")
         // Department and Migration fields
         static let departmentSimple = Column("departmentSimple")
+        static let domain = Column("domain")
         static let migrationCluster = Column("migrationCluster")
         static let migrationReadiness = Column("migrationReadiness")
         // Metadata
@@ -149,6 +152,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         container[Columns.migrationApplicationReadiness] = migrationApplicationReadiness
         // Department and Migration fields
         container[Columns.departmentSimple] = departmentSimple
+        container[Columns.domain] = domain
         container[Columns.migrationCluster] = migrationCluster
         container[Columns.migrationReadiness] = migrationReadiness
         // Metadata
@@ -175,6 +179,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         case CodingKeys.migrationPlatform: return "migrationPlatform"
         case CodingKeys.migrationApplicationReadiness: return "migrationApplicationReadiness"
         case CodingKeys.departmentSimple: return "departmentSimple"
+        case CodingKeys.domain: return "domain"
         case CodingKeys.migrationCluster: return "migrationCluster"
         case CodingKeys.migrationReadiness: return "migrationReadiness"
         case CodingKeys.importDate: return "importDate"
@@ -205,6 +210,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
          migrationPlatform: String?,
          migrationApplicationReadiness: String?,
          departmentSimple: String?,
+         domain: String?,
          migrationCluster: String?,
          migrationReadiness: String?,
          importDate: Date,
@@ -231,6 +237,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.migrationPlatform = migrationPlatform
         self.migrationApplicationReadiness = migrationApplicationReadiness
         self.departmentSimple = departmentSimple
+        self.domain = domain
         self.migrationCluster = migrationCluster
         self.migrationReadiness = migrationReadiness
         self.importDate = importDate
@@ -264,6 +271,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         
         // Department and Migration fields (initialized as nil)
         self.departmentSimple = nil
+        self.domain = nil
         self.migrationCluster = nil
         self.migrationReadiness = nil
         

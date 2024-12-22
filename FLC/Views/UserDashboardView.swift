@@ -7,8 +7,8 @@ struct UserDashboardView: View {
     @State private var isEnglish = true
     
     var body: some View {
-        NavigationSplitView {
-            // Sidebar
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            // Sidebar with fixed width
             List(selection: $selectedItem) {
                 NavigationLink(value: "import") {
                     Label(isEnglish ? "Import" : "Importeren", 
@@ -25,42 +25,25 @@ struct UserDashboardView: View {
                           systemImage: "cylinder")
                 }
                 
-                NavigationLink(value: "tasks") {
-                    Label(isEnglish ? "My Tasks" : "Mijn Taken", 
-                          systemImage: "list.bullet")
-                }
-                
-                NavigationLink(value: "messages") {
-                    Label(isEnglish ? "Messages" : "Berichten", 
-                          systemImage: "envelope")
-                }
-                
                 NavigationLink(value: "profile") {
                     Label(isEnglish ? "Profile" : "Profiel", 
                           systemImage: "person.circle")
                 }
+                
+                Divider()
+                
+                Button(action: {
+                    isLoggedIn = false
+                }) {
+                    Label(isEnglish ? "Logout" : "Uitloggen", 
+                          systemImage: "rectangle.portrait.and.arrow.right")
+                }
             }
+            .frame(minWidth: 200, maxWidth: 200)
             .listStyle(SidebarListStyle())
-            .frame(minWidth: 200)
-            .navigationTitle(isEnglish ? "User Dashboard" : "Gebruiker Dashboard")
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button(action: toggleSidebar) {
-                        Image(systemName: "sidebar.left")
-                    }
-                }
-                ToolbarItem(placement: .automatic) {
-                    Button(action: {
-                        isLoggedIn = false
-                    }) {
-                        Label(isEnglish ? "Logout" : "Uitloggen", 
-                              systemImage: "rectangle.portrait.and.arrow.right")
-                            .foregroundColor(.red)
-                    }
-                }
-            }
         } detail: {
-            NavigationStack {
+            // Detail view
+            ZStack {
                 if let selectedItem {
                     switch selectedItem {
                     case "import":
@@ -70,44 +53,10 @@ struct UserDashboardView: View {
                         ValidationView(progress: progress)
                     case "content":
                         DatabaseContentView()
-                    case "tasks":
-                        VStack(spacing: 20) {
-                            Text(isEnglish ? "My Tasks" : "Mijn Taken")
-                                .font(.largeTitle)
-                                .padding(.top)
-                            
-                            DashboardCard(
-                                title: isEnglish ? "Active Tasks" : "Actieve Taken",
-                                value: "3",
-                                icon: "checkmark.circle"
-                            )
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding()
-                    case "messages":
-                        VStack(spacing: 20) {
-                            Text(isEnglish ? "Messages" : "Berichten")
-                                .font(.largeTitle)
-                                .padding(.top)
-                            
-                            DashboardCard(
-                                title: isEnglish ? "Unread Messages" : "Ongelezen Berichten",
-                                value: "2",
-                                icon: "envelope"
-                            )
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding()
                     case "profile":
                         VStack(spacing: 20) {
-                            Text(isEnglish ? "Profile" : "Profiel")
+                            Text(isEnglish ? "User Profile" : "Gebruikersprofiel")
                                 .font(.largeTitle)
-                                .padding(.top)
-                            
-                            Image(systemName: "person.circle.fill")
-                                .resizable()
-                                .frame(width: 100, height: 100)
-                                .foregroundColor(.blue)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding()
@@ -125,6 +74,7 @@ struct UserDashboardView: View {
                 }
             }
         }
+        .navigationSplitViewStyle(.automatic)
         .frame(minWidth: 800, minHeight: 600)
         .onChange(of: progress.validRecords.count) { oldValue, newValue in
             if newValue > 0 {
@@ -136,15 +86,26 @@ struct UserDashboardView: View {
                 selectedItem = "validation"
             }
         }
+        .onChange(of: progress.validPackageRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
         .onChange(of: progress.validMigrationRecords.count) { oldValue, newValue in
             if newValue > 0 {
                 selectedItem = "validation"
             }
         }
-    }
-    
-    private func toggleSidebar() {
-        NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)), with: nil)
+        .onChange(of: progress.validTestRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
+        .onChange(of: progress.validClusterRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
     }
 }
 
