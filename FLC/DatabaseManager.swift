@@ -131,9 +131,9 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
     }
 }
 
-class DatabaseManager {
+class DatabaseManager: ObservableObject {
     public static let shared: DatabaseManager = DatabaseManager()
-    private var dbPool: DatabasePool?
+    @Published private var dbPool: DatabasePool?
     private let currentVersion = 7  // Increment version to force schema update
     
     private init() {

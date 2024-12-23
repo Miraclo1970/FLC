@@ -17,6 +17,7 @@ struct FLCApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(DatabaseManager.shared)
         }
     }
 }

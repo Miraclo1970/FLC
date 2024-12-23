@@ -7,8 +7,7 @@ struct AdminDashboardView: View {
     @State private var isEnglish = true
     
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            // Sidebar with fixed width
+        NavigationSplitView {
             List(selection: $selectedItem) {
                 NavigationLink(value: "import") {
                     Label("Import", systemImage: "square.and.arrow.down")
@@ -26,8 +25,18 @@ struct AdminDashboardView: View {
                     Label("Query", systemImage: "magnifyingglass")
                 }
                 
-                NavigationLink(value: "reports") {
-                    Label("Reports", systemImage: "chart.bar.doc.horizontal")
+                Section("Analysis") {
+                    NavigationLink(value: "reports") {
+                        Label("Reports", systemImage: "chart.bar.doc.horizontal")
+                    }
+                    
+                    NavigationLink(value: "division-overview") {
+                        Label("Division Overview", systemImage: "rectangle.3.group")
+                    }
+                    
+                    NavigationLink(value: "export") {
+                        Label("Export", systemImage: "square.and.arrow.down.on.square")
+                    }
                 }
                 
                 Divider()
@@ -48,8 +57,7 @@ struct AdminDashboardView: View {
                     Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
                 }
             }
-            .frame(minWidth: 200, maxWidth: 200)
-            .listStyle(SidebarListStyle())
+            .navigationSplitViewColumnWidth(min: 200, ideal: 200)
         } detail: {
             // Detail view
             if let selectedItem {
@@ -64,17 +72,21 @@ struct AdminDashboardView: View {
                 case "query":
                     QueryView()
                 case "reports":
-                    Text("Reports")
+                    ReportsView()
+                case "division-overview":
+                    DivisionOverviewView()
+                case "export":
+                    ExportView()
                 case "admin":
                     AdminStuffView()
                 case "dbtest":
                     TestDataGeneratorView()
                 default:
-                    Text("Select an option from the sidebar")
+                    Text("Select an item from the sidebar")
                 }
             } else {
                 VStack {
-                    Text("Select an option from the sidebar")
+                    Text("Select an item from the sidebar")
                         .font(.title)
                         .foregroundColor(.gray)
                 }
@@ -82,7 +94,7 @@ struct AdminDashboardView: View {
                 .background(Color(NSColor.windowBackgroundColor))
             }
         }
-        .navigationSplitViewStyle(.automatic)
+        .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 800, minHeight: 600)
         .onChange(of: progress.validRecords.count) { oldValue, newValue in
             if newValue > 0 {
