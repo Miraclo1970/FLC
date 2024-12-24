@@ -19,6 +19,20 @@ struct DivisionOverviewView: View {
         return formatter
     }()
     
+    // Computed properties for aggregated data
+    private var departmentData: [(String, Int)] {
+        let today = Date()
+        let grouped = Dictionary(grouping: records.filter { record in 
+            record.otap == "P" &&
+            (record.leaveDate == nil || record.leaveDate! > today)
+        }) { $0.departmentSimple ?? "Unknown" }
+        return grouped.map { department, departmentRecords in
+            // Get unique applications for this department
+            let uniqueApps = Set(departmentRecords.map { $0.applicationName })
+            return (department, uniqueApps.count)
+        }.sorted { $0.0 < $1.0 }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             if isLoading {
@@ -74,9 +88,24 @@ struct DivisionTabView: View {
     let division: String
     let records: [CombinedRecord]
     
-    // Group records by domain
+    // Filter for production records only
+    private var productionRecords: [CombinedRecord] {
+        let today = Date()
+        return records.filter { record in
+            record.otap == "P" &&
+            (record.leaveDate == nil || record.leaveDate! > today)
+        }
+    }
+    
+    // Group records by domain (production only)
     private var recordsByDomain: [String: [CombinedRecord]] {
-        Dictionary(grouping: records) { $0.domain ?? "Unknown" }
+        Dictionary(grouping: productionRecords) { $0.domain ?? "Unknown" }
+    }
+    
+    // Count total unique users in the division (production only)
+    private var totalUniqueUsers: Int {
+        let uniqueAccounts = Set(productionRecords.map { $0.systemAccount })
+        return uniqueAccounts.count
     }
     
     var body: some View {
@@ -85,7 +114,8 @@ struct DivisionTabView: View {
                 // Header information
                 HStack(spacing: 20) {
                     InfoCard(title: "Division", value: division)
-                    InfoCard(title: "Department", value: "\(Set(records.compactMap { $0.departmentSimple }).count)")
+                    InfoCard(title: "Department", value: "\(Set(productionRecords.compactMap { $0.departmentSimple }).count)")
+                    InfoCard(title: "Total Users", value: "\(totalUniqueUsers)")
                     InfoCard(title: "OTAP", value: "P")
                 }
                 
@@ -112,103 +142,96 @@ struct DomainSection: View {
     let domain: String
     let records: [CombinedRecord]
     
-    // Computed properties for aggregated data
+    // Computed property for department data
     private var departmentData: [(String, Int)] {
-        let grouped = Dictionary(grouping: records) { $0.departmentSimple ?? "Unknown" }
-        return grouped.map { department, departmentRecords in
-            // Get unique applications for this department
-            let uniqueApps = Set(departmentRecords.map { $0.applicationName })
-            return (department, uniqueApps.count)
+        let today = Date()
+        let departments = Set(records.filter { record in
+            record.otap == "P" &&
+            (record.leaveDate == nil || record.leaveDate! > today)
+        }.compactMap { $0.departmentSimple })
+        
+        return departments.map { department in
+            let count = applicationCount(for: department)
+            return (department, count)
         }.sorted { $0.0 < $1.0 }
     }
     
+    // Helper function to get active production records for a department
+    private func activeProductionRecords(for department: String) -> [CombinedRecord] {
+        let today = Date()
+        return records.filter { record in
+            record.otap == "P" &&
+            record.departmentSimple == department &&
+            (record.leaveDate == nil || record.leaveDate! > today)
+        }
+    }
+    
+    private func uniqueUserCount(for department: String) -> Int {
+        let departmentRecords = activeProductionRecords(for: department)
+        let uniqueAccounts = Set(departmentRecords.map { $0.systemAccount })
+        return uniqueAccounts.count
+    }
+    
     private func applicationCount(for department: String) -> Int {
-        // Get all records for this department
-        let departmentRecords = records.filter { $0.departmentSimple == department }
-        // Get unique application names
+        let departmentRecords = activeProductionRecords(for: department)
         let uniqueApps = Set(departmentRecords.map { $0.applicationName })
         return uniqueApps.count
     }
     
     private func packageStatusCount(for department: String) -> Int {
-        // Get all records for this department
-        let departmentRecords = records.filter { $0.departmentSimple == department }
-        
-        // Get applications that have a package status (not ready for testing)
+        let departmentRecords = activeProductionRecords(for: department)
         let appsWithStatus = departmentRecords.filter { record in
             record.applicationPackageStatus != nil &&
             record.applicationPackageStatus != "Ready for Testing"
         }
-        
-        // Get unique application names from filtered records
         let uniqueAppsWithStatus = Set(appsWithStatus.map { $0.applicationName })
         return uniqueAppsWithStatus.count
     }
     
     private func readyForTestingCount(for department: String) -> Int {
-        // Get all records for this department
-        let departmentRecords = records.filter { $0.departmentSimple == department }
-        
-        // Get applications that are ready for testing
+        let departmentRecords = activeProductionRecords(for: department)
         let appsReadyForTesting = departmentRecords.filter { record in
             record.applicationPackageStatus == "Ready for Testing"
         }
-        
-        // Get unique application names from filtered records
         let uniqueAppsReady = Set(appsReadyForTesting.map { $0.applicationName })
         return uniqueAppsReady.count
     }
     
     private func testingStatusCount(for department: String) -> Int {
-        // Get all records for this department
-        let departmentRecords = records.filter { $0.departmentSimple == department }
-        
-        // Get applications that have a testing status (not ready for migration)
+        let departmentRecords = activeProductionRecords(for: department)
         let appsInTesting = departmentRecords.filter { record in
             record.applicationTestStatus != nil &&
             record.applicationTestStatus != "Ready for Migration"
         }
-        
-        // Get unique application names from filtered records
         let uniqueAppsInTesting = Set(appsInTesting.map { $0.applicationName })
         return uniqueAppsInTesting.count
     }
     
     private func readyForMigrationCount(for department: String) -> Int {
-        // Get all records for this department
-        let departmentRecords = records.filter { $0.departmentSimple == department }
-        
-        // Get applications that are ready for migration
+        let departmentRecords = activeProductionRecords(for: department)
         let appsReadyForMigration = departmentRecords.filter { record in
             record.applicationTestStatus == "Ready for Migration"
         }
-        
-        // Get unique application names from filtered records
         let uniqueAppsReady = Set(appsReadyForMigration.map { $0.applicationName })
         return uniqueAppsReady.count
     }
     
     private func clusterInfo(for department: String) -> String {
-        if let record = records.first(where: { $0.departmentSimple == department }) {
+        if let record = activeProductionRecords(for: department).first {
             return record.migrationCluster ?? "N/A"
         }
         return "N/A"
     }
     
     private func clusterReadinessPercentage(for department: String) -> Double {
-        // Get all records for this department
-        let departmentRecords = records.filter { $0.departmentSimple == department }
-        
-        // Get all unique applications for this department
+        let departmentRecords = activeProductionRecords(for: department)
         let uniqueApps = Set(departmentRecords.map { $0.applicationName })
         guard !uniqueApps.isEmpty else { return 0.0 }
         
-        // Get unique applications that are ready
         let readyApps = Set(departmentRecords.filter { record in
             record.migrationReadiness == "Ready"
         }.map { $0.applicationName })
         
-        // Calculate percentage
         return Double(readyApps.count) / Double(uniqueApps.count) * 100.0
     }
     
@@ -223,6 +246,7 @@ struct DomainSection: View {
                     // Header row
                     HStack(spacing: 0) {
                         HeaderCell("Department Simple", isWide: true)
+                        HeaderCell("Users")
                         HeaderCell("Applications")
                         HeaderCell("Package Status")
                         HeaderCell("Ready for Testing")
@@ -236,6 +260,7 @@ struct DomainSection: View {
                     ForEach(departmentData, id: \.0) { department, _ in
                         HStack(spacing: 0) {
                             DataCell(department, isWide: true)
+                            DataCell("\(uniqueUserCount(for: department))")
                             DataCell("\(applicationCount(for: department))")
                             DataCell("\(packageStatusCount(for: department))")
                             DataCell("\(readyForTestingCount(for: department))")
