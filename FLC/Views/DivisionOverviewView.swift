@@ -257,7 +257,8 @@ struct DomainSection: View {
                     }
                     
                     // Data rows
-                    ForEach(departmentData, id: \.0) { department, _ in
+                    ForEach(Array(departmentData.enumerated()), id: \.1.0) { index, data in
+                        let (department, _) = data
                         HStack(spacing: 0) {
                             DataCell(department, isWide: true)
                             DataCell("\(uniqueUserCount(for: department))")
@@ -269,14 +270,13 @@ struct DomainSection: View {
                             DataCell(clusterInfo(for: department))
                             ProgressCell(value: clusterReadinessPercentage(for: department))
                         }
-                        .background(Color.white.opacity(0.05))
+                        .background(index % 2 == 0 ? Color.white.opacity(0.05) : Color.blue.opacity(0.02))
                     }
                 }
             }
         }
-        .background(RoundedRectangle(cornerRadius: 8)
-            .fill(Color.secondary.opacity(0.1)))
-        .padding(.vertical, 5)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
     }
 }
 
@@ -284,11 +284,23 @@ struct ProgressCell: View {
     let value: Double
     
     var body: some View {
-        HStack {
-            ProgressView(value: value, total: 100)
-                .progressViewStyle(.linear)
+        HStack(spacing: 4) {
+            ZStack(alignment: .leading) {
+                // Background track
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: 80, height: 6)
+                
+                // Progress dot
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: 6, height: 6)
+                    .offset(x: (value / 100.0) * 74)  // 80 - dot size = 74
+            }
+            
             Text(String(format: "%.0f%%", value))
                 .font(.system(size: 11))
+                .frame(width: 30, alignment: .trailing)
         }
         .frame(width: 120, alignment: .leading)
         .padding(.horizontal, 8)
@@ -311,7 +323,7 @@ struct HeaderCell: View {
             .frame(width: isWide ? 300 : 120, alignment: .leading)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.blue.opacity(0.1))
+            .background(Color.blue.opacity(0.05))
     }
 }
 

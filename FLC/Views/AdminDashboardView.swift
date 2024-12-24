@@ -26,16 +26,16 @@ struct AdminDashboardView: View {
                 }
                 
                 Section("Analysis") {
-                    NavigationLink(value: "reports") {
-                        Label("Reports", systemImage: "chart.bar.doc.horizontal")
+                    NavigationLink(value: "department-progress") {
+                        Label("Department Progress", systemImage: "building.2.fill")
                     }
                     
                     NavigationLink(value: "division-overview") {
                         Label("Division Overview", systemImage: "rectangle.3.group")
                     }
                     
-                    NavigationLink(value: "export") {
-                        Label("Export", systemImage: "square.and.arrow.down.on.square")
+                    NavigationLink(value: "migration-progress") {
+                        Label("Migration Progress", systemImage: "chart.bar.fill")
                     }
                 }
                 
@@ -43,6 +43,10 @@ struct AdminDashboardView: View {
                 
                 NavigationLink(value: "admin") {
                     Label("Admin", systemImage: "gear")
+                }
+                
+                NavigationLink(value: "export") {
+                    Label("Export", systemImage: "square.and.arrow.down.on.square")
                 }
                 
                 NavigationLink(value: "dbtest") {
@@ -71,10 +75,12 @@ struct AdminDashboardView: View {
                     DatabaseContentView()
                 case "query":
                     QueryView()
-                case "reports":
-                    ReportsView()
+                case "department-progress":
+                    DepartmentProgressView()
                 case "division-overview":
                     DivisionOverviewView()
+                case "migration-progress":
+                    MigrationOverallProgressView()
                 case "export":
                     ExportView()
                 case "admin":
@@ -91,6 +97,13 @@ struct AdminDashboardView: View {
                         .foregroundColor(.gray)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(
+                    Image("falc_logo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 400)
+                        .opacity(0.1)
+                )
                 .background(Color(NSColor.windowBackgroundColor))
             }
         }

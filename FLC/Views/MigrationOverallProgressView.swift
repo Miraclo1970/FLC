@@ -89,13 +89,20 @@ struct MigrationOverallProgressView: View {
                 // Header
                 HStack {
                     Text("Migration Overall Progress")
-                        .font(.headline)
-                    Spacer()
+                        .font(.system(size: 16, weight: .bold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    
                     Text("OTAP: P")
-                        .font(.subheadline)
-                    Spacer()
-                    Text("Year: \(currentYear)    Week: \(currentWeek)    Date: \(currentDate, formatter: dateFormatter)")
-                        .font(.subheadline)
+                        .font(.system(size: 14))
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    
+                    HStack(spacing: 8) {
+                        Text("Year: \(currentYear)")
+                        Text("Week: \(currentWeek)")
+                        Text("Date: \(currentDate, formatter: dateFormatter)")
+                    }
+                    .font(.system(size: 14))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 4)
@@ -157,44 +164,38 @@ struct DivisionProgressSection: View {
             // Package Progress
             ProgressGroup(
                 label: "Package progress",
-                progress: packageProgress,
-                helpText: "Applications with Ready package status"
+                progress: packageProgress
             )
             
             // Testing Progress
             ProgressGroup(
                 label: "Testing progress",
-                progress: testingProgress,
-                helpText: "Applications with Ready testing status"
+                progress: testingProgress
             )
             
             // Migration Progress
             ProgressGroup(
                 label: "Migration progress",
-                progress: migrationProgress,
-                helpText: "Applications with Ready migration status"
+                progress: migrationProgress
             )
             
             // Cluster Readiness Progress
             ProgressGroup(
                 label: "Cluster readiness",
-                progress: clusterReadinessProgress,
-                helpText: "Applications that are Ready in all three areas: Package, Testing, and Migration"
+                progress: clusterReadinessProgress
             )
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 6)
+        .background(RoundedRectangle(cornerRadius: 8)
             .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-            .background(Color.white.opacity(0.5))
-        )
+            .background(Color.white.opacity(0.5)))
     }
 }
 
 struct ProgressGroup: View {
     let label: String
     let progress: Double
-    let helpText: String
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -203,9 +204,18 @@ struct ProgressGroup: View {
                 .foregroundColor(.secondary)
             
             HStack(spacing: 4) {
-                ProgressView(value: progress, total: 100)
-                    .frame(width: 80, height: 6)
-                    .help(helpText)
+                ZStack(alignment: .leading) {
+                    // Background track
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 80, height: 6)
+                    
+                    // Progress dot
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 6, height: 6)
+                        .offset(x: (progress / 100.0) * 74)  // 80 - dot size = 74
+                }
                 
                 Text(String(format: "%.0f%%", progress))
                     .font(.system(size: 11))
@@ -213,4 +223,9 @@ struct ProgressGroup: View {
             }
         }
     }
+}
+
+#Preview {
+    MigrationOverallProgressView()
+        .environmentObject(DatabaseManager.shared)
 } 
