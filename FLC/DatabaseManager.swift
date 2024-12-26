@@ -134,43 +134,47 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
 class DatabaseManager: ObservableObject {
     public static let shared: DatabaseManager = DatabaseManager()
     @Published private var dbPool: DatabasePool?
-    private let currentVersion = 8  // Increment version to force schema update
+    private let currentVersion = 4  // Increment this to force schema update
+    private let versionKey = "database_version"
     
     private init() {
         do {
-            try setupDatabase()
+            let fileManager = FileManager.default
+            let appSupportURL = try fileManager.url(for: .applicationSupportDirectory,
+                                                  in: .userDomainMask,
+                                                  appropriateFor: nil,
+                                                  create: true)
+            let dbFolderURL = appSupportURL.appendingPathComponent("FLC", isDirectory: true)
+            try fileManager.createDirectory(at: dbFolderURL, withIntermediateDirectories: true)
+            
+            let dbURL = dbFolderURL.appendingPathComponent("database.sqlite")
+            print("Database path: \(dbURL.path)")
+            
+            // Check if we need to delete the existing database due to version mismatch
+            let defaults = UserDefaults.standard
+            let savedVersion = defaults.integer(forKey: versionKey)
+            if savedVersion < currentVersion {
+                try? fileManager.removeItem(at: dbURL)
+                defaults.set(currentVersion, forKey: versionKey)
+            }
+            
+            dbPool = try DatabasePool(path: dbURL.path)
+            try createTables()
         } catch {
-            print("Critical error during database initialization: \(error)")
+            print("Database initialization error: \(error)")
         }
     }
     
-    private func setupDatabase() throws {
-        // Get the Application Support directory
-        guard let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find Application Support directory"])
-        }
-        print("Application Support directory: \(appSupportDir.path)")
-        
-        // Create FLC directory if it doesn't exist
-        let flcDir = appSupportDir.appendingPathComponent("FLC")
-        print("FLC directory path: \(flcDir.path)")
-        try? FileManager.default.createDirectory(at: flcDir, withIntermediateDirectories: true)
-        
-        // Set up database path
-        let dbPath = flcDir.appendingPathComponent("database.sqlite").path
-        print("Database path: \(dbPath)")
-        print("Checking if database exists: \(FileManager.default.fileExists(atPath: dbPath))")
-        
-        // Create or open database
-        dbPool = try DatabasePool(path: dbPath)
-        print("Database pool created successfully")
-        
+    private func createTables() throws {
         guard let dbPool = dbPool else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
         }
         
         try dbPool.write { db in
             print("Starting database setup...")
+            
+            // Drop test_records table to force recreation
+            try? db.drop(table: "test_records")
             
             // Create users table if it doesn't exist
             try db.create(table: "users", ifNotExists: true) { t in
@@ -229,6 +233,8 @@ class DatabaseManager: ObservableObject {
                 // Test tracking fields
                 t.column("applicationTestStatus", .text)
                 t.column("applicationTestReadinessDate", .datetime)
+                t.column("testResult", .text)
+                t.column("testingPlanDate", .datetime)
                 // Migration fields
                 t.column("applicationNew", .text)
                 t.column("applicationSuiteNew", .text)
@@ -265,9 +271,9 @@ class DatabaseManager: ObservableObject {
                 t.autoIncrementedPrimaryKey("id")
                 t.column("applicationName", .text).notNull()
                 t.column("testStatus", .text).notNull()
-                t.column("testDate", .datetime).notNull()
+                t.column("testDate", .datetime)
                 t.column("testResult", .text).notNull()
-                t.column("testingPlanDate", .text)
+                t.column("testingPlanDate", .datetime)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
                 // Create a unique index on applicationName
@@ -573,95 +579,78 @@ class DatabaseManager: ObservableObject {
     // Generate combined records from AD and HR data
     func generateCombinedRecords() async throws -> Int {
         try await performDatabaseOperation("Generate Combined Records", write: true) { db in
-            // Fetch all records
+            // Get all AD records
             let adRecords = try ADRecord.fetchAll(db)
+            print("Processing \(adRecords.count) AD records")
+            
+            // Get all HR records for lookup
             let hrRecords = try HRRecord.fetchAll(db)
+            print("Found \(hrRecords.count) HR records for matching")
+            
+            // Create a dictionary for faster HR record lookup
+            let hrLookup = Dictionary(uniqueKeysWithValues: hrRecords.map { ($0.systemAccount, $0) })
+            
+            // Get existing package status records for lookup
             let packageRecords = try PackageRecord.fetchAll(db)
+            let packageLookup = Dictionary(uniqueKeysWithValues: packageRecords.map { ($0.applicationName, $0) })
+            
+            // Get existing test records for lookup
             let testRecords = try TestRecord.fetchAll(db)
+            let testLookup = Dictionary(uniqueKeysWithValues: testRecords.map { ($0.applicationName, $0) })
+            
+            // Get existing migration records for lookup
             let migrationRecords = try MigrationRecord.fetchAll(db)
-            let clusterRecords = try ClusterRecord.fetchAll(db)
+            let migrationLookup = Dictionary(uniqueKeysWithValues: migrationRecords.map { ($0.applicationName, $0) })
             
-            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, \(testRecords.count) test records, \(migrationRecords.count) migration records, and \(clusterRecords.count) cluster records")
-            
-            // Create dictionaries for faster lookup
-            let hrBySystemAccount = Dictionary(
-                uniqueKeysWithValues: hrRecords.map { ($0.systemAccount, $0) }
-            )
-            let packageByAppName = Dictionary(
-                uniqueKeysWithValues: packageRecords.map { ($0.applicationName, $0) }
-            )
-            let testByAppName = Dictionary(
-                uniqueKeysWithValues: testRecords.map { ($0.applicationName, $0) }
-            )
-            let migrationByAppName = Dictionary(
-                uniqueKeysWithValues: migrationRecords.map { ($0.applicationName, $0) }
-            )
-            let clusterByDepartment = Dictionary(
-                uniqueKeysWithValues: clusterRecords.map { ($0.department, $0) }
-            )
-            
+            // Process in batches of 100
+            let batchSize = 100
             var combinedCount = 0
             
-            // Process AD records to create or update Combined records
-            for adRecord in adRecords {
-                // Find matching records
-                let hrRecord = hrBySystemAccount[adRecord.systemAccount]
-                let packageRecord = packageByAppName[adRecord.applicationName]
-                let testRecord = testByAppName[adRecord.applicationName]
-                let migrationRecord = migrationByAppName[adRecord.applicationName]
-                let clusterRecord = hrRecord.flatMap { clusterByDepartment[$0.department ?? ""] }
+            for batchStart in stride(from: 0, to: adRecords.count, by: batchSize) {
+                // Check for cancellation at the start of each batch
+                try Task.checkCancellation()
                 
-                // Try to find existing record by adGroup and systemAccount
-                let existingRecord = try CombinedRecord
-                    .filter(Column("adGroup") == adRecord.adGroup)
-                    .filter(Column("systemAccount") == adRecord.systemAccount)
-                    .fetchOne(db)
+                let batchEnd = min(batchStart + batchSize, adRecords.count)
+                let batch = Array(adRecords[batchStart..<batchEnd])
                 
-                // Create combined record preserving existing data where possible
-                let combinedRecord = CombinedRecord(
-                    id: existingRecord?.id,
-                    adGroup: adRecord.adGroup,
-                    systemAccount: adRecord.systemAccount,
-                    applicationName: adRecord.applicationName,
-                    applicationSuite: adRecord.applicationSuite,
-                    otap: adRecord.otap,
-                    critical: adRecord.critical,
-                    department: hrRecord?.department,
-                    jobRole: hrRecord?.jobRole,
-                    division: hrRecord?.division,
-                    leaveDate: hrRecord?.leaveDate,
-                    applicationPackageStatus: packageRecord?.packageStatus ?? existingRecord?.applicationPackageStatus,
-                    applicationPackageReadinessDate: packageRecord?.packageReadinessDate ?? existingRecord?.applicationPackageReadinessDate,
-                    applicationTestStatus: testRecord?.testStatus ?? existingRecord?.applicationTestStatus,
-                    applicationTestReadinessDate: testRecord?.testDate ?? existingRecord?.applicationTestReadinessDate,
-                    applicationNew: migrationRecord?.applicationNew ?? existingRecord?.applicationNew,
-                    applicationSuiteNew: migrationRecord?.applicationSuiteNew ?? existingRecord?.applicationSuiteNew,
-                    willBe: migrationRecord?.willBe ?? existingRecord?.willBe,
-                    inScopeOutScopeDivision: migrationRecord?.inScopeOutScopeDivision ?? existingRecord?.inScopeOutScopeDivision,
-                    migrationPlatform: migrationRecord?.migrationPlatform ?? existingRecord?.migrationPlatform,
-                    migrationApplicationReadiness: migrationRecord?.migrationApplicationReadiness ?? existingRecord?.migrationApplicationReadiness,
-                    departmentSimple: hrRecord?.departmentSimple ?? clusterRecord?.departmentSimple ?? existingRecord?.departmentSimple,
-                    domain: clusterRecord?.domain ?? existingRecord?.domain,
-                    migrationCluster: clusterRecord?.migrationCluster ?? existingRecord?.migrationCluster,
-                    migrationReadiness: clusterRecord?.migrationClusterReadiness ?? existingRecord?.migrationReadiness,
-                    importDate: Date(),
-                    importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
-                )
-                
-                if existingRecord != nil {
-                    try combinedRecord.update(db)
-                } else {
-                    try combinedRecord.insert(db)
+                for adRecord in batch {
+                    let hrRecord = hrLookup[adRecord.systemAccount]
+                    let packageRecord = packageLookup[adRecord.applicationName]
+                    let testRecord = testLookup[adRecord.applicationName]
+                    let migrationRecord = migrationLookup[adRecord.applicationName]
+                    
+                    let combinedRecord = CombinedRecord(
+                        adRecord: adRecord,
+                        hrRecord: hrRecord,
+                        packageRecord: packageRecord,
+                        testRecord: testRecord,
+                        migrationRecord: migrationRecord,
+                        importDate: Date(),
+                        importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
+                    )
+                    
+                    // Try to find existing record by adGroup and systemAccount
+                    if let existingRecord = try CombinedRecord
+                        .filter(Column("adGroup") == adRecord.adGroup && Column("systemAccount") == adRecord.systemAccount)
+                        .fetchOne(db) {
+                        // Update existing record
+                        var updatedRecord = combinedRecord
+                        updatedRecord.id = existingRecord.id
+                        try updatedRecord.update(db)
+                    } else {
+                        // Insert new record
+                        try combinedRecord.insert(db)
+                    }
+                    combinedCount += 1
                 }
-                combinedCount += 1
                 
-                // Print progress every 1000 records
+                // Report progress after each batch
                 if combinedCount % 1000 == 0 {
                     print("Processed \(combinedCount) combined records...")
                 }
             }
             
-            print("Generated \(combinedCount) combined records from \(adRecords.count) AD records, \(hrRecords.count) HR records")
+            print("Generated \(combinedCount) combined records")
             return combinedCount
         }
     }
@@ -728,8 +717,8 @@ class DatabaseManager: ObservableObject {
                 mappedColumnName = "testdate"
             case "test_result":
                 mappedColumnName = "testresult"
-            case "test_comments":
-                mappedColumnName = "testcomments"
+            case "testing_plan_date":
+                mappedColumnName = "testingPlanDate"
             default:
                 mappedColumnName = columnName
             }
@@ -1084,6 +1073,7 @@ class DatabaseManager: ObservableObject {
             for record in records {
                 let dbRecord = TestRecord(from: record)
                 print("Processing test record for application: \(dbRecord.applicationName)")
+                print("Test plan date: \(String(describing: record.testingPlanDate))")
                 
                 // Try to find existing record by applicationName only
                 if let existingRecord = try TestRecord
@@ -1100,6 +1090,33 @@ class DatabaseManager: ObservableObject {
                     // Insert new record
                     try dbRecord.insert(db)
                     counts.saved += 1
+                }
+                
+                // Update ALL matching records in combined_records table
+                // This ensures consistency across all instances of the same application
+                try db.execute(
+                    sql: """
+                        UPDATE combined_records
+                        SET applicationTestStatus = ?,
+                            applicationTestReadinessDate = ?,
+                            testingPlanDate = ?
+                        WHERE applicationName = ?
+                        """,
+                    arguments: [
+                        record.testStatus,
+                        record.testDate,
+                        record.testingPlanDate,
+                        record.applicationName
+                    ]
+                )
+                
+                // Verify the update
+                if let updatedRecord = try CombinedRecord
+                    .filter(Column("applicationName") == record.applicationName)
+                    .fetchOne(db) {
+                    print("Updated combined record - Application: \(updatedRecord.applicationName)")
+                    print("Test Status: \(updatedRecord.applicationTestStatus ?? "nil")")
+                    print("Test Plan Date: \(String(describing: updatedRecord.testingPlanDate))")
                 }
             }
             
@@ -1120,48 +1137,95 @@ class DatabaseManager: ObservableObject {
     
     // Generate test records from combined records
     func generateTestRecords() async throws -> Int {
-        try await performDatabaseOperation("Generate Test Records", write: true) { db in
+        return try await performDatabaseOperation("Generate Test Records", write: true) { db in
+            // First, clear existing test records
+            try TestRecord.deleteAll(db)
+            
+            // Get all AD records to get valid application names
+            let adApplicationNames = try ADRecord
+                .select(Column("applicationName"))
+                .asRequest(of: String.self)
+                .fetchSet(db)
+            
+            print("Found \(adApplicationNames.count) valid application names from AD records")
+            
             // Get all combined records
             let combinedRecords = try CombinedRecord.fetchAll(db)
             var testCount = 0
             
-            // Fixed date for test records (e.g., January 1, 2024)
-            let fixedDate = DateComponents(calendar: .current, year: 2024, month: 1, day: 1).date!
-            
             print("Found \(combinedRecords.count) combined records to process")
             
-            // Create test records from combined records
+            // Create test records from combined records, but only for valid application names
             for record in combinedRecords {
-                if let testStatus = record.applicationTestStatus {
-                    print("Processing combined record for \(record.applicationName) with status: \(testStatus)")
-                    
-                    let testingData = TestingData(
-                        applicationName: record.applicationName,
-                        testStatus: testStatus,
-                        testDate: record.applicationTestReadinessDate ?? fixedDate,
-                        testResult: "Pending",
-                        testingPlanDate: nil
-                    )
-                    
-                    let testRecord = TestRecord(from: testingData)
-                    
-                    // Try to find existing record
-                    if let existingRecord = try TestRecord
-                        .filter(Column("applicationName") == record.applicationName)
-                        .fetchOne(db) {
-                        print("Updating existing test record for \(record.applicationName)")
-                        var updatedRecord = testRecord
-                        updatedRecord.id = existingRecord.id
-                        try updatedRecord.update(db)
-                    } else {
-                        print("Creating new test record for \(record.applicationName)")
-                        try testRecord.insert(db)
+                // Only process if the application name exists in AD records
+                if adApplicationNames.contains(record.applicationName) {
+                    // Process if either testStatus or testingPlanDate is set
+                    if let testStatus = record.applicationTestStatus {
+                        print("Processing combined record for \(record.applicationName) with status: \(testStatus)")
+                        
+                        let testResult = switch testStatus {
+                            case "Ready": "Not Started"
+                            case "In Progress": "In Progress"
+                            case "Completed": "Passed"
+                            default: "Not Started"
+                        }
+                        
+                        let testingData = TestingData(
+                            applicationName: record.applicationName,
+                            testStatus: testStatus,
+                            testDate: record.applicationTestReadinessDate,
+                            testResult: testResult,
+                            testingPlanDate: record.testingPlanDate
+                        )
+                        
+                        // Create test record
+                        let testRecord = TestRecord(from: testingData)
+                        
+                        // Try to find existing record by applicationName
+                        if let existingRecord = try TestRecord
+                            .filter(Column("applicationName") == record.applicationName)
+                            .fetchOne(db) {
+                            // Update existing record with new data, preserving id
+                            var updatedRecord = testRecord
+                            updatedRecord.id = existingRecord.id
+                            try updatedRecord.update(db)
+                        } else {
+                            // Insert new record
+                            try testRecord.insert(db)
+                        }
+                        testCount += 1
+                    } else if record.testingPlanDate != nil {
+                        print("Processing combined record for \(record.applicationName) with test plan date but no status")
+                        
+                        let testingData = TestingData(
+                            applicationName: record.applicationName,
+                            testStatus: "Not Started",  // Default status for records with only test plan date
+                            testDate: nil,
+                            testResult: "Not Started",
+                            testingPlanDate: record.testingPlanDate
+                        )
+                        
+                        // Create test record
+                        let testRecord = TestRecord(from: testingData)
+                        
+                        // Try to find existing record by applicationName
+                        if let existingRecord = try TestRecord
+                            .filter(Column("applicationName") == record.applicationName)
+                            .fetchOne(db) {
+                            // Update existing record with new data, preserving id
+                            var updatedRecord = testRecord
+                            updatedRecord.id = existingRecord.id
+                            try updatedRecord.update(db)
+                        } else {
+                            // Insert new record
+                            try testRecord.insert(db)
+                        }
+                        testCount += 1
                     }
-                    testCount += 1
                 }
             }
             
-            print("Generated \(testCount) test records from \(combinedRecords.count) combined records")
+            print("Generated \(testCount) test records")
             return testCount
         }
     }
@@ -1289,11 +1353,35 @@ class DatabaseManager: ObservableObject {
         // Close existing connection if any
         dbPool = nil
         
-        // Set up fresh database
-        try setupDatabase()
-        
-        // Ensure initial data is seeded
-        ensureInitialData()
+        do {
+            let fileManager = FileManager.default
+            let appSupportURL = try fileManager.url(for: .applicationSupportDirectory,
+                                                  in: .userDomainMask,
+                                                  appropriateFor: nil,
+                                                  create: true)
+            let dbFolderURL = appSupportURL.appendingPathComponent("FLC", isDirectory: true)
+            try fileManager.createDirectory(at: dbFolderURL, withIntermediateDirectories: true)
+            
+            let dbURL = dbFolderURL.appendingPathComponent("database.sqlite")
+            print("Database path: \(dbURL.path)")
+            
+            // Force recreation by removing the old database
+            try? fileManager.removeItem(at: dbURL)
+            
+            // Reset the version in UserDefaults to force recreation
+            let defaults = UserDefaults.standard
+            defaults.set(0, forKey: versionKey)
+            
+            // Create new database connection
+            dbPool = try DatabasePool(path: dbURL.path)
+            try createTables()
+            
+            // Ensure initial data is seeded
+            ensureInitialData()
+        } catch {
+            print("Database reinitialization error: \(error)")
+            throw error
+        }
     }
     
     // Function to get the database file path

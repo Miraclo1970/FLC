@@ -25,6 +25,8 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
     // Test tracking fields
     var applicationTestStatus: String?
     var applicationTestReadinessDate: Date?
+    var testResult: String?
+    var testingPlanDate: Date?
     
     // Migration fields
     var applicationNew: String?
@@ -67,6 +69,8 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         // Test tracking fields
         case applicationTestStatus
         case applicationTestReadinessDate
+        case testResult
+        case testingPlanDate
         // Migration fields
         case applicationNew
         case applicationSuiteNew
@@ -105,6 +109,8 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         // Test tracking fields
         static let applicationTestStatus = Column("applicationTestStatus")
         static let applicationTestReadinessDate = Column("applicationTestReadinessDate")
+        static let testResult = Column("testResult")
+        static let testingPlanDate = Column("testingPlanDate")
         // Migration fields
         static let applicationNew = Column("applicationNew")
         static let applicationSuiteNew = Column("applicationSuiteNew")
@@ -143,6 +149,8 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         // Test tracking fields
         container[Columns.applicationTestStatus] = applicationTestStatus
         container[Columns.applicationTestReadinessDate] = applicationTestReadinessDate
+        container[Columns.testResult] = testResult
+        container[Columns.testingPlanDate] = testingPlanDate
         // Migration fields
         container[Columns.applicationNew] = applicationNew
         container[Columns.applicationSuiteNew] = applicationSuiteNew
@@ -244,7 +252,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.importSet = importSet
     }
     
-    init(adRecord: ADRecord, hrRecord: HRRecord?) {
+    init(adRecord: ADRecord, hrRecord: HRRecord?, packageRecord: PackageRecord?, testRecord: TestRecord?, migrationRecord: MigrationRecord?, importDate: Date, importSet: String) {
         self.id = nil
         
         // AD fields
@@ -261,24 +269,32 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.division = hrRecord?.division
         self.leaveDate = hrRecord?.leaveDate
         
-        // Package tracking fields (initialized as nil)
-        self.applicationPackageStatus = nil
-        self.applicationPackageReadinessDate = nil
+        // Package tracking fields
+        self.applicationPackageStatus = packageRecord?.packageStatus
+        self.applicationPackageReadinessDate = packageRecord?.packageReadinessDate
         
-        // Test tracking fields (initialized as nil)
-        self.applicationTestStatus = nil
-        self.applicationTestReadinessDate = nil
+        // Test tracking fields
+        self.applicationTestStatus = testRecord?.testStatus
+        self.applicationTestReadinessDate = testRecord?.testDate
+        self.testResult = testRecord?.testResult
+        self.testingPlanDate = testRecord?.testingPlanDate
         
-        // Department and Migration fields (initialized as nil)
-        self.departmentSimple = nil
+        // Migration fields
+        self.applicationNew = migrationRecord?.applicationNew
+        self.applicationSuiteNew = migrationRecord?.applicationSuiteNew
+        self.willBe = migrationRecord?.willBe
+        self.inScopeOutScopeDivision = migrationRecord?.inScopeOutScopeDivision
+        self.migrationPlatform = migrationRecord?.migrationPlatform
+        self.migrationApplicationReadiness = migrationRecord?.migrationApplicationReadiness
+        
+        // Department and Migration fields
+        self.departmentSimple = hrRecord?.departmentSimple
         self.domain = nil
         self.migrationCluster = nil
         self.migrationReadiness = nil
         
         // Metadata
-        self.importDate = Date()
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
-        self.importSet = "Combined_\(dateFormatter.string(from: Date()))"
+        self.importDate = importDate
+        self.importSet = importSet
     }
 } 

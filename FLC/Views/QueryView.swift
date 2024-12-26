@@ -42,7 +42,17 @@ struct QueryView: View {
         
         // Package Status fields
         "Package Status": .text,
-        "Package Readiness Date": .date
+        "Package Readiness Date": .date,
+        
+        // Test fields
+        "Test Status": .text,
+        "Test Date": .date,
+        "Test Result": .text,
+        "Testing Plan Date": .date,
+        
+        // Migration fields
+        "Migration Platform": .text,
+        "Migration Application Readiness": .text
     ]
     
     // Available operators based on field type
@@ -91,7 +101,7 @@ struct QueryView: View {
         case .packageStatus:
             return ["Application Name", "Package Status", "Package Readiness Date"]
         case .testing:
-            return ["Application Name", "Test Status", "Test Date", "Test Result", "Test Comments"]
+            return ["Application Name", "Test Status", "Test Date", "Test Result", "Testing Plan Date"]
         case .migration:
             return ["Application Name", "Application Suite New", "Will Be", "In/Out Scope Division", "Migration Platform", "Migration Application Readiness"]
         case .cluster:
@@ -567,7 +577,7 @@ struct TestResultsTableView: View {
                     .frame(width: 150, alignment: .leading)
                 Text("Test Result")
                     .frame(width: 150, alignment: .leading)
-                Text("Comments")
+                Text("Testing Plan Date")
                     .frame(width: 200, alignment: .leading)
             }
             .padding(.vertical, 4)
@@ -583,13 +593,13 @@ struct TestResultsTableView: View {
                     Text(record.testStatus)
                         .frame(width: 150, alignment: .leading)
                         .lineLimit(1)
-                    Text(DateFormatter.hrDateFormatter.string(from: record.testDate))
+                    Text(record.testDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
                         .frame(width: 150, alignment: .leading)
                         .lineLimit(1)
                     Text(record.testResult)
                         .frame(width: 150, alignment: .leading)
                         .lineLimit(1)
-                    Text(record.testComments ?? "")
+                    Text(record.testingPlanDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
                         .frame(width: 200, alignment: .leading)
                         .lineLimit(1)
                 }

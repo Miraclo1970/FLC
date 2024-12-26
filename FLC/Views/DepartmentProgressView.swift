@@ -309,11 +309,31 @@ struct DepartmentProgressView: View {
     }
     
     private var averageTestingProgress: String {
+        print("Calculating Testing Progress:")
+        departmentApplications.forEach { app in
+            print("App: \(app.name), Status: \(app.testingStatus)")
+        }
+        
         let total = departmentApplications.reduce(0.0) { sum, app in
-            sum + (app.testingStatus.lowercased() == "ready" ? 100.0 :
-                  app.testingStatus.lowercased() == "in progress" ? 50.0 : 0.0)
+            let status = app.testingStatus.lowercased()
+            let points = {
+                switch status {
+                case "ready", "completed", "passed":
+                    return 100.0
+                case "in progress":
+                    return 50.0
+                case "not started", "":
+                    return 0.0
+                default:
+                    print("Unknown testing status: \(status)")
+                    return 0.0
+                }
+            }()
+            print("Adding points for \(app.name): \(points) (status: \(app.testingStatus))")
+            return sum + points
         }
         let average = departmentApplications.isEmpty ? 0.0 : total / Double(departmentApplications.count)
+        print("Total points: \(total), Count: \(departmentApplications.count), Average: \(average)")
         return String(format: "%.0f", average)
     }
     
@@ -343,8 +363,16 @@ struct DepartmentProgressCell: View {
     let status: String
     
     private var progress: Double {
-        switch status.lowercased() {
-        case "ready", "ready for testing":
+        let lowercasedStatus = status.lowercased()
+        
+        // Package status specific
+        if lowercasedStatus == "ready for testing" {
+            return 100.0
+        }
+        
+        // Common statuses
+        switch lowercasedStatus {
+        case "ready", "completed", "passed":
             return 100.0
         case "in progress":
             return 50.0

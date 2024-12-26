@@ -97,73 +97,75 @@ struct DatabaseContentView: View {
                 // Records View with improved loading
                 Group {
                     ScrollView(.horizontal, showsIndicators: true) {
-                        switch selectedDataType {
-                        case .ad:
-                            DatabaseADRecordsView(
-                                records: filteredADRecords,
-                                onScrolledNearBottom: {
-                                    if !isLoadingMore && hasMoreData {
-                                        Task {
-                                            await loadMoreADRecords()
+                        VStack(spacing: 0) {
+                            switch selectedDataType {
+                            case .ad:
+                                DatabaseADRecordsView(
+                                    records: filteredADRecords,
+                                    onScrolledNearBottom: {
+                                        if !isLoadingMore && hasMoreData {
+                                            Task {
+                                                await loadMoreADRecords()
+                                            }
                                         }
                                     }
-                                }
-                            )
-                            .environment(\.refresh, {
-                                Task {
-                                    await loadData(resetData: true)
-                                }
-                            })
-                            .frame(minWidth: 800)
-                        case .hr:
-                            DatabaseHRRecordsView(records: filteredHRRecords)
+                                )
                                 .environment(\.refresh, {
                                     Task {
                                         await loadData(resetData: true)
                                     }
                                 })
                                 .frame(minWidth: 800)
-                        case .combined:
-                            DatabaseCombinedRecordsView(
-                                records: filteredCombinedRecords
-                            )
-                            .environment(\.refresh, {
-                                Task {
-                                    await loadData(resetData: true)
+                            case .hr:
+                                DatabaseHRRecordsView(records: filteredHRRecords)
+                                    .environment(\.refresh, {
+                                        Task {
+                                            await loadData(resetData: true)
+                                        }
+                                    })
+                                    .frame(minWidth: 800)
+                            case .combined:
+                                DatabaseCombinedRecordsView(
+                                    records: filteredCombinedRecords
+                                )
+                                .environment(\.refresh, {
+                                    Task {
+                                        await loadData(resetData: true)
+                                    }
+                                })
+                                .frame(minWidth: 800)
+                            case .packageStatus:
+                                DatabasePackageRecordsView(records: filteredPackageRecords)
+                                    .environment(\.refresh, {
+                                        Task {
+                                            await loadData(resetData: true)
+                                        }
+                                    })
+                                    .frame(minWidth: 800)
+                            case .testing:
+                                DatabaseTestRecordsView(records: filteredTestRecords)
+                                    .environment(\.refresh, {
+                                        Task {
+                                            await loadData(resetData: true)
+                                        }
+                                    })
+                                    .frame(minWidth: 800)
+                            case .migration:
+                                DatabaseMigrationRecordsView(records: filteredMigrationRecords)
+                                    .environment(\.refresh, {
+                                        Task {
+                                            await loadData(resetData: true)
+                                        }
+                                    })
+                                    .frame(minWidth: 800)
+                            case .cluster:
+                                DatabaseClusterRecordsView(records: filteredClusterRecords) {
+                                    Task {
+                                        await loadData(resetData: false)
+                                    }
                                 }
-                            })
-                            .frame(minWidth: 800)
-                        case .packageStatus:
-                            DatabasePackageRecordsView(records: filteredPackageRecords)
-                                .environment(\.refresh, {
-                                    Task {
-                                        await loadData(resetData: true)
-                                    }
-                                })
                                 .frame(minWidth: 800)
-                        case .testing:
-                            DatabaseTestRecordsView(records: filteredTestRecords)
-                                .environment(\.refresh, {
-                                    Task {
-                                        await loadData(resetData: true)
-                                    }
-                                })
-                                .frame(minWidth: 800)
-                        case .migration:
-                            DatabaseMigrationRecordsView(records: filteredMigrationRecords)
-                                .environment(\.refresh, {
-                                    Task {
-                                        await loadData(resetData: true)
-                                    }
-                                })
-                                .frame(minWidth: 800)
-                        case .cluster:
-                            DatabaseClusterRecordsView(records: filteredClusterRecords) {
-                                Task {
-                                    await loadData(resetData: false)
-                                }
                             }
-                            .frame(minWidth: 800)
                         }
                     }
                 }
@@ -278,8 +280,8 @@ struct DatabaseContentView: View {
             record.applicationName.localizedCaseInsensitiveContains(searchText) ||
             record.testStatus.localizedCaseInsensitiveContains(searchText) ||
             record.testResult.localizedCaseInsensitiveContains(searchText) ||
-            (record.testComments ?? "").localizedCaseInsensitiveContains(searchText) ||
-            dateFormatter.string(from: record.testDate).localizedCaseInsensitiveContains(searchText)
+            (record.testingPlanDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.testDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "").localizedCaseInsensitiveContains(searchText)
         }
     }
     
@@ -756,236 +758,257 @@ struct DatabaseCombinedRecordsView: View {
         return formatter
     }()
     
+    // MARK: - Sub-views
+    private var headerView: some View {
+        HStack(spacing: 0) {
+            idHeaderSection
+            adDataHeaderSection
+            hrDataHeaderSection
+            packageStatusHeaderSection
+            testStatusHeaderSection
+            migrationHeaderSection
+            departmentAndMigrationHeaderSection
+        }
+        .padding(.vertical, 4)
+        .background(Color(NSColor.windowBackgroundColor))
+        .border(Color.gray.opacity(0.2), width: 1)
+    }
+    
+    private var idHeaderSection: some View {
+        Text("ID")
+            .frame(width: 80, alignment: .leading)
+            .padding(.leading, 16)
+            .font(.system(size: 11))
+    }
+    
+    private var adDataHeaderSection: some View {
+        Group {
+            Text("AD Group")
+                .frame(width: 150, alignment: .leading)
+            Text("System Account")
+                .frame(width: 150, alignment: .leading)
+            Text("Application Name")
+                .frame(width: 150, alignment: .leading)
+            Text("Application Suite")
+                .frame(width: 150, alignment: .leading)
+            Text("OTAP")
+                .frame(width: 80, alignment: .leading)
+            Text("Critical")
+                .frame(width: 80, alignment: .leading)
+        }
+        .font(.system(size: 11))
+        .background(Color.blue.opacity(0.1))
+    }
+    
+    private var hrDataHeaderSection: some View {
+        Group {
+            Text("Department")
+                .frame(width: 150, alignment: .leading)
+            Text("Job Role")
+                .frame(width: 150, alignment: .leading)
+            Text("Division")
+                .frame(width: 150, alignment: .leading)
+            Text("Leave Date")
+                .frame(width: 150, alignment: .leading)
+            Text("Department Simple")
+                .frame(width: 150, alignment: .leading)
+            Text("Domain")
+                .frame(width: 150, alignment: .leading)
+        }
+        .font(.system(size: 11, weight: .bold))
+        .background(Color.green.opacity(0.05))
+    }
+    
+    private var packageStatusHeaderSection: some View {
+        Group {
+            Text("Package Status")
+                .frame(width: 150, alignment: .leading)
+            Text("Package Readiness Date")
+                .frame(width: 200, alignment: .leading)
+        }
+        .font(.system(size: 11))
+        .background(Color.orange.opacity(0.1))
+    }
+    
+    private var testStatusHeaderSection: some View {
+        Group {
+            Text("Test Status")
+                .frame(width: 150, alignment: .leading)
+            Text("Test Date")
+                .frame(width: 200, alignment: .leading)
+            Text("Test Result")
+                .frame(width: 150, alignment: .leading)
+            Text("Test Plan Date")
+                .frame(width: 200, alignment: .leading)
+        }
+        .font(.system(size: 11))
+        .background(Color.purple.opacity(0.1))
+    }
+    
+    private var migrationHeaderSection: some View {
+        Group {
+            Text("Application New")
+                .frame(width: 150, alignment: .leading)
+            Text("Application Suite New")
+                .frame(width: 150, alignment: .leading)
+            Text("Will Be")
+                .frame(width: 150, alignment: .leading)
+            Text("In/Out Scope Division")
+                .frame(width: 200, alignment: .leading)
+            Text("Migration Platform")
+                .frame(width: 150, alignment: .leading)
+            Text("Migration App Readiness")
+                .frame(width: 200, alignment: .leading)
+        }
+        .font(.system(size: 11))
+        .background(Color.yellow.opacity(0.1))
+    }
+    
+    private var departmentAndMigrationHeaderSection: some View {
+        Group {
+            Text("Department Simple")
+                .frame(width: 150, alignment: .leading)
+            Text("Domain")
+                .frame(width: 150, alignment: .leading)
+            Text("Migration Cluster")
+                .frame(width: 150, alignment: .leading)
+            Text("Migration Readiness")
+                .frame(width: 150, alignment: .leading)
+        }
+        .font(.system(size: 11))
+        .background(Color.indigo.opacity(0.1))
+    }
+    
+    private var dataRowsView: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            LazyVStack(spacing: 0, pinnedViews: []) {
+                ForEach(records, id: \.id) { record in
+                    DataRowView(record: record, dateFormatter: dateFormatter, rowHeight: rowHeight)
+                }
+            }
+        }
+    }
+    
     var body: some View {
         VStack {
             ScrollView(.horizontal, showsIndicators: true) {
                 VStack(spacing: 0) {
-                    // Header row
-                    HStack(spacing: 0) {
-                        // ID Column
-                        Text("ID")
-                            .frame(width: 80, alignment: .leading)
-                            .padding(.leading, 16)
-                        
-                        // AD Data Section
-                        Group {
-                            Text("AD Group")
-                                .frame(width: 150, alignment: .leading)
-                            Text("System Account")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Application Name")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Application Suite")
-                                .frame(width: 150, alignment: .leading)
-                            Text("OTAP")
-                                .frame(width: 80, alignment: .leading)
-                            Text("Critical")
-                                .frame(width: 80, alignment: .leading)
-                        }
-                        .font(.system(size: 11))
-                        .background(Color.blue.opacity(0.1))
-                        
-                        // HR Data Section
-                        Group {
-                            Text("Department")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Job Role")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Division")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Leave Date")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Department Simple")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Domain")
-                                .frame(width: 150, alignment: .leading)
-                        }
-                        .font(.system(size: 11, weight: .bold))
-                        .background(Color.green.opacity(0.05))
-                        
-                        // Package Status Section
-                        Group {
-                            Text("Package Status")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Package Readiness Date")
-                                .frame(width: 200, alignment: .leading)
-                        }
-                        .font(.system(size: 11))
-                        .background(Color.orange.opacity(0.1))
-                        
-                        // Test Status Section
-                        Group {
-                            Text("Test Status")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Test Readiness Date")
-                                .frame(width: 200, alignment: .leading)
-                        }
-                        .font(.system(size: 11))
-                        .background(Color.purple.opacity(0.1))
-                        
-                        // Migration Section
-                        Group {
-                            Text("Application New")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Application Suite New")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Will Be")
-                                .frame(width: 150, alignment: .leading)
-                            Text("In/Out Scope Division")
-                                .frame(width: 200, alignment: .leading)
-                            Text("Migration Platform")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Migration App Readiness")
-                                .frame(width: 200, alignment: .leading)
-                        }
-                        .font(.system(size: 11))
-                        .background(Color.yellow.opacity(0.1))
-                        
-                        // Department and Migration Section
-                        Group {
-                            Text("Department Simple")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Domain")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Migration Cluster")
-                                .frame(width: 150, alignment: .leading)
-                            Text("Migration Readiness")
-                                .frame(width: 150, alignment: .leading)
-                        }
-                        .font(.system(size: 11, weight: .bold))
-                        .background(Color.red.opacity(0.05))
-                        
-                        // Metadata Section
-                        Group {
-                            Text("Import Date")
-                                .frame(width: 200, alignment: .leading)
-                            Text("Import Set")
-                                .frame(width: 150, alignment: .leading)
-                        }
-                        .font(.system(size: 11))
-                        .background(Color.gray.opacity(0.1))
-                    }
-                    .padding(.vertical, 4)
-                    .background(Color(NSColor.windowBackgroundColor))
-                    .border(Color.gray.opacity(0.2), width: 1)
-                    
-                    ScrollView(.vertical, showsIndicators: true) {
-                        LazyVStack(spacing: 0, pinnedViews: []) {
-                            ForEach(records, id: \.id) { record in
-                                HStack(spacing: 0) {
-                                    // ID Column
-                                    Text(String(format: "%.0f", Double(record.id ?? -1)))
-                                        .frame(width: 80, alignment: .leading)
-                                        .padding(.leading, 16)
-                                        .font(.system(size: 11))
-                                    
-                                    // AD Data Section
-                                    Group {
-                                        Text(record.adGroup)
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.systemAccount)
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.applicationName)
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.applicationSuite)
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.otap)
-                                            .frame(width: 80, alignment: .leading)
-                                        Text(record.critical)
-                                            .frame(width: 80, alignment: .leading)
-                                    }
-                                    .font(.system(size: 11))
-                                    .background(Color.blue.opacity(0.05))
-                                    
-                                    // HR Data Section
-                                    Group {
-                                        Text(record.department ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.jobRole ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.division ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.departmentSimple ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.domain ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                    }
-                                    .font(.system(size: 11))
-                                    .background(Color.green.opacity(0.05))
-                                    
-                                    // Package Status Section
-                                    Group {
-                                        Text(record.applicationPackageStatus ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.applicationPackageReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                                            .frame(width: 200, alignment: .leading)
-                                    }
-                                    .font(.system(size: 11))
-                                    .background(Color.orange.opacity(0.05))
-                                    
-                                    // Test Status Section
-                                    Group {
-                                        Text(record.applicationTestStatus ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.applicationTestReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                                            .frame(width: 200, alignment: .leading)
-                                    }
-                                    .font(.system(size: 11))
-                                    .background(Color.purple.opacity(0.05))
-                                    
-                                    // Migration Section
-                                    Group {
-                                        Text(record.applicationNew ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.applicationSuiteNew ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.willBe ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.inScopeOutScopeDivision ?? "N/A")
-                                            .frame(width: 200, alignment: .leading)
-                                        Text(record.migrationPlatform ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.migrationApplicationReadiness ?? "N/A")
-                                            .frame(width: 200, alignment: .leading)
-                                    }
-                                    .font(.system(size: 11))
-                                    .background(Color.yellow.opacity(0.05))
-                                    
-                                    // Department and Migration Section
-                                    Group {
-                                        Text(record.departmentSimple ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.domain ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.migrationCluster ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                        Text(record.migrationReadiness ?? "N/A")
-                                            .frame(width: 150, alignment: .leading)
-                                    }
-                                    .font(.system(size: 11))
-                                    .background(Color.red.opacity(0.05))
-                                    
-                                    // Metadata Section
-                                    Group {
-                                        Text(dateFormatter.string(from: record.importDate))
-                                            .frame(width: 200, alignment: .leading)
-                                        Text(record.importSet)
-                                            .frame(width: 150, alignment: .leading)
-                                    }
-                                    .font(.system(size: 11))
-                                    .background(Color.gray.opacity(0.05))
-                                }
-                                .frame(height: rowHeight)
-                                .padding(.vertical, 0)
-                                .background(Color(NSColor.controlBackgroundColor))
-                            }
-                        }
-                    }
+                    headerView
+                    dataRowsView
                 }
             }
         }
+    }
+}
+
+struct DataRowView: View {
+    let record: CombinedRecord
+    let dateFormatter: DateFormatter
+    let rowHeight: CGFloat
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // ID Column
+            Text(String(format: "%.0f", Double(record.id ?? -1)))
+                .frame(width: 80, alignment: .leading)
+                .padding(.leading, 16)
+                .font(.system(size: 11))
+            
+            // AD Data Section
+            HStack(spacing: 0) {
+                Text(record.adGroup)
+                    .frame(width: 150, alignment: .leading)
+                Text(record.systemAccount)
+                    .frame(width: 150, alignment: .leading)
+                Text(record.applicationName)
+                    .frame(width: 150, alignment: .leading)
+                Text(record.applicationSuite)
+                    .frame(width: 150, alignment: .leading)
+                Text(record.otap)
+                    .frame(width: 80, alignment: .leading)
+                Text(record.critical)
+                    .frame(width: 80, alignment: .leading)
+            }
+            .font(.system(size: 11))
+            .background(Color.blue.opacity(0.05))
+            
+            // HR Data Section
+            HStack(spacing: 0) {
+                Text(record.department ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.jobRole ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.division ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.departmentSimple ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.domain ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+            }
+            .font(.system(size: 11))
+            .background(Color.green.opacity(0.05))
+            
+            // Package Status Section
+            HStack(spacing: 0) {
+                Text(record.applicationPackageStatus ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.applicationPackageReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .font(.system(size: 11))
+            .background(Color.orange.opacity(0.05))
+            
+            // Test Status Section
+            HStack(spacing: 0) {
+                Text(record.applicationTestStatus ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.applicationTestReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
+                    .frame(width: 200, alignment: .leading)
+                Text(record.testResult ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.testingPlanDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .font(.system(size: 11))
+            .background(Color.purple.opacity(0.05))
+            
+            // Migration Section
+            HStack(spacing: 0) {
+                Text(record.applicationNew ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.applicationSuiteNew ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.willBe ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.inScopeOutScopeDivision ?? "N/A")
+                    .frame(width: 200, alignment: .leading)
+                Text(record.migrationPlatform ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.migrationApplicationReadiness ?? "N/A")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .font(.system(size: 11))
+            .background(Color.yellow.opacity(0.05))
+            
+            // Department and Migration Section
+            HStack(spacing: 0) {
+                Text(record.departmentSimple ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.domain ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.migrationCluster ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+                Text(record.migrationReadiness ?? "N/A")
+                    .frame(width: 150, alignment: .leading)
+            }
+            .font(.system(size: 11))
+            .background(Color.indigo.opacity(0.05))
+        }
+        .frame(height: rowHeight)
+        .padding(.vertical, 0)
+        .background(Color(NSColor.controlBackgroundColor))
     }
 }
 
@@ -1077,55 +1100,62 @@ struct DatabaseTestRecordsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Text("Application Name")
-                    .frame(width: 200, alignment: .leading)
-                Text("Test Status")
-                    .frame(width: 150, alignment: .leading)
-                Text("Test Date")
-                    .frame(width: 200, alignment: .leading)
-                Text("Test Result")
-                    .frame(width: 150, alignment: .leading)
-                Text("Comments")
-                    .frame(width: 200, alignment: .leading)
-                Text("Import Date")
-                    .frame(width: 200, alignment: .leading)
-                Text("Import Set")
-                    .frame(width: 150, alignment: .leading)
-            }
-            .padding(.vertical, 4)
-            .font(.system(size: 11, weight: .bold))
-            .background(Color(NSColor.windowBackgroundColor))
-            
-            // Results
-            ForEach(records, id: \.id) { record in
-                HStack(spacing: 0) {
-                    Text(record.applicationName)
-                        .frame(width: 200, alignment: .leading)
-                        .font(.system(size: 11))
-                    Text(record.testStatus)
-                        .frame(width: 150, alignment: .leading)
-                        .font(.system(size: 11))
-                    Text(dateFormatter.string(from: record.testDate))
-                        .frame(width: 200, alignment: .leading)
-                        .font(.system(size: 11))
-                    Text(record.testResult)
-                        .frame(width: 150, alignment: .leading)
-                        .font(.system(size: 11))
-                    Text(record.testComments ?? "N/A")
-                        .frame(width: 200, alignment: .leading)
-                        .font(.system(size: 11))
-                    Text(dateFormatter.string(from: record.importDate))
-                        .frame(width: 200, alignment: .leading)
-                        .font(.system(size: 11))
-                    Text(record.importSet)
-                        .frame(width: 150, alignment: .leading)
-                        .font(.system(size: 11))
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("Application Name")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Test Status")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Test Date")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Test Result")
+                            .frame(width: 150, alignment: .leading)
+                        Text("Testing Plan Date")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Import Date")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Import Set")
+                            .frame(width: 150, alignment: .leading)
+                    }
+                    .padding(.vertical, 4)
+                    .font(.system(size: 11, weight: .bold))
+                    .background(Color(NSColor.windowBackgroundColor))
+                    
+                    ScrollView(.vertical, showsIndicators: true) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(records, id: \.id) { record in
+                                HStack(spacing: 0) {
+                                    Text(record.applicationName)
+                                        .frame(width: 200, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(record.testStatus)
+                                        .frame(width: 150, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(record.testDate.map { dateFormatter.string(from: $0) } ?? "N/A")
+                                        .frame(width: 200, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(record.testResult)
+                                        .frame(width: 150, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(record.testingPlanDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                                        .frame(width: 200, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(dateFormatter.string(from: record.importDate))
+                                        .frame(width: 200, alignment: .leading)
+                                        .font(.system(size: 11))
+                                    Text(record.importSet)
+                                        .frame(width: 150, alignment: .leading)
+                                        .font(.system(size: 11))
+                                }
+                                .frame(height: rowHeight)
+                                .padding(.vertical, 0)
+                                .background(Color(NSColor.controlBackgroundColor))
+                            }
+                        }
+                    }
                 }
-                .frame(height: rowHeight)
-                .padding(.vertical, 0)
-                .background(Color(NSColor.controlBackgroundColor))
             }
         }
     }

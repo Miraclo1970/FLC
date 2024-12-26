@@ -946,11 +946,15 @@ struct ValidTestRecordsView: View {
     
     private func matchesSearch(_ record: TestingData) -> Bool {
         let searchLower = searchText.lowercased()
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .none
+        
         return searchText.isEmpty || 
             record.applicationName.lowercased().contains(searchLower) ||
             record.testStatus.lowercased().contains(searchLower) ||
             record.testResult.lowercased().contains(searchLower) ||
-            (record.testComments?.lowercased().contains(searchLower) ?? false)
+            (record.testingPlanDate.map { dateFormatter.string(from: $0).lowercased().contains(searchLower) } ?? false)
     }
     
     var filteredRecords: [TestingData] {
@@ -973,7 +977,7 @@ struct ValidTestRecordsView: View {
                 .frame(width: 150, alignment: .leading)
             Text("Test Result")
                 .frame(width: 150, alignment: .leading)
-            Text("Comments")
+            Text("Testing Plan Date")
                 .frame(width: 200, alignment: .leading)
         }
         .padding(.vertical, 8)
@@ -992,13 +996,13 @@ struct ValidTestRecordsView: View {
             Text(record.testStatus)
                 .frame(width: 150, alignment: .leading)
                 .lineLimit(1)
-            Text(DateFormatter.hrDateFormatter.string(from: record.testDate))
+            Text(record.testDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
                 .frame(width: 150, alignment: .leading)
                 .lineLimit(1)
             Text(record.testResult)
                 .frame(width: 150, alignment: .leading)
                 .lineLimit(1)
-            Text(record.testComments ?? "")
+            Text(record.testingPlanDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
                 .frame(width: 200, alignment: .leading)
                 .lineLimit(1)
         }

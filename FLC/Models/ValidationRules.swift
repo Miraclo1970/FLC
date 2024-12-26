@@ -73,7 +73,7 @@ class ValidationConfigStore: ObservableObject {
                     "Test Result is required"
                 ]),
                 requiredFields: ["Application Name", "Test Status", "Test Date", "Test Result"],
-                optionalFields: ["Test Comments"]
+                optionalFields: ["Testing Plan Date"]
             ),
             ValidationConfig(
                 title: "Migration",

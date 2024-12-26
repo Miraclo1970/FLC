@@ -6,9 +6,9 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
     var id: Int64?
     let applicationName: String
     let testStatus: String
-    let testDate: Date
+    let testDate: Date?
     let testResult: String
-    let testingPlanDate: String?
+    let testingPlanDate: Date?
     let importDate: Date
     let importSet: String
     
@@ -60,9 +60,9 @@ struct TestingData: Identifiable, Codable {
     let id: UUID
     let applicationName: String
     let testStatus: String
-    let testDate: Date
+    let testDate: Date?
     let testResult: String
-    let testingPlanDate: String?
+    let testingPlanDate: Date?
     
     // Basic validation to ensure required fields are not empty
     // Records that don't pass validation will be skipped during import
@@ -88,7 +88,7 @@ struct TestingData: Identifiable, Codable {
         return validationErrors.isEmpty
     }
     
-    init(applicationName: String, testStatus: String, testDate: Date, testResult: String, testingPlanDate: String? = nil) {
+    init(applicationName: String, testStatus: String, testDate: Date?, testResult: String, testingPlanDate: Date? = nil) {
         self.id = UUID()
         self.applicationName = applicationName
         self.testStatus = testStatus

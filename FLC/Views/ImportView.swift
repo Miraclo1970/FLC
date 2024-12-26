@@ -37,9 +37,9 @@ struct ImportView: View {
             return .hr
         } else if firstRow.contains("ad") {
             return .ad
-        } else if firstRow.contains("package") || firstRow.contains("status") {
+        } else if firstRow.contains("package status") {
             return .packageStatus
-        } else if firstRow.contains("test") || firstRow.contains("status") {
+        } else if firstRow.contains("test status") {
             return .testing
         } else if firstRow.contains("migration") || firstRow.contains("platform") {
             return .migration
@@ -317,19 +317,21 @@ struct ImportView: View {
                 case .testing:
                     let (valid, invalid, duplicates) = try await processTestData(xlsx)
                     await MainActor.run {
-                        print("Setting Test Status records - Valid: \(valid.count)")
+                        print("Setting Test Status records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         progress.selectedDataType = .testing
                         progress.validTestRecords = valid
+                        progress.invalidTestRecords = invalid
+                        progress.duplicateTestRecords = duplicates
                         message = "Successfully processed Test Status data from: \(file.lastPathComponent)"
                         progress.isProcessing = false
-                        print("Processed Test Status records - Valid: \(valid.count)")
+                        print("Processed Test Status records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         print("Data type is now: \(progress.selectedDataType)")
                         // Dismiss this view to return to the main navigation
                         dismiss()
                     }
                     
                 case .migration:
-                    let (valid, invalid, duplicates) = try await processMigrationData(xlsx)
+                    let (valid, _, _) = try await processMigrationData(xlsx)
                     await MainActor.run {
                         print("Setting Migration records - Valid: \(valid.count)")
                         progress.selectedDataType = .migration
@@ -1499,22 +1501,38 @@ struct ImportView: View {
             let testStatus = fullRowContent[safe: columnMap["Test Status"] ?? -1] ?? "N/A"
             let testDateStr = fullRowContent[safe: columnMap["Test Date"] ?? -1] ?? "N/A"
             let testResult = fullRowContent[safe: columnMap["Test Result"] ?? -1] ?? "N/A"
-            let testingPlanDate = fullRowContent[safe: columnMap["Testing Plan Date"] ?? -1]
+            let testingPlanDateStr = fullRowContent[safe: columnMap["Testing Plan Date"] ?? -1]
+            
+            // Parse test date and testing plan date
+            var testDate: Date? = nil
+            var testingPlanDate: Date? = nil
             
             // Parse test date
-            var testDate: Date = Date()
             if testDateStr != "N/A" {
-                let dateFormatters = [
-                    DateFormatter.hrDateFormatter,
-                    DateFormatter.hrDateParser
-                ]
-                
                 var dateParsed = false
-                for formatter in dateFormatters {
-                    if let date = formatter.date(from: testDateStr) {
-                        testDate = date
+                
+                // Try Excel serial date first
+                if let serialNumber = Double(testDateStr) {
+                    let excelEpoch = DateComponents(year: 1899, month: 12, day: 30)
+                    if let excelBaseDate = Calendar.current.date(from: excelEpoch) {
+                        testDate = Calendar.current.date(byAdding: .day, value: Int(serialNumber), to: excelBaseDate)
                         dateParsed = true
-                        break
+                    }
+                }
+                
+                // Only try other formats if Excel format failed
+                if !dateParsed {
+                    let dateFormatters = [
+                        DateFormatter.hrDateFormatter,
+                        DateFormatter.hrDateParser
+                    ]
+                    
+                    for formatter in dateFormatters {
+                        if let date = formatter.date(from: testDateStr) {
+                            testDate = date
+                            dateParsed = true
+                            break
+                        }
                     }
                 }
                 
@@ -1525,13 +1543,36 @@ struct ImportView: View {
                 }
             }
             
+            // Parse testing plan date
+            if let planDateStr = testingPlanDateStr, planDateStr != "N/A" {
+                let dateFormatters = [
+                    DateFormatter.hrDateFormatter,
+                    DateFormatter.hrDateParser
+                ]
+                
+                for formatter in dateFormatters {
+                    if let date = formatter.date(from: planDateStr) {
+                        testingPlanDate = date
+                        break
+                    }
+                }
+                
+                // Try Excel serial date if other formats fail
+                if testingPlanDate == nil, let serialNumber = Double(planDateStr) {
+                    let excelEpoch = DateComponents(year: 1899, month: 12, day: 30)
+                    if let excelBaseDate = Calendar.current.date(from: excelEpoch) {
+                        testingPlanDate = Calendar.current.date(byAdding: .day, value: Int(serialNumber), to: excelBaseDate)
+                    }
+                }
+            }
+            
             // Create and validate record
             let record = TestingData(
                 applicationName: applicationName,
                 testStatus: testStatus,
                 testDate: testDate,
                 testResult: testResult,
-                testingPlanDate: testingPlanDate == "N/A" ? nil : testingPlanDate
+                testingPlanDate: testingPlanDate
             )
             
             if record.isValid {
