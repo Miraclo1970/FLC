@@ -1140,7 +1140,7 @@ class DatabaseManager: ObservableObject {
                         testStatus: testStatus,
                         testDate: record.applicationTestReadinessDate ?? fixedDate,
                         testResult: "Pending",
-                        testComments: nil
+                        testingPlanDate: nil
                     )
                     
                     let testRecord = TestRecord(from: testingData)
