@@ -33,7 +33,7 @@ struct DepartmentProgressView: View {
             } else {
                 // Filters Section
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Select Department")
+                    Text("Select Department Simple")
                         .font(.headline)
                     
                     HStack(spacing: 20) {
@@ -41,7 +41,7 @@ struct DepartmentProgressView: View {
                         VStack(alignment: .leading) {
                             Text("Division:")
                                 .font(.subheadline)
-                            Picker("Division", selection: $selectedDivision) {
+                            Picker("", selection: $selectedDivision) {
                                 Text("Select Division").tag("")
                                 ForEach(divisions, id: \.self) { division in
                                     Text(division).tag(division)
@@ -50,12 +50,12 @@ struct DepartmentProgressView: View {
                             .frame(width: 200)
                         }
                         
-                        // Department Picker (enabled only when division is selected)
+                        // Department Simple Picker
                         VStack(alignment: .leading) {
-                            Text("Department:")
+                            Text("Department Simple:")
                                 .font(.subheadline)
-                            Picker("Department", selection: $selectedDepartment) {
-                                Text("Select Department").tag("")
+                            Picker("", selection: $selectedDepartment) {
+                                Text("Select Department Simple").tag("")
                                 ForEach(departments, id: \.self) { department in
                                     Text(department).tag(department)
                                 }
@@ -63,6 +63,8 @@ struct DepartmentProgressView: View {
                             .frame(width: 200)
                             .disabled(selectedDivision.isEmpty)
                         }
+                        
+                        Spacer()
                         
                         // OTAP Filter
                         VStack(alignment: .leading) {
@@ -95,6 +97,7 @@ struct DepartmentProgressView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(selectedDivision.isEmpty || selectedDepartment.isEmpty || selectedOtapValues.isEmpty)
                     }
+                    .frame(width: 930)  // Match the total width of the table columns below
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
@@ -103,23 +106,52 @@ struct DepartmentProgressView: View {
                 if showResults {
                     ScrollView {
                         VStack(spacing: 16) {
-                            // Header with department info
-                            HStack {
+                            // Combined header with totals
+                            HStack(spacing: 0) {
                                 VStack(alignment: .leading) {
-                                    Text("Division: \(selectedDivision)")
+                                    Text("\(selectedDivision)")
                                         .font(.headline)
-                                    Text("Department: \(selectedDepartment)")
-                                        .font(.headline)
-                                }
-                                Spacer()
-                                VStack(alignment: .trailing) {
-                                    Text("Total Unique Users: \(totalUniqueUsers)")
+                                    Text("\(selectedDepartment)")
                                         .font(.headline)
                                 }
+                                .frame(width: 400, alignment: .leading)
+                                Text("Users")
+                                    .frame(width: 80, alignment: .center)
+                                Text("Average")
+                                    .frame(width: 150, alignment: .center)
+                                Text("Ready by")
+                                    .frame(width: 100, alignment: .center)
+                                Text("Average")
+                                    .frame(width: 150, alignment: .center)
+                                Text("Average")
+                                    .frame(width: 150, alignment: .center)
                             }
+                            .frame(width: 930)
                             .padding()
                             .background(Color(NSColor.controlBackgroundColor))
                             .cornerRadius(8)
+                            
+                            // Values row
+                            HStack(spacing: 0) {
+                                Text("")
+                                    .frame(width: 400, alignment: .leading)
+                                Text("\(totalUniqueUsers)")
+                                    .frame(width: 80, alignment: .center)
+                                AverageProgressCell(progress: Double(averagePackageProgress) ?? 0)
+                                    .frame(width: 150)
+                                Text(latestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
+                                    .frame(width: 100, alignment: .center)
+                                    .font(.system(size: 11))
+                                AverageProgressCell(progress: Double(averageTestingProgress) ?? 0)
+                                    .frame(width: 150)
+                                Text(latestTestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
+                                    .frame(width: 100, alignment: .center)
+                                    .font(.system(size: 11))
+                                AverageProgressCell(progress: Double(averageMigrationProgress) ?? 0)
+                                    .frame(width: 150)
+                            }
+                            .padding(.vertical, 4)
+                            .background(Color(NSColor.controlBackgroundColor))
                             
                             // Applications List
                             VStack(alignment: .leading, spacing: 4) {
@@ -131,8 +163,12 @@ struct DepartmentProgressView: View {
                                         .frame(width: 80, alignment: .center)
                                     Text("Package progress")
                                         .frame(width: 150, alignment: .center)
+                                    Text("Ready by")
+                                        .frame(width: 100, alignment: .center)
                                     Text("Testing progress")
                                         .frame(width: 150, alignment: .center)
+                                    Text("Ready by")
+                                        .frame(width: 100, alignment: .center)
                                     Text("Migration progress")
                                         .frame(width: 150, alignment: .center)
                                 }
@@ -150,8 +186,14 @@ struct DepartmentProgressView: View {
                                             .frame(width: 80, alignment: .center)
                                         DepartmentProgressCell(status: app.packageStatus)
                                             .frame(width: 150)
+                                        Text(app.packageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
+                                            .frame(width: 100, alignment: .center)
+                                            .font(.system(size: 11))
                                         DepartmentProgressCell(status: app.testingStatus)
                                             .frame(width: 150)
+                                        Text(app.testReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
+                                            .frame(width: 100, alignment: .center)
+                                            .font(.system(size: 11))
                                         DepartmentProgressCell(status: app.migrationStatus)
                                             .frame(width: 150)
                                     }
@@ -187,7 +229,9 @@ struct DepartmentProgressView: View {
         let name: String
         let uniqueUsers: Int
         let packageStatus: String
+        let packageReadinessDate: Date?
         let testingStatus: String
+        let testReadinessDate: Date?
         let migrationStatus: String
     }
     
@@ -203,14 +247,25 @@ struct DepartmentProgressView: View {
         return groupedByApp.map { appName, records in
             let uniqueUsers = Set(records.map { $0.systemAccount }).count
             let packageStatus = records.first?.applicationPackageStatus ?? "Not Started"
+            let packageReadinessDate = records.first?.applicationPackageReadinessDate
             let testingStatus = records.first?.applicationTestStatus ?? "Not Started"
+            let testReadinessDate = records.first?.applicationTestReadinessDate
+            
+            print("App: \(appName)")
+            print("- Package Status: \(packageStatus)")
+            print("- Package Ready: \(packageReadinessDate?.description ?? "nil")")
+            print("- Test Status: \(testingStatus)")
+            print("- Test Ready: \(testReadinessDate?.description ?? "nil")")
+            
             let migrationStatus = records.first?.migrationReadiness ?? "Not Started"
             
             return ApplicationInfo(
                 name: appName,
                 uniqueUsers: uniqueUsers,
                 packageStatus: packageStatus,
+                packageReadinessDate: packageReadinessDate,
                 testingStatus: testingStatus,
+                testReadinessDate: testReadinessDate,
                 migrationStatus: migrationStatus
             )
         }.sorted { $0.name < $1.name }
@@ -224,6 +279,64 @@ struct DepartmentProgressView: View {
         }
         return Set(filteredRecords.map { $0.systemAccount }).count
     }
+    
+    private var averagePackageProgress: String {
+        print("Calculating Package Progress:")
+        departmentApplications.forEach { app in
+            print("App: \(app.name), Status: \(app.packageStatus)")
+        }
+        
+        let total = departmentApplications.reduce(0.0) { sum, app in
+            let status = app.packageStatus.lowercased()
+            let points = {
+                if status == "ready" || status == "ready for testing" {
+                    return 100.0
+                } else if status == "in progress" {
+                    return 50.0
+                } else if status == "not started" || status.isEmpty {
+                    return 0.0
+                } else {
+                    print("Unknown status: \(status)")
+                    return 0.0
+                }
+            }()
+            print("Adding points for \(app.name): \(points) (status: \(app.packageStatus))")
+            return sum + points
+        }
+        let average = departmentApplications.isEmpty ? 0.0 : total / Double(departmentApplications.count)
+        print("Total points: \(total), Count: \(departmentApplications.count), Average: \(average)")
+        return String(format: "%.0f", average)
+    }
+    
+    private var averageTestingProgress: String {
+        let total = departmentApplications.reduce(0.0) { sum, app in
+            sum + (app.testingStatus.lowercased() == "ready" ? 100.0 :
+                  app.testingStatus.lowercased() == "in progress" ? 50.0 : 0.0)
+        }
+        let average = departmentApplications.isEmpty ? 0.0 : total / Double(departmentApplications.count)
+        return String(format: "%.0f", average)
+    }
+    
+    private var averageMigrationProgress: String {
+        let total = departmentApplications.reduce(0.0) { sum, app in
+            sum + (app.migrationStatus.lowercased() == "ready" ? 100.0 :
+                  app.migrationStatus.lowercased() == "in progress" ? 50.0 : 0.0)
+        }
+        let average = departmentApplications.isEmpty ? 0.0 : total / Double(departmentApplications.count)
+        return String(format: "%.0f", average)
+    }
+    
+    private var latestReadinessDate: Date? {
+        departmentApplications
+            .compactMap { $0.packageReadinessDate }
+            .max()
+    }
+    
+    private var latestTestReadinessDate: Date? {
+        departmentApplications
+            .compactMap { $0.testReadinessDate }
+            .max()
+    }
 }
 
 struct DepartmentProgressCell: View {
@@ -231,13 +344,14 @@ struct DepartmentProgressCell: View {
     
     private var progress: Double {
         switch status.lowercased() {
-        case "ready":
+        case "ready", "ready for testing":
             return 100.0
         case "in progress":
             return 50.0
-        case "not started":
+        case "not started", "":
             return 0.0
         default:
+            print("Unknown status: \(status)")
             return 0.0
         }
     }
@@ -252,6 +366,29 @@ struct DepartmentProgressCell: View {
         }
         .padding(.horizontal, 8)
     }
+}
+
+struct AverageProgressCell: View {
+    let progress: Double
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            ProgressView(value: progress, total: 100)
+                .frame(width: 80, height: 6)
+            Text(String(format: "%.0f%%", progress))
+                .font(.system(size: 11))
+                .frame(width: 30, alignment: .trailing)
+        }
+        .padding(.horizontal, 8)
+    }
+}
+
+extension DateFormatter {
+    static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd/MM/yy"
+        return formatter
+    }()
 }
 
 #Preview {

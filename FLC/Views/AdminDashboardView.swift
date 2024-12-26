@@ -86,7 +86,7 @@ struct AdminDashboardView: View {
                 case "admin":
                     AdminStuffView()
                 case "dbtest":
-                    TestDataGeneratorView()
+                    DatabaseMaintenanceView()
                 default:
                     Text("Select an item from the sidebar")
                 }

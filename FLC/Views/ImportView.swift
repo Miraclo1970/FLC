@@ -882,10 +882,7 @@ struct ImportView: View {
                     cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
                 }
                 
-                let columnIndex: Int
-                let columnString = cell.reference.column.value
-                columnIndex = columnString.excelColumnToIndex()
-                
+                let columnIndex = cell.reference.column.value.excelColumnToIndex()
                 return (index: columnIndex, value: cellValue)
             }
             
@@ -1413,22 +1410,13 @@ struct ImportView: View {
             // Parse the test date
             var testDate: Date = Date()
             if testDateStr != "N/A" {
-                let dateFormatters = [
-                    "dd-MM-yyyy",
-                    "yyyy-MM-dd",
-                    "MM/dd/yyyy",
-                    "dd/MM/yyyy"
-                ].map { format -> DateFormatter in
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = format
-                    return formatter
-                }
+                let formatter = DateFormatter()
+                formatter.dateFormat = "dd/MM/yyyy"
                 
-                for formatter in dateFormatters {
-                    if let date = formatter.date(from: testDateStr) {
-                        testDate = date
-                        break
-                    }
+                if let date = formatter.date(from: testDateStr) {
+                    testDate = date
+                } else {
+                    print("Failed to parse test date: \(testDateStr)")
                 }
             }
             
@@ -1603,11 +1591,7 @@ struct ImportView: View {
         """
         
         await MainActor.run {
-            progress.update(operation: summary, progress: 0.95)
-        }
-        
-        await MainActor.run {
-            progress.update(operation: "Phase 5/5: Import complete!", progress: 1.0)
+            progress.update(operation: summary, progress: 1.0)
         }
         
         return (validRecords, invalidRecords, duplicateRecords)

@@ -1125,6 +1125,9 @@ class DatabaseManager: ObservableObject {
             let combinedRecords = try CombinedRecord.fetchAll(db)
             var testCount = 0
             
+            // Fixed date for test records (e.g., January 1, 2024)
+            let fixedDate = DateComponents(calendar: .current, year: 2024, month: 1, day: 1).date!
+            
             print("Found \(combinedRecords.count) combined records to process")
             
             // Create test records from combined records
@@ -1135,7 +1138,7 @@ class DatabaseManager: ObservableObject {
                     let testingData = TestingData(
                         applicationName: record.applicationName,
                         testStatus: testStatus,
-                        testDate: record.applicationTestReadinessDate ?? Date(),
+                        testDate: record.applicationTestReadinessDate ?? fixedDate,
                         testResult: "Pending",
                         testComments: nil
                     )
@@ -1291,5 +1294,15 @@ class DatabaseManager: ObservableObject {
         
         // Ensure initial data is seeded
         ensureInitialData()
+    }
+    
+    // Function to get the database file path
+    func getDatabasePath() throws -> String {
+        guard let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find Application Support directory"])
+        }
+        
+        let flcDir = appSupportDir.appendingPathComponent("FLC")
+        return flcDir.appendingPathComponent("database.sqlite").path
     }
 } 

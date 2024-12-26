@@ -944,68 +944,76 @@ struct ValidTestRecordsView: View {
     let records: [TestingData]
     let searchText: String
     
+    private func matchesSearch(_ record: TestingData) -> Bool {
+        let searchLower = searchText.lowercased()
+        return searchText.isEmpty || 
+            record.applicationName.lowercased().contains(searchLower) ||
+            record.testStatus.lowercased().contains(searchLower) ||
+            record.testResult.lowercased().contains(searchLower) ||
+            (record.testComments?.lowercased().contains(searchLower) ?? false)
+    }
+    
     var filteredRecords: [TestingData] {
         if searchText.isEmpty {
             return records
         }
-        return records.filter { record in
-            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
-            record.testStatus.localizedCaseInsensitiveContains(searchText) ||
-            record.testResult.localizedCaseInsensitiveContains(searchText) ||
-            (record.testComments ?? "").localizedCaseInsensitiveContains(searchText)
+        return records.filter(matchesSearch)
+    }
+    
+    private var headerView: some View {
+        HStack(spacing: 0) {
+            Text("#")
+                .frame(width: 50, alignment: .leading)
+                .padding(.leading, 25)
+            Text("Application Name")
+                .frame(width: 200, alignment: .leading)
+            Text("Test Status")
+                .frame(width: 150, alignment: .leading)
+            Text("Test Readiness Date")
+                .frame(width: 150, alignment: .leading)
+            Text("Test Result")
+                .frame(width: 150, alignment: .leading)
+            Text("Comments")
+                .frame(width: 200, alignment: .leading)
         }
+        .padding(.vertical, 8)
+        .background(Color(NSColor.separatorColor).opacity(0.2))
+        .font(.headline)
+    }
+    
+    private func recordRow(index: Int, record: TestingData) -> some View {
+        HStack(spacing: 0) {
+            Text("#\(index + 1)")
+                .frame(width: 50, alignment: .leading)
+                .padding(.leading, 25)
+            Text(record.applicationName)
+                .frame(width: 200, alignment: .leading)
+                .lineLimit(1)
+            Text(record.testStatus)
+                .frame(width: 150, alignment: .leading)
+                .lineLimit(1)
+            Text(DateFormatter.hrDateFormatter.string(from: record.testDate))
+                .frame(width: 150, alignment: .leading)
+                .lineLimit(1)
+            Text(record.testResult)
+                .frame(width: 150, alignment: .leading)
+                .lineLimit(1)
+            Text(record.testComments ?? "")
+                .frame(width: 200, alignment: .leading)
+                .lineLimit(1)
+        }
+        .font(.system(.body, design: .monospaced))
     }
     
     var body: some View {
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(spacing: 0) {
-                    // Header
-                    HStack(spacing: 0) {
-                        Text("#")
-                            .frame(width: 50, alignment: .leading)
-                            .padding(.leading, 25)
-                        Text("Application Name")
-                            .frame(width: 200, alignment: .leading)
-                        Text("Test Status")
-                            .frame(width: 150, alignment: .leading)
-                        Text("Test Date")
-                            .frame(width: 150, alignment: .leading)
-                        Text("Test Result")
-                            .frame(width: 150, alignment: .leading)
-                        Text("Comments")
-                            .frame(width: 200, alignment: .leading)
-                    }
-                    .padding(.vertical, 8)
-                    .background(Color(NSColor.separatorColor).opacity(0.2))
-                    .font(.headline)
+                    headerView
                     
-                    // Records
                     List {
-                        ForEach(Array(filteredRecords.enumerated()), id: \.1.applicationName) { index, record in
-                            HStack(spacing: 0) {
-                                Text("#\(index + 1)")
-                                    .frame(width: 50, alignment: .leading)
-                                    .padding(.leading, 10)
-                                    .foregroundColor(.secondary)
-                                Text(record.applicationName)
-                                    .frame(width: 200, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.testStatus)
-                                    .frame(width: 150, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(DateFormatter.hrDateFormatter.string(from: record.testDate))
-                                    .frame(width: 150, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.testResult)
-                                    .frame(width: 150, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.testComments ?? "")
-                                    .frame(width: 200, alignment: .leading)
-                                    .lineLimit(1)
-                                Spacer()
-                            }
-                            .font(.system(.body, design: .monospaced))
+                        ForEach(Array(filteredRecords.enumerated()), id: \.1.id) { index, record in
+                            recordRow(index: index, record: record)
                         }
                     }
                 }

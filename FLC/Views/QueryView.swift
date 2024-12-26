@@ -99,6 +99,70 @@ struct QueryView: View {
         }
     }
     
+    private func executeQuery() {
+        guard !selectedField.isEmpty && !filterValue.isEmpty else { return }
+        
+        isLoading = true
+        errorMessage = nil
+        queryResults = []
+        
+        Task {
+            do {
+                let results = try await DatabaseManager.shared.executeQuery(
+                    dataType: selectedDataType,
+                    field: selectedField,
+                    operator: selectedOperator,
+                    value: filterValue
+                )
+                
+                await MainActor.run {
+                    queryResults = results
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
+            }
+        }
+    }
+    
+    private var resultsView: some View {
+        Group {
+            switch selectedDataType {
+            case .ad:
+                if let results = queryResults as? [ADRecord] {
+                    ADResultsTableView(results: results)
+                }
+            case .hr:
+                if let results = queryResults as? [HRRecord] {
+                    HRResultsTableView(results: results)
+                }
+            case .combined:
+                if let results = queryResults as? [CombinedRecord] {
+                    CombinedResultsTableView(results: results)
+                }
+            case .packageStatus:
+                if let results = queryResults as? [PackageRecord] {
+                    PackageResultsTableView(results: results)
+                }
+            case .testing:
+                if let results = queryResults as? [TestRecord] {
+                    TestResultsTableView(results: results)
+                }
+            case .migration:
+                if let results = queryResults as? [MigrationRecord] {
+                    MigrationResultsTableView(results: results)
+                }
+            case .cluster:
+                if let results = queryResults as? [ClusterRecord] {
+                    ClusterResultsTableView(results: results)
+                }
+            }
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 20) {
             // Data Type Selector
@@ -237,38 +301,7 @@ struct QueryView: View {
                         .foregroundColor(.secondary)
                 } else {
                     ScrollView(.horizontal, showsIndicators: true) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            switch selectedDataType {
-                            case .ad:
-                                if let results = queryResults as? [ADRecord] {
-                                    ADResultsTableView(results: results)
-                                }
-                            case .hr:
-                                if let results = queryResults as? [HRRecord] {
-                                    HRResultsTableView(results: results)
-                                }
-                            case .combined:
-                                if let results = queryResults as? [CombinedRecord] {
-                                    CombinedResultsTableView(results: results)
-                                }
-                            case .packageStatus:
-                                if let results = queryResults as? [PackageRecord] {
-                                    PackageResultsTableView(results: results)
-                                }
-                            case .testing:
-                                if let results = queryResults as? [TestRecord] {
-                                    TestResultsTableView(results: results)
-                                }
-                            case .migration:
-                                if let results = queryResults as? [MigrationRecord] {
-                                    MigrationResultsTableView(results: results)
-                                }
-                            case .cluster:
-                                if let results = queryResults as? [ClusterRecord] {
-                                    ClusterResultsTableView(results: results)
-                                }
-                            }
-                        }
+                        resultsView
                     }
                     
                     Text("\(queryResults.count) results found")
@@ -286,35 +319,6 @@ struct QueryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
-    }
-    
-    private func executeQuery() {
-        guard !selectedField.isEmpty && !filterValue.isEmpty else { return }
-        
-        isLoading = true
-        errorMessage = nil
-        queryResults = []
-        
-        Task {
-            do {
-                let results = try await DatabaseManager.shared.executeQuery(
-                    dataType: selectedDataType,
-                    field: selectedField,
-                    operator: selectedOperator,
-                    value: filterValue
-                )
-                
-                await MainActor.run {
-                    queryResults = results
-                    isLoading = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    isLoading = false
-                }
-            }
-        }
     }
 }
 
@@ -549,6 +553,7 @@ struct PackageResultsTableView: View {
 
 struct TestResultsTableView: View {
     let results: [TestRecord]
+    private let rowHeight: CGFloat = 18
     
     var body: some View {
         VStack(spacing: 0) {
@@ -570,21 +575,27 @@ struct TestResultsTableView: View {
             .background(Color(NSColor.windowBackgroundColor))
             
             // Results
-            ForEach(results, id: \.id) { record in
+            ForEach(Array(results.enumerated()), id: \.element.id) { index, record in
                 HStack(spacing: 0) {
                     Text(record.applicationName)
                         .frame(width: 200, alignment: .leading)
+                        .lineLimit(1)
                     Text(record.testStatus)
                         .frame(width: 150, alignment: .leading)
+                        .lineLimit(1)
                     Text(DateFormatter.hrDateFormatter.string(from: record.testDate))
                         .frame(width: 150, alignment: .leading)
+                        .lineLimit(1)
                     Text(record.testResult)
                         .frame(width: 150, alignment: .leading)
+                        .lineLimit(1)
                     Text(record.testComments ?? "")
                         .frame(width: 200, alignment: .leading)
+                        .lineLimit(1)
                 }
-                .padding(.vertical, 4)
+                .frame(height: rowHeight)
                 .font(.system(size: 11))
+                .background(index % 2 == 0 ? Color.clear : Color(NSColor.controlBackgroundColor))
             }
         }
     }
