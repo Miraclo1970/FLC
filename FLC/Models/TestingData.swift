@@ -8,7 +8,7 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
     let testStatus: String
     let testDate: Date
     let testResult: String
-    let testComments: String?
+    let testingPlanDate: String?
     let importDate: Date
     let importSet: String
     
@@ -21,7 +21,7 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
         static let testStatus = Column("testStatus")
         static let testDate = Column("testDate")
         static let testResult = Column("testResult")
-        static let testComments = Column("testComments")
+        static let testingPlanDate = Column("testingPlanDate")
         static let importDate = Column("importDate")
         static let importSet = Column("importSet")
     }
@@ -33,7 +33,7 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
         container[Columns.testStatus] = testStatus
         container[Columns.testDate] = testDate
         container[Columns.testResult] = testResult
-        container[Columns.testComments] = testComments
+        container[Columns.testingPlanDate] = testingPlanDate
         container[Columns.importDate] = importDate
         container[Columns.importSet] = importSet
     }
@@ -44,7 +44,7 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
         self.testStatus = data.testStatus
         self.testDate = data.testDate
         self.testResult = data.testResult
-        self.testComments = data.testComments
+        self.testingPlanDate = data.testingPlanDate
         self.importDate = Date()
         
         // Create a descriptive import set identifier
@@ -62,7 +62,7 @@ struct TestingData: Identifiable, Codable {
     let testStatus: String
     let testDate: Date
     let testResult: String
-    let testComments: String?
+    let testingPlanDate: String?
     
     // Basic validation to ensure required fields are not empty
     // Records that don't pass validation will be skipped during import
@@ -88,12 +88,12 @@ struct TestingData: Identifiable, Codable {
         return validationErrors.isEmpty
     }
     
-    init(applicationName: String, testStatus: String, testDate: Date, testResult: String, testComments: String? = nil) {
+    init(applicationName: String, testStatus: String, testDate: Date, testResult: String, testingPlanDate: String? = nil) {
         self.id = UUID()
         self.applicationName = applicationName
         self.testStatus = testStatus
         self.testDate = testDate
         self.testResult = testResult
-        self.testComments = testComments
+        self.testingPlanDate = testingPlanDate
     }
 } 

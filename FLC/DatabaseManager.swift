@@ -134,7 +134,7 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
 class DatabaseManager: ObservableObject {
     public static let shared: DatabaseManager = DatabaseManager()
     @Published private var dbPool: DatabasePool?
-    private let currentVersion = 7  // Increment version to force schema update
+    private let currentVersion = 8  // Increment version to force schema update
     
     private init() {
         do {
@@ -267,7 +267,7 @@ class DatabaseManager: ObservableObject {
                 t.column("testStatus", .text).notNull()
                 t.column("testDate", .datetime).notNull()
                 t.column("testResult", .text).notNull()
-                t.column("testComments", .text)
+                t.column("testingPlanDate", .text)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
                 // Create a unique index on applicationName
