@@ -29,14 +29,6 @@ struct AdminDashboardView: View {
                     NavigationLink(value: "department-progress") {
                         Label("Department Progress", systemImage: "building.2.fill")
                     }
-                    
-                    NavigationLink(value: "division-overview") {
-                        Label("Division Overview", systemImage: "rectangle.3.group")
-                    }
-                    
-                    NavigationLink(value: "migration-progress") {
-                        Label("Migration Progress", systemImage: "chart.bar.fill")
-                    }
                 }
                 
                 Divider()
@@ -77,10 +69,6 @@ struct AdminDashboardView: View {
                     QueryView()
                 case "department-progress":
                     DepartmentProgressView()
-                case "division-overview":
-                    DivisionOverviewView()
-                case "migration-progress":
-                    MigrationOverallProgressView()
                 case "export":
                     ExportView()
                 case "admin":
