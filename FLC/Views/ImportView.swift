@@ -315,7 +315,7 @@ struct ImportView: View {
                     }
                     
                 case .testing:
-                    let (valid, _, _) = try await processTestStatusData(xlsx)
+                    let (valid, invalid, duplicates) = try await processTestData(xlsx)
                     await MainActor.run {
                         print("Setting Test Status records - Valid: \(valid.count)")
                         progress.selectedDataType = .testing
@@ -329,7 +329,7 @@ struct ImportView: View {
                     }
                     
                 case .migration:
-                    let (valid, _, _) = try await processMigrationData(xlsx)
+                    let (valid, invalid, duplicates) = try await processMigrationData(xlsx)
                     await MainActor.run {
                         print("Setting Migration records - Valid: \(valid.count)")
                         progress.selectedDataType = .migration
@@ -755,17 +755,12 @@ struct ImportView: View {
                    let value = cell.value,
                    let stringIndex = Int(value),
                    stringIndex < sharedStrings.items.count {
-                    let text = sharedStrings.items[stringIndex].text ?? ""
-                    cellValue = text.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : text
+                    cellValue = sharedStrings.items[stringIndex].text ?? ""
                 } else {
-                    let value = cell.value ?? ""
-                    cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
+                    cellValue = cell.value ?? ""
                 }
                 
-                let columnIndex: Int
-                let columnString = cell.reference.column.value
-                columnIndex = columnString.excelColumnToIndex()
-                
+                let columnIndex = cell.reference.column.value.excelColumnToIndex()
                 return (index: columnIndex, value: cellValue)
             }
             
@@ -875,11 +870,9 @@ struct ImportView: View {
                    let value = cell.value,
                    let stringIndex = Int(value),
                    stringIndex < sharedStrings.items.count {
-                    let text = sharedStrings.items[stringIndex].text ?? ""
-                    cellValue = text.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : text
+                    cellValue = sharedStrings.items[stringIndex].text ?? ""
                 } else {
-                    let value = cell.value ?? ""
-                    cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
+                    cellValue = cell.value ?? ""
                 }
                 
                 let columnIndex = cell.reference.column.value.excelColumnToIndex()
@@ -1325,120 +1318,234 @@ struct ImportView: View {
         }
     }
     
-    private func processTestStatusData(_ xlsx: XLSXFile) async throws -> ([TestingData], [String], [String]) {
-        var validRecords: [TestingData] = []
-        let invalidRecords: [String] = []
-        let duplicateRecords: [String] = []
-        
+    private func processTestData(_ xlsx: XLSXFile) async throws -> (valid: [TestingData], invalid: [String], duplicates: [String]) {
         await MainActor.run {
-            progress.update(operation: "Phase 1/5: Reading worksheet data...", progress: 0.1)
+            progress.update(operation: "Phase 1/5: Initializing...", progress: 0.05)
         }
         
-        // Get the first worksheet
         let worksheetPaths = try xlsx.parseWorksheetPaths()
-        guard let worksheetPath = worksheetPaths.first else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheet found in the file"])
+        guard let path = worksheetPaths.first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheets found"])
         }
         
-        let worksheet = try xlsx.parseWorksheet(at: worksheetPath)
+        let worksheet = try xlsx.parseWorksheet(at: path)
         let sharedStrings = try xlsx.parseSharedStrings()
-        let totalRows = worksheet.data?.rows.count ?? 0
         
-        // Validate header row
-        guard let firstRow = worksheet.data?.rows.first else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data found in worksheet"])
-        }
-        
-        let headers = firstRow.cells.map { cell -> String in
-            if let sharedStrings = sharedStrings,
-               case .sharedString = cell.type,
-               let value = cell.value,
-               let stringIndex = Int(value),
-               stringIndex < sharedStrings.items.count {
-                return sharedStrings.items[stringIndex].text ?? ""
+        // Get headers for validation
+        if let firstRow = worksheet.data?.rows.first {
+            let headers = firstRow.cells.map { cell -> String in
+                if let sharedStrings = sharedStrings,
+                   case .sharedString = cell.type,
+                   let value = cell.value,
+                   let stringIndex = Int(value),
+                   stringIndex < sharedStrings.items.count {
+                    return sharedStrings.items[stringIndex].text ?? ""
+                }
+                return cell.value ?? ""
             }
-            return cell.value ?? ""
+            
+            try validateDataType(headers, expected: .testing)
         }
         
-        // Check for Test Status header
-        let headerText = headers.joined(separator: " ").lowercased()
-        guard headerText.contains("test") && headerText.contains("status") else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid file format: Expected Test Status data but found different content"])
-        }
+        var validRecords: [TestingData] = []
+        var invalidRecords: [String] = []
+        var duplicateRecords: [String] = []
+        var seenApplicationNames = Set<String>()
         
-        await MainActor.run {
-            progress.update(operation: "Phase 2/5: Processing \(totalRows) rows...", progress: 0.2)
-        }
+        let rows = worksheet.data?.rows ?? []
+        var startDataIndex = -1
+        var headerRowIndex = -1
+        var columnMap: [String: Int] = [:]
         
-        // Process each row
-        var processedValidRows = 0
-        
-        // Skip first two rows (header and column names)
-        let dataRows = (worksheet.data?.rows ?? []).dropFirst(2)
-        
-        for (index, row) in dataRows.enumerated() {
-            let rowContent = row.cells.map { cell -> (columnIndex: Int, value: String) in
-                var cellValue = ""
-                
+        // Find the start marker and header row
+        for (index, row) in rows.enumerated() {
+            let rowContent = row.cells.map { cell -> (index: Int, value: String) in
+                let cellValue: String
                 if let sharedStrings = sharedStrings,
                    case .sharedString = cell.type,
                    let value = cell.value,
                    let stringIndex = Int(value),
                    stringIndex < sharedStrings.items.count {
                     cellValue = sharedStrings.items[stringIndex].text ?? ""
-                } else if let value = cell.value {
-                    cellValue = value
+                } else {
+                    cellValue = cell.value ?? ""
                 }
                 
                 let columnIndex = cell.reference.column.value.excelColumnToIndex()
-                return (columnIndex: columnIndex, value: cellValue.trimmingCharacters(in: .whitespaces))
+                return (index: columnIndex, value: cellValue)
             }
             
-            // Create a dictionary for easier column access
-            var rowData: [Int: String] = [:]
-            for content in rowContent {
-                rowData[content.columnIndex] = content.value
+            var fullRowContent: [String] = Array(repeating: "N/A", count: 20)
+            for cell in rowContent {
+                if cell.index < fullRowContent.count {
+                    fullRowContent[cell.index] = cell.value
+                }
             }
             
-            // Extract data from the correct columns (adjusted column indices)
-            let applicationName = rowData[0] ?? "N/A"
-            let testStatus = rowData[1] ?? "N/A"
-            let testDateStr = rowData[2] ?? "N/A"
-            let testResult = rowData[3] ?? "N/A"
-            let testComments = rowData[4] != "N/A" ? rowData[4] : nil
+            if startDataIndex == -1 {
+                let rowText = fullRowContent.joined(separator: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                    .lowercased()
+                    .replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
+                if rowText.contains("=startdatabelow=") || 
+                   rowText.contains("===startdatabelow===") ||
+                   rowText.contains("start data below") {
+                    startDataIndex = index
+                }
+            } else if headerRowIndex == -1 {
+                // Check for header row
+                let headerVariations = ["Application Name", "Test Status", "Test Date", "Test Result", "Testing Plan Date"]
+                let foundHeader = fullRowContent.contains { content in
+                    let normalizedContent = content.lowercased().trimmingCharacters(in: .whitespaces)
+                    return headerVariations.map { $0.lowercased() }.contains(normalizedContent)
+                }
+                
+                if foundHeader {
+                    headerRowIndex = index
+                    // Map column indices to standardized header names
+                    for (colIndex, content) in fullRowContent.enumerated() {
+                        let normalizedContent = content.lowercased().trimmingCharacters(in: .whitespaces)
+                        let standardHeader: String
+                        switch normalizedContent {
+                        case "application name", "applicationname", "application_name":
+                            standardHeader = "Application Name"
+                        case "test status", "teststatus", "test_status":
+                            standardHeader = "Test Status"
+                        case "test date", "testdate", "test_date":
+                            standardHeader = "Test Date"
+                        case "test result", "testresult", "test_result":
+                            standardHeader = "Test Result"
+                        case "testing plan date", "testingplandate", "testing_plan_date":
+                            standardHeader = "Testing Plan Date"
+                        default:
+                            continue
+                        }
+                        columnMap[standardHeader] = colIndex
+                    }
+                }
+            }
             
-            // Parse the test date
+            if startDataIndex != -1 && headerRowIndex != -1 {
+                break
+            }
+        }
+        
+        guard startDataIndex != -1 else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find '===START DATA BELOW===' marker"])
+        }
+        
+        guard headerRowIndex != -1 else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find header row"])
+        }
+        
+        // Process only the rows after the header
+        let dataRows = rows.dropFirst(headerRowIndex + 1)
+        let totalRows = dataRows.count
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 4/5: Found \(totalRows) rows to process...", progress: 0.72)
+        }
+        
+        var processedValidRows = 0
+        var processedInvalidRows = 0
+        var processedDuplicateRows = 0
+        
+        for (index, row) in dataRows.enumerated() {
+            if index % 50 == 0 {
+                let progressValue = 0.72 + (0.18 * Double(index) / Double(max(1, totalRows)))
+                let stats = """
+                Phase 4/5: Processing rows...
+                Row: \(index) of \(totalRows)
+                Valid: \(processedValidRows)
+                Invalid: \(processedInvalidRows)
+                Duplicates: \(processedDuplicateRows)
+                """
+                await MainActor.run {
+                    progress.update(operation: stats, progress: progressValue)
+                }
+            }
+            
+            let rowContent = row.cells.map { cell -> (index: Int, value: String) in
+                let cellValue: String
+                if let sharedStrings = sharedStrings,
+                   case .sharedString = cell.type,
+                   let value = cell.value,
+                   let stringIndex = Int(value),
+                   stringIndex < sharedStrings.items.count {
+                    let text = sharedStrings.items[stringIndex].text ?? ""
+                    cellValue = text.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : text
+                } else {
+                    let value = cell.value ?? ""
+                    cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
+                }
+                
+                let columnIndex = cell.reference.column.value.excelColumnToIndex()
+                return (index: columnIndex, value: cellValue)
+            }
+            
+            var fullRowContent: [String] = Array(repeating: "N/A", count: 20)
+            for cell in rowContent {
+                if cell.index < fullRowContent.count {
+                    fullRowContent[cell.index] = cell.value
+                }
+            }
+            
+            // Skip empty rows
+            if fullRowContent.allSatisfy({ $0 == "N/A" }) {
+                continue
+            }
+            
+            let applicationName = fullRowContent[safe: columnMap["Application Name"] ?? -1] ?? "N/A"
+            let testStatus = fullRowContent[safe: columnMap["Test Status"] ?? -1] ?? "N/A"
+            let testDateStr = fullRowContent[safe: columnMap["Test Date"] ?? -1] ?? "N/A"
+            let testResult = fullRowContent[safe: columnMap["Test Result"] ?? -1] ?? "N/A"
+            let testingPlanDate = fullRowContent[safe: columnMap["Testing Plan Date"] ?? -1]
+            
+            // Parse test date
             var testDate: Date = Date()
             if testDateStr != "N/A" {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "dd/MM/yyyy"
+                let dateFormatters = [
+                    DateFormatter.hrDateFormatter,
+                    DateFormatter.hrDateParser
+                ]
                 
-                if let date = formatter.date(from: testDateStr) {
-                    testDate = date
+                var dateParsed = false
+                for formatter in dateFormatters {
+                    if let date = formatter.date(from: testDateStr) {
+                        testDate = date
+                        dateParsed = true
+                        break
+                    }
+                }
+                
+                if !dateParsed {
+                    invalidRecords.append("Row \(index + 1): Invalid Test Date format '\(testDateStr)'")
+                    processedInvalidRows += 1
+                    continue
+                }
+            }
+            
+            // Create and validate record
+            let record = TestingData(
+                applicationName: applicationName,
+                testStatus: testStatus,
+                testDate: testDate,
+                testResult: testResult,
+                testingPlanDate: testingPlanDate == "N/A" ? nil : testingPlanDate
+            )
+            
+            if record.isValid {
+                if seenApplicationNames.contains(applicationName) {
+                    duplicateRecords.append("Row \(index + 1): Duplicate Application Name '\(applicationName)'")
+                    processedDuplicateRows += 1
                 } else {
-                    print("Failed to parse test date: \(testDateStr)")
+                    seenApplicationNames.insert(applicationName)
+                    validRecords.append(record)
+                    processedValidRows += 1
                 }
-            }
-            
-            // Validate the record
-            if applicationName != "N/A" && testStatus != "N/A" {
-                let record = TestingData(
-                    applicationName: applicationName,
-                    testStatus: testStatus,
-                    testDate: testDate,
-                    testResult: testResult,
-                    testComments: testComments
-                )
-                validRecords.append(record)
-                processedValidRows += 1
-            }
-            
-            // Update progress
-            if index % 100 == 0 {
-                await MainActor.run {
-                    let progress = Double(index) / Double(totalRows)
-                    self.progress.update(operation: "Phase 2/5: Processing row \(index) of \(totalRows)...", progress: 0.2 + (progress * 0.6))
-                }
+            } else {
+                invalidRecords.append("Row \(index + 1): \(record.validationErrors.joined(separator: ", "))")
+                processedInvalidRows += 1
             }
         }
         
@@ -1446,16 +1553,12 @@ struct ImportView: View {
         let summary = """
         Processing complete:
         Valid records: \(processedValidRows)
-        Invalid records: \(invalidRecords.count)
-        Duplicate records: \(duplicateRecords.count)
+        Invalid records: \(processedInvalidRows)
+        Duplicate records: \(processedDuplicateRows)
         """
         
         await MainActor.run {
-            progress.update(operation: summary, progress: 0.95)
-        }
-        
-        await MainActor.run {
-            progress.update(operation: "Phase 5/5: Import complete!", progress: 1.0)
+            progress.update(operation: summary, progress: 1.0)
         }
         
         return (validRecords, invalidRecords, duplicateRecords)
