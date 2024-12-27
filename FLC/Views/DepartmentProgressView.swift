@@ -97,7 +97,7 @@ struct DepartmentProgressView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(selectedDivision.isEmpty || selectedDepartment.isEmpty || selectedOtapValues.isEmpty)
                     }
-                    .frame(width: 930)  // Match the total width of the table columns below
+                    .frame(width: 1130)  // Match the total width of the table columns below
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
@@ -117,16 +117,18 @@ struct DepartmentProgressView: View {
                                 .frame(width: 400, alignment: .leading)
                                 Text("Users")
                                     .frame(width: 80, alignment: .center)
-                                Text("Average")
+                                Text("Package progress")
                                     .frame(width: 150, alignment: .center)
                                 Text("Ready by")
                                     .frame(width: 100, alignment: .center)
-                                Text("Average")
+                                Text("Testing progress")
                                     .frame(width: 150, alignment: .center)
-                                Text("Average")
+                                Text("Ready by")
+                                    .frame(width: 100, alignment: .center)
+                                Text("Migration progress")
                                     .frame(width: 150, alignment: .center)
                             }
-                            .frame(width: 930)
+                            .frame(width: 1130)
                             .padding()
                             .background(Color(NSColor.controlBackgroundColor))
                             .cornerRadius(8)
@@ -159,6 +161,7 @@ struct DepartmentProgressView: View {
                                 HStack(spacing: 0) {
                                     Text("Application")
                                         .frame(width: 400, alignment: .leading)
+                                        .padding(.leading, 8)
                                     Text("Users")
                                         .frame(width: 80, alignment: .center)
                                     Text("Package progress")
@@ -182,6 +185,7 @@ struct DepartmentProgressView: View {
                                         Text(app.name)
                                             .frame(width: 400, alignment: .leading)
                                             .lineLimit(1)
+                                            .padding(.leading, 8)
                                         Text("\(app.uniqueUsers)")
                                             .frame(width: 80, alignment: .center)
                                         DepartmentProgressCell(status: app.packageStatus)
