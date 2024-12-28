@@ -134,7 +134,7 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
 class DatabaseManager: ObservableObject {
     public static let shared: DatabaseManager = DatabaseManager()
     @Published private var dbPool: DatabasePool?
-    private let currentVersion = 4  // Increment this to force schema update
+    private let currentVersion = AppVersion.databaseVersion  // Database schema version
     private let versionKey = "database_version"
     
     private init() {
@@ -150,11 +150,10 @@ class DatabaseManager: ObservableObject {
             let dbURL = dbFolderURL.appendingPathComponent("database.sqlite")
             print("Database path: \(dbURL.path)")
             
-            // Check if we need to delete the existing database due to version mismatch
-            let defaults = UserDefaults.standard
-            let savedVersion = defaults.integer(forKey: versionKey)
-            if savedVersion < currentVersion {
-                try? fileManager.removeItem(at: dbURL)
+            // Only create new database if it doesn't exist
+            if !FileManager.default.fileExists(atPath: dbURL.path) {
+                print("Creating new database at version \(currentVersion)")
+                let defaults = UserDefaults.standard
                 defaults.set(currentVersion, forKey: versionKey)
             }
             
@@ -382,11 +381,14 @@ class DatabaseManager: ObservableObject {
                 if let existingRecord = try PackageRecord
                     .filter(Column("applicationName") == record.applicationName)
                     .fetchOne(db) {
-                    var updatedRecord = dbRecord
+                    print("Updating existing package record for \(record.applicationName)")
+                    var updatedRecord = PackageRecord(from: record)
                     updatedRecord.id = existingRecord.id
                     try updatedRecord.update(db)
                 } else {
-                    try dbRecord.insert(db)
+                    print("Creating new package record for \(record.applicationName)")
+                    let packageRecord = PackageRecord(from: record)
+                    try packageRecord.insert(db)
                 }
                 
                 // Then update ALL matching records in combined_records table
@@ -633,9 +635,38 @@ class DatabaseManager: ObservableObject {
                     if let existingRecord = try CombinedRecord
                         .filter(Column("adGroup") == adRecord.adGroup && Column("systemAccount") == adRecord.systemAccount)
                         .fetchOne(db) {
-                        // Update existing record
-                        var updatedRecord = combinedRecord
-                        updatedRecord.id = existingRecord.id
+                        // Create updated record preserving existing data
+                        print("Found existing record for \(adRecord.applicationName), updating...")
+                        var updatedRecord = CombinedRecord(
+                            id: existingRecord.id,
+                            adGroup: adRecord.adGroup,
+                            systemAccount: adRecord.systemAccount,
+                            applicationName: adRecord.applicationName,
+                            applicationSuite: adRecord.applicationSuite,
+                            otap: adRecord.otap,
+                            critical: adRecord.critical,
+                            department: hrRecord?.department,
+                            jobRole: hrRecord?.jobRole,
+                            division: hrRecord?.division,
+                            leaveDate: hrRecord?.leaveDate,
+                            // Preserve existing package and testing data if no new data
+                            applicationPackageStatus: packageRecord?.packageStatus ?? existingRecord.applicationPackageStatus,
+                            applicationPackageReadinessDate: packageRecord?.packageReadinessDate ?? existingRecord.applicationPackageReadinessDate,
+                            applicationTestStatus: testRecord?.testStatus ?? existingRecord.applicationTestStatus,
+                            applicationTestReadinessDate: testRecord?.testDate ?? existingRecord.applicationTestReadinessDate,
+                            applicationNew: migrationRecord?.applicationNew,
+                            applicationSuiteNew: migrationRecord?.applicationSuiteNew,
+                            willBe: migrationRecord?.willBe,
+                            inScopeOutScopeDivision: migrationRecord?.inScopeOutScopeDivision,
+                            migrationPlatform: migrationRecord?.migrationPlatform,
+                            migrationApplicationReadiness: migrationRecord?.migrationApplicationReadiness,
+                            departmentSimple: hrRecord?.departmentSimple,
+                            domain: existingRecord.domain,
+                            migrationCluster: existingRecord.migrationCluster,
+                            migrationReadiness: existingRecord.migrationReadiness,
+                            importDate: Date(),
+                            importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
+                        )
                         try updatedRecord.update(db)
                     } else {
                         // Insert new record
@@ -1243,10 +1274,46 @@ class DatabaseManager: ObservableObject {
             for data in records {
                 let record = MigrationRecord(from: data)
                 do {
-                    try record.insert(db)
-                    saved += 1
-                } catch let error as DatabaseError where error.resultCode == .SQLITE_CONSTRAINT {
-                    // Record already exists
+                    // Try to find existing record
+                    if let existingRecord = try MigrationRecord
+                        .filter(Column("applicationName") == data.applicationName)
+                        .fetchOne(db) {
+                        // Update existing record
+                        var updatedRecord = record
+                        updatedRecord.id = existingRecord.id
+                        try updatedRecord.update(db)
+                        saved += 1
+                    } else {
+                        // Insert new record
+                        try record.insert(db)
+                        saved += 1
+                    }
+                    
+                    // Update ALL matching records in combined_records table
+                    // This ensures consistency across all instances of the same application
+                    try db.execute(
+                        sql: """
+                            UPDATE combined_records
+                            SET applicationNew = ?,
+                                applicationSuiteNew = ?,
+                                willBe = ?,
+                                inScopeOutScopeDivision = ?,
+                                migrationPlatform = ?,
+                                migrationApplicationReadiness = ?
+                            WHERE applicationName = ?
+                            """,
+                        arguments: [
+                            data.applicationNew,
+                            data.applicationSuiteNew,
+                            data.willBe,
+                            data.inScopeOutScopeDivision,
+                            data.migrationPlatform,
+                            data.migrationApplicationReadiness,
+                            data.applicationName
+                        ]
+                    )
+                } catch {
+                    print("Error processing migration record for \(data.applicationName): \(error)")
                     skipped += 1
                 }
             }
@@ -1392,5 +1459,87 @@ class DatabaseManager: ObservableObject {
         
         let flcDir = appSupportDir.appendingPathComponent("FLC")
         return flcDir.appendingPathComponent("database.sqlite").path
+    }
+    
+    // Get department statistics for a specific division
+    func getDepartmentStats(forDivision division: String) -> [(department: String, migrationCluster: String?, applicationCount: Int, userCount: Int, packageProgress: Double, testingProgress: Double)] {
+        guard let dbPool = dbPool else { return [] }
+        
+        do {
+            return try dbPool.read { db in
+                // Get all departments for the division
+                let departments = try String.fetchAll(db, sql: """
+                    SELECT DISTINCT departmentSimple 
+                    FROM combined_records 
+                    WHERE division = ? 
+                    AND departmentSimple IS NOT NULL 
+                    ORDER BY departmentSimple
+                    """, arguments: [division])
+                
+                // Get stats for each department
+                return try departments.compactMap { department -> (String, String?, Int, Int, Double, Double)? in
+                    // Get records for this department
+                    let records = try Row.fetchAll(db, sql: """
+                        SELECT migrationCluster,
+                               applicationPackageStatus,
+                               applicationTestStatus,
+                               systemAccount,
+                               applicationName,
+                               inScopeOutScopeDivision,
+                               willBe
+                        FROM combined_records
+                        WHERE division = ?
+                        AND departmentSimple = ?
+                        """, arguments: [division, department])
+                    
+                    // Filter out "Out" of scope and "Will Be" applications
+                    let validRecords = records.filter { row in
+                        let inScopeOutScope = row["inScopeOutScopeDivision"] as? String
+                        let willBe = row["willBe"] as? String
+                        return inScopeOutScope?.lowercased() != "out" && (willBe ?? "").isEmpty
+                    }
+                    
+                    guard !validRecords.isEmpty else { return nil }
+                    
+                    // Get unique applications and users
+                    let uniqueApps = Set(validRecords.map { $0["applicationName"] as? String ?? "" })
+                    let uniqueUsers = Set(validRecords.map { $0["systemAccount"] as? String ?? "" })
+                    
+                    // Calculate package progress
+                    let packageTotal = validRecords.reduce(0.0) { sum, record in
+                        let status = (record["applicationPackageStatus"] as? String ?? "").lowercased()
+                        let points = status == "ready" || status == "ready for testing" ? 100.0 :
+                                   status == "in progress" ? 50.0 : 0.0
+                        return sum + points
+                    }
+                    
+                    // Calculate testing progress
+                    let testingTotal = validRecords.reduce(0.0) { sum, record in
+                        let status = (record["applicationTestStatus"] as? String ?? "").lowercased()
+                        let points = ["ready", "completed", "passed"].contains(status) ? 100.0 :
+                                   status == "in progress" ? 50.0 : 0.0
+                        return sum + points
+                    }
+                    
+                    let packageProgress = packageTotal / Double(validRecords.count)
+                    let testingProgress = testingTotal / Double(validRecords.count)
+                    
+                    // Get migration cluster (assuming it's the same for all department records)
+                    let migrationCluster = records.first?["migrationCluster"] as? String
+                    
+                    return (
+                        department,
+                        migrationCluster,
+                        uniqueApps.count,
+                        uniqueUsers.count,
+                        packageProgress / 100.0,  // Convert to decimal for consistency
+                        testingProgress / 100.0
+                    )
+                }
+            }
+        } catch {
+            print("Error getting department stats: \(error)")
+            return []
+        }
     }
 } 
