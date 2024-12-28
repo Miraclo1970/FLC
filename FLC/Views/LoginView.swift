@@ -81,6 +81,14 @@ struct LoginView: View {
                 Text(isEnglish ? "Invalid username or password" : "Ongeldige gebruikersnaam of wachtwoord")
                     .foregroundColor(.red)
             }
+            
+            Spacer()
+            
+            // Version information at the bottom
+            Text("v0.93.6 (db: v4)")
+                .font(.system(size: 10))
+                .foregroundColor(.gray)
+                .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
