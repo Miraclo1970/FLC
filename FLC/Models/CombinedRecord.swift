@@ -282,9 +282,9 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         // Migration fields
         self.applicationNew = migrationRecord?.applicationNew
         self.applicationSuiteNew = migrationRecord?.applicationSuiteNew
-        self.willBe = migrationRecord?.willBe
+        self.willBe = migrationRecord?.willBe == "N/A" ? nil : migrationRecord?.willBe
         self.inScopeOutScopeDivision = migrationRecord?.inScopeOutScopeDivision
-        self.migrationPlatform = migrationRecord?.migrationPlatform
+        self.migrationPlatform = migrationRecord?.migrationPlatform == "N/A" ? nil : migrationRecord?.migrationPlatform
         self.migrationApplicationReadiness = migrationRecord?.migrationApplicationReadiness
         
         // Department and Migration fields

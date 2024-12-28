@@ -8,6 +8,7 @@ struct ImportView: View {
     @State private var importType: ImportType?
     @EnvironmentObject private var progress: ImportProgress
     @Environment(\.dismiss) var dismiss
+    @Binding var selectedItem: String?  // Add this line to control navigation
     
     enum ImportType {
         case hr
@@ -269,8 +270,8 @@ struct ImportView: View {
                         progress.isProcessing = false
                         print("Processed AD records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         print("Data type is now: \(progress.selectedDataType)")
-                        // Dismiss this view to return to the main navigation
-                        dismiss()
+                        // Navigate to validation view instead of dismissing
+                        selectedItem = "validation"
                     }
                     
                 case .hr:
@@ -285,8 +286,8 @@ struct ImportView: View {
                         progress.isProcessing = false
                         print("Processed HR records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         print("Data type is now: \(progress.selectedDataType)")
-                        // Dismiss this view to return to the main navigation
-                        dismiss()
+                        // Navigate to validation view instead of dismissing
+                        selectedItem = "validation"
                     }
                     
                 case .packageStatus:
@@ -310,8 +311,8 @@ struct ImportView: View {
                         print("Processed Package Status records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         print("Data type is now: \(progress.selectedDataType)")
                         
-                        // Dismiss to return to validation view
-                        dismiss()
+                        // Navigate to validation view instead of dismissing
+                        selectedItem = "validation"
                     }
                     
                 case .testing:
@@ -326,22 +327,24 @@ struct ImportView: View {
                         progress.isProcessing = false
                         print("Processed Test Status records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         print("Data type is now: \(progress.selectedDataType)")
-                        // Dismiss this view to return to the main navigation
-                        dismiss()
+                        // Navigate to validation view instead of dismissing
+                        selectedItem = "validation"
                     }
                     
                 case .migration:
-                    let (valid, _, _) = try await processMigrationData(xlsx)
+                    let (valid, invalid, duplicates) = try await processMigrationData(xlsx)
                     await MainActor.run {
-                        print("Setting Migration records - Valid: \(valid.count)")
+                        print("Setting Migration records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         progress.selectedDataType = .migration
                         progress.validMigrationRecords = valid
+                        progress.invalidMigrationRecords = invalid
+                        progress.duplicateMigrationRecords = duplicates
                         message = "Successfully processed Migration data from: \(file.lastPathComponent)"
                         progress.isProcessing = false
-                        print("Processed Migration records - Valid: \(valid.count)")
+                        print("Processed Migration records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         print("Data type is now: \(progress.selectedDataType)")
-                        // Dismiss this view to return to the main navigation
-                        dismiss()
+                        // Navigate to validation view instead of dismissing
+                        selectedItem = "validation"
                     }
                     
                 case .cluster:
@@ -356,8 +359,8 @@ struct ImportView: View {
                         progress.isProcessing = false
                         print("Processed Cluster records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         print("Data type is now: \(progress.selectedDataType)")
-                        // Dismiss this view to return to the main navigation
-                        dismiss()
+                        // Navigate to validation view instead of dismissing
+                        selectedItem = "validation"
                     }
                     
                 case .none:
@@ -1623,7 +1626,6 @@ struct ImportView: View {
         
         let worksheet = try xlsx.parseWorksheet(at: worksheetPath)
         let sharedStrings = try xlsx.parseSharedStrings()
-        let totalRows = worksheet.data?.rows.count ?? 0
         
         // Find the start marker and header row
         var headerRowIndex = -1
@@ -1701,13 +1703,15 @@ struct ImportView: View {
                             standardHeader = "Application Suite New"
                         case "will be", "willbe":
                             standardHeader = "Will Be"
-                        case "in/out scope division", "inscope/outscope", "in scope out scope division":
+                        case "in/out scope division", "in/out scope", "inscope/outscope", "inscope/outscope division", "in scope/out scope", "in scope/out scope division":
+                            print("Found In/Out Scope Division column at index \(colIndex)")
                             standardHeader = "In/Out Scope Division"
                         case "migration platform", "migrationplatform":
                             standardHeader = "Migration Platform"
                         case "application readiness", "applicationreadiness", "migration application readiness":
                             standardHeader = "Migration Application Readiness"
                         default:
+                            print("Unmatched header: '\(normalizedHeader)'")
                             continue
                         }
                         columnMap[standardHeader] = colIndex
@@ -1798,17 +1802,33 @@ struct ImportView: View {
             let applicationNew = fullRowContent[safe: columnMap["Application New"] ?? -1] ?? ""
             let applicationSuiteNew = fullRowContent[safe: columnMap["Application Suite New"] ?? -1] ?? ""
             let willBe = fullRowContent[safe: columnMap["Will Be"] ?? -1] ?? ""
-            let inScopeOutScopeDivision = fullRowContent[safe: columnMap["In/Out Scope Division"] ?? -1] ?? ""
+
+            // Process In/Out Scope Division - only store "Out" when specified
+            let rawScopeValue = fullRowContent[safe: columnMap["In/Out Scope Division"] ?? -1] ?? ""
+            print("Raw In/Out Scope Division value: '\(rawScopeValue)'")
+            let inScopeOutScopeDivision = rawScopeValue.trimmingCharacters(in: .whitespaces).lowercased()
+            print("Trimmed and lowercased value: '\(inScopeOutScopeDivision)'")
+            let normalizedScope = inScopeOutScopeDivision == "out" || 
+                                inScopeOutScopeDivision == "out scope" || 
+                                inScopeOutScopeDivision == "out of scope" ? "Out" : ""
+            print("Final normalized scope value: '\(normalizedScope)'")
+
+            print("Column Map for debugging:")
+            for (header, index) in columnMap {
+                print("\(header): \(index)")
+            }
+
             let migrationPlatform = fullRowContent[safe: columnMap["Migration Platform"] ?? -1] ?? ""
+            let normalizedPlatform = migrationPlatform == "N/A" ? "" : migrationPlatform
             let migrationApplicationReadiness = fullRowContent[safe: columnMap["Migration Application Readiness"] ?? -1] ?? ""
-            
+
             let record = MigrationData(
                 applicationName: applicationName,
                 applicationNew: applicationNew,
                 applicationSuiteNew: applicationSuiteNew,
                 willBe: willBe,
-                inScopeOutScopeDivision: inScopeOutScopeDivision,
-                migrationPlatform: migrationPlatform,
+                inScopeOutScopeDivision: normalizedScope,
+                migrationPlatform: normalizedPlatform,
                 migrationApplicationReadiness: migrationApplicationReadiness
             )
             
@@ -2097,5 +2117,5 @@ extension String {
 }
 
 #Preview {
-    ImportView()
+    ImportView(selectedItem: .constant(nil))
 } 
