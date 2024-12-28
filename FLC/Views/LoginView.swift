@@ -85,9 +85,9 @@ struct LoginView: View {
             Spacer()
             
             // Version information at the bottom
-            Text(AppVersion.displayVersion)
-                .font(.system(size: 10))
-                .foregroundColor(.gray)
+            Text("v0.94.3 (db: v4)")
+                .font(.caption)
+                .foregroundColor(.secondary)
                 .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
