@@ -4,29 +4,81 @@ import UniformTypeIdentifiers
 
 struct DivisionTabContent: View {
     let division: String
-    @State private var departmentStats: [(department: String, migrationCluster: String?, applicationCount: Int, userCount: Int, packageProgress: Double, testingProgress: Double)] = []
+    @State private var departmentStats: [(
+        department: String,
+        migrationCluster: String?,
+        applicationCount: Int,
+        userCount: Int,
+        packageProgress: Double,
+        testingProgress: Double
+    )] = []
+    
+    private var averageApplicationReadiness: String {
+        let validStats = departmentStats.filter { stat in
+            stat.applicationCount > 0
+        }
+        
+        if validStats.isEmpty {
+            return "0%"
+        }
+        
+        let totalPackageProgress = validStats.reduce(0.0) { $0 + $1.packageProgress * Double($1.applicationCount) }
+        let totalTestingProgress = validStats.reduce(0.0) { $0 + $1.testingProgress * Double($1.applicationCount) }
+        let totalApps = Double(validStats.reduce(0) { $0 + $1.applicationCount })
+        
+        let avgProgress = ((totalPackageProgress + totalTestingProgress) / (2 * totalApps)) * 100
+        return "\(Int(avgProgress))%"
+    }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Department header
-            HStack(spacing: 0) {
-                Text("Department")
-                    .frame(width: 300, alignment: .leading)
-                Text("Migration Cluster")
+            // Totals header
+            Text("Totals")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color(NSColor.controlBackgroundColor))
+            
+            // Totals row
+            HStack(spacing: 10) {
+                Text("")
+                    .frame(width: 200, alignment: .leading)
+                Text("")
                     .frame(width: 150, alignment: .leading)
-                Text("# Apps")
-                    .frame(width: 80, alignment: .center)
-                Text("Users")
-                    .frame(width: 80, alignment: .center)
-                Text("Package progress")
-                    .frame(width: 150, alignment: .center)
-                Text("Testing progress")
-                    .frame(width: 150, alignment: .center)
+                Text("\(departmentStats.reduce(0) { $0 + $1.applicationCount })")
+                    .frame(width: 80, alignment: .trailing)
+                Text("\(departmentStats.reduce(0) { $0 + $1.userCount })")
+                    .frame(width: 80, alignment: .trailing)
+                VStack(alignment: .leading) {
+                    let avgPackageProgress = departmentStats.isEmpty ? 0.0 : departmentStats.reduce(0.0) { $0 + $1.packageProgress } / Double(departmentStats.count)
+                    ProgressView(value: avgPackageProgress)
+                        .frame(width: 130)
+                    Text("\(Int(avgPackageProgress * 100))%")
+                        .font(.caption)
+                }
+                .frame(width: 130)
+                VStack(alignment: .leading) {
+                    let avgTestingProgress = departmentStats.isEmpty ? 0.0 : departmentStats.reduce(0.0) { $0 + $1.testingProgress } / Double(departmentStats.count)
+                    ProgressView(value: avgTestingProgress)
+                        .frame(width: 130)
+                    Text("\(Int(avgTestingProgress * 100))%")
+                        .font(.caption)
+                }
+                .frame(width: 130)
+                Text(averageApplicationReadiness)
+                    .frame(width: 120, alignment: .center)
+                    .foregroundColor(getApplicationReadinessColor(status: averageApplicationReadiness))
             }
-            .font(.headline)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 8)
-            .background(Color(NSColor.controlBackgroundColor))
+            .padding(.horizontal)
+            .padding(.vertical, 4)
+            
+            Divider()
+            
+            // Department header
+            DepartmentHeader()
+                .padding(.vertical, 8)
+                .background(Color(NSColor.controlBackgroundColor))
             
             Divider()
             
@@ -34,7 +86,7 @@ struct DivisionTabContent: View {
                 VStack(spacing: 0) {
                     // Department rows
                     ForEach(departmentStats, id: \.department) { stat in
-                        DepartmentRow(stat: stat)
+                        DepartmentRow(department: stat.department, migrationCluster: stat.migrationCluster, applicationCount: stat.applicationCount, userCount: stat.userCount, packageProgress: stat.packageProgress, testingProgress: stat.testingProgress)
                         Divider()
                     }
                 }
@@ -56,25 +108,92 @@ struct DivisionTabContent: View {
 }
 
 struct DepartmentRow: View {
-    let stat: (department: String, migrationCluster: String?, applicationCount: Int, userCount: Int, packageProgress: Double, testingProgress: Double)
+    let department: String
+    let migrationCluster: String?
+    let applicationCount: Int
+    let userCount: Int
+    let packageProgress: Double
+    let testingProgress: Double
+    
+    var applicationReadiness: String {
+        let packagePercentage = packageProgress * 100
+        let testingPercentage = testingProgress * 100
+        
+        if packagePercentage == 100 && testingPercentage == 100 {
+            return "Ready for Migration"
+        } else if packagePercentage == 0 && testingPercentage == 0 {
+            return "Not Started"
+        } else {
+            return "In Progress"
+        }
+    }
     
     var body: some View {
-        HStack(spacing: 0) {
-            Text(stat.department)
-                .frame(width: 300, alignment: .leading)
-            Text(stat.migrationCluster ?? "-")
+        HStack(spacing: 10) {
+            Text(department)
+                .frame(width: 200, alignment: .leading)
+            Text(migrationCluster ?? "")
                 .frame(width: 150, alignment: .leading)
-            Text("\(stat.applicationCount)")
-                .frame(width: 80, alignment: .center)
-            Text("\(stat.userCount)")
-                .frame(width: 80, alignment: .center)
-            ProgressView(value: stat.packageProgress)
-                .frame(width: 150)
-            ProgressView(value: stat.testingProgress)
-                .frame(width: 150)
+            Text("\(applicationCount)")
+                .frame(width: 80, alignment: .trailing)
+            Text("\(userCount)")
+                .frame(width: 80, alignment: .trailing)
+            VStack(alignment: .leading) {
+                ProgressView(value: packageProgress)
+                    .frame(width: 130)
+                Text("\(Int(packageProgress * 100))%")
+                    .font(.caption)
+            }
+            .frame(width: 130)
+            VStack(alignment: .leading) {
+                ProgressView(value: testingProgress)
+                    .frame(width: 130)
+                Text("\(Int(testingProgress * 100))%")
+                    .font(.caption)
+            }
+            .frame(width: 130)
+            Text(applicationReadiness)
+                .frame(width: 120, alignment: .center)
+                .foregroundColor(getApplicationReadinessColor(status: applicationReadiness))
         }
+        .padding(.horizontal)
         .padding(.vertical, 4)
-        .padding(.horizontal, 8)
+    }
+}
+
+private func getApplicationReadinessColor(status: String) -> Color {
+    if let percentage = Int(status.replacingOccurrences(of: "%", with: "")) {
+        if percentage == 0 {
+            return .gray
+        } else if percentage == 100 {
+            return .green
+        } else {
+            return .blue
+        }
+    }
+    return .primary
+}
+
+struct DepartmentHeader: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Department")
+                .frame(width: 200, alignment: .leading)
+            Text("Migration Cluster")
+                .frame(width: 150, alignment: .leading)
+            Text("# Apps")
+                .frame(width: 80, alignment: .trailing)
+            Text("Users")
+                .frame(width: 80, alignment: .trailing)
+            Text("Package progress")
+                .frame(width: 130, alignment: .center)
+            Text("Testing progress")
+                .frame(width: 130, alignment: .center)
+            Text("Application Readiness")
+                .frame(width: 120, alignment: .center)
+        }
+        .padding(.horizontal)
+        .font(.headline)
     }
 }
 
@@ -192,14 +311,27 @@ struct DivisionSummaryView: View {
             let stats = try await DatabaseManager.shared.getDepartmentStats(forDivision: selectedDivision)
             
             // CSV header
-            var csv = "Department,Migration Cluster,# Apps,Users,Package Progress,Testing Progress\n"
+            var csv = "Department,Migration Cluster,# Apps,Users,Package Progress,Testing Progress,Application Readiness\n"
             
             // Add department rows
             for stat in stats {
                 let packageProgress = String(format: "%.1f%%", stat.packageProgress * 100)
                 let testingProgress = String(format: "%.1f%%", stat.testingProgress * 100)
                 
-                csv += "\(stat.department),\(stat.migrationCluster ?? ""),\(stat.applicationCount),\(stat.userCount),\(packageProgress),\(testingProgress)\n"
+                // Calculate application readiness
+                let applicationReadiness = if stat.packageProgress == 1.0 && stat.testingProgress == 1.0 {
+                    "Ready for Migration"
+                } else if stat.packageProgress == 1.0 && stat.testingProgress == 0.5 {
+                    "Testing"
+                } else if stat.packageProgress == 1.0 && stat.testingProgress == 0.0 {
+                    "Waiting for Test"
+                } else if stat.packageProgress == 0.5 && stat.testingProgress == 0.0 {
+                    "Building"
+                } else {
+                    "Not Started"
+                }
+                
+                csv += "\(stat.department),\(stat.migrationCluster ?? ""),\(stat.applicationCount),\(stat.userCount),\(packageProgress),\(testingProgress),\(applicationReadiness)\n"
             }
             
             return csv
