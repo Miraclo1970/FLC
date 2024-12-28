@@ -29,6 +29,9 @@ struct AdminDashboardView: View {
                     NavigationLink(value: "department-progress") {
                         Label("Department Progress", systemImage: "building.2.fill")
                     }
+                    NavigationLink(value: "division-summary") {
+                        Label("Division Progress", systemImage: "chart.bar.doc.horizontal")
+                    }
                 }
                 
                 Divider()
@@ -59,7 +62,7 @@ struct AdminDashboardView: View {
             if let selectedItem {
                 switch selectedItem {
                 case "import":
-                    ImportView()
+                    ImportView(selectedItem: $selectedItem)
                         .environmentObject(progress)
                 case "validation":
                     ValidationView(progress: progress)
@@ -69,6 +72,8 @@ struct AdminDashboardView: View {
                     QueryView()
                 case "department-progress":
                     DepartmentProgressView()
+                case "division-summary":
+                    DivisionProgressView()
                 case "export":
                     ExportView()
                 case "admin":
