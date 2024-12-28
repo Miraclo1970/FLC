@@ -1625,74 +1625,183 @@ struct ImportView: View {
         let sharedStrings = try xlsx.parseSharedStrings()
         let totalRows = worksheet.data?.rows.count ?? 0
         
-        // Validate header row
-        guard let firstRow = worksheet.data?.rows.first else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data found in worksheet"])
-        }
+        // Find the start marker and header row
+        var headerRowIndex = -1
+        var startDataIndex = -1
+        var columnMap: [String: Int] = [:]
         
-        let headers = firstRow.cells.map { cell -> String in
-            if let sharedStrings = sharedStrings,
-               case .sharedString = cell.type,
-               let value = cell.value,
-               let stringIndex = Int(value),
-               stringIndex < sharedStrings.items.count {
-                return sharedStrings.items[stringIndex].text ?? ""
-            }
-            return cell.value ?? ""
-        }
-        
-        // Check for Migration header
-        let headerText = headers.joined(separator: " ").lowercased()
-        guard headerText.contains("migration") || headerText.contains("platform") else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid file format: Expected Migration data but found different content"])
-        }
-        
-        await MainActor.run {
-            progress.update(operation: "Phase 2/5: Processing \(totalRows) rows...", progress: 0.2)
-        }
-        
-        // Process each row
-        var processedValidRows = 0
-        var processedInvalidRows = 0
-        var processedDuplicateRows = 0
-        
-        // Skip first two rows (header and column names), matching Testing import process
-        let dataRows = (worksheet.data?.rows ?? []).dropFirst(2)
-        
-        for (index, row) in dataRows.enumerated() {
-            let rowContent = row.cells.map { cell -> (columnIndex: Int, value: String) in
-                var cellValue = ""
-                
+        // Process each row to find start marker and headers
+        for (index, row) in (worksheet.data?.rows ?? []).enumerated() {
+            let rowContent = row.cells.map { cell -> (index: Int, value: String) in
+                let cellValue: String
                 if let sharedStrings = sharedStrings,
                    case .sharedString = cell.type,
                    let value = cell.value,
                    let stringIndex = Int(value),
                    stringIndex < sharedStrings.items.count {
-                    cellValue = sharedStrings.items[stringIndex].text ?? ""
-                } else if let value = cell.value {
-                    cellValue = value
+                    let text = sharedStrings.items[stringIndex].text ?? ""
+                    cellValue = text.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : text
+                } else {
+                    let value = cell.value ?? ""
+                    cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
                 }
                 
                 let columnIndex = cell.reference.column.value.excelColumnToIndex()
-                return (columnIndex: columnIndex, value: cellValue.trimmingCharacters(in: .whitespaces))
+                return (index: columnIndex, value: cellValue)
             }
             
-            // Create a dictionary for easier column access
-            var rowData: [Int: String] = [:]
-            for content in rowContent {
-                rowData[content.columnIndex] = content.value
+            // Calculate the maximum column index needed
+            let maxColumnIndex = max(
+                rowContent.map { $0.index }.max() ?? 0,
+                50  // Minimum size to ensure we have enough space
+            )
+            
+            // Create array with sufficient size
+            var fullRowContent: [String] = Array(repeating: "N/A", count: maxColumnIndex + 1)
+            
+            // Safely populate the array
+            for cell in rowContent {
+                if cell.index < fullRowContent.count {
+                    fullRowContent[cell.index] = cell.value
+                }
             }
             
-            // Extract data from the correct columns
-            let applicationName = rowData[0] ?? "N/A"  // Column A
-            let applicationNew = rowData[1] ?? ""      // Column B
-            let applicationSuiteNew = rowData[2] ?? "" // Column C
-            let willBe = rowData[3] ?? ""             // Column D
-            let inScopeOutScopeDivision = rowData[4] ?? "" // Column E
-            let migrationPlatform = rowData[5] ?? ""  // Column F
-            let migrationApplicationReadiness = rowData[6] ?? "" // Column G
+            if startDataIndex == -1 {
+                let rowText = fullRowContent.joined(separator: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                    .lowercased()
+                    .replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
+                if rowText.contains("=startdatabelow=") || 
+                   rowText.contains("===startdatabelow===") ||
+                   rowText.contains("start data below") {
+                    startDataIndex = index
+                }
+            } else if headerRowIndex == -1 {
+                // Check for header row
+                let headerVariations = ["Application Name", "ApplicationName", "Application-Name", "Application_Name", "App Name", "ID"]
+                let foundHeader = fullRowContent.contains { content in
+                    let normalizedContent = content.lowercased().trimmingCharacters(in: .whitespaces)
+                    return headerVariations.contains { variation in
+                        normalizedContent == variation.lowercased()
+                    }
+                }
+                
+                if foundHeader {
+                    headerRowIndex = index
+                    // Map column headers
+                    for (colIndex, header) in fullRowContent.enumerated() {
+                        let normalizedHeader = header.trimmingCharacters(in: .whitespaces)
+                        let standardHeader: String
+                        switch normalizedHeader.lowercased() {
+                        case "application name", "applicationname", "app name", "id":
+                            standardHeader = "Application Name"
+                        case "application new", "applicationnew":
+                            standardHeader = "Application New"
+                        case "application suite new", "applicationsuitenew":
+                            standardHeader = "Application Suite New"
+                        case "will be", "willbe":
+                            standardHeader = "Will Be"
+                        case "in/out scope division", "inscope/outscope", "in scope out scope division":
+                            standardHeader = "In/Out Scope Division"
+                        case "migration platform", "migrationplatform":
+                            standardHeader = "Migration Platform"
+                        case "application readiness", "applicationreadiness", "migration application readiness":
+                            standardHeader = "Migration Application Readiness"
+                        default:
+                            continue
+                        }
+                        columnMap[standardHeader] = colIndex
+                    }
+                }
+            }
             
-            // Create and validate the record
+            if startDataIndex != -1 && headerRowIndex != -1 {
+                break
+            }
+        }
+        
+        guard startDataIndex != -1 else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find '===START DATA BELOW===' marker"])
+        }
+        
+        guard headerRowIndex != -1 else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find header row with required columns"])
+        }
+        
+        // Process only the rows after the header
+        let dataRows = (worksheet.data?.rows ?? []).dropFirst(headerRowIndex + 1)
+        let totalDataRows = dataRows.count
+        
+        await MainActor.run {
+            progress.update(operation: "Phase 4/5: Found \(totalDataRows) rows to process...", progress: 0.72)
+        }
+        
+        var processedValidRows = 0
+        var processedInvalidRows = 0
+        var processedDuplicateRows = 0
+        
+        for (index, row) in dataRows.enumerated() {
+            if index % 50 == 0 {
+                let progressValue = 0.72 + (0.18 * Double(index) / Double(max(1, totalDataRows)))
+                let stats = """
+                Phase 4/5: Processing rows...
+                Row: \(index) of \(totalDataRows)
+                Valid: \(processedValidRows)
+                Invalid: \(processedInvalidRows)
+                Duplicates: \(processedDuplicateRows)
+                """
+                await MainActor.run {
+                    progress.update(operation: stats, progress: progressValue)
+                }
+            }
+            
+            let rowContent = row.cells.map { cell -> (index: Int, value: String) in
+                let cellValue: String
+                if let sharedStrings = sharedStrings,
+                   case .sharedString = cell.type,
+                   let value = cell.value,
+                   let stringIndex = Int(value),
+                   stringIndex < sharedStrings.items.count {
+                    let text = sharedStrings.items[stringIndex].text ?? ""
+                    cellValue = text.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : text
+                } else {
+                    let value = cell.value ?? ""
+                    cellValue = value.trimmingCharacters(in: .whitespaces).isEmpty ? "N/A" : value
+                }
+                
+                let columnIndex = cell.reference.column.value.excelColumnToIndex()
+                return (index: columnIndex, value: cellValue)
+            }
+            
+            // Calculate the maximum column index needed
+            let maxColumnIndex = max(
+                columnMap.values.max() ?? 0,
+                rowContent.map { $0.index }.max() ?? 0
+            )
+            
+            // Create array with sufficient size
+            var fullRowContent: [String] = Array(repeating: "N/A", count: maxColumnIndex + 1)
+            
+            // Safely populate the array
+            for cell in rowContent {
+                if cell.index < fullRowContent.count {
+                    fullRowContent[cell.index] = cell.value
+                }
+            }
+            
+            // Skip empty rows
+            if fullRowContent.allSatisfy({ $0 == "N/A" }) {
+                continue
+            }
+            
+            let applicationName = fullRowContent[safe: columnMap["Application Name"] ?? -1] ?? "N/A"
+            let applicationNew = fullRowContent[safe: columnMap["Application New"] ?? -1] ?? ""
+            let applicationSuiteNew = fullRowContent[safe: columnMap["Application Suite New"] ?? -1] ?? ""
+            let willBe = fullRowContent[safe: columnMap["Will Be"] ?? -1] ?? ""
+            let inScopeOutScopeDivision = fullRowContent[safe: columnMap["In/Out Scope Division"] ?? -1] ?? ""
+            let migrationPlatform = fullRowContent[safe: columnMap["Migration Platform"] ?? -1] ?? ""
+            let migrationApplicationReadiness = fullRowContent[safe: columnMap["Migration Application Readiness"] ?? -1] ?? ""
+            
             let record = MigrationData(
                 applicationName: applicationName,
                 applicationNew: applicationNew,
@@ -1704,11 +1813,12 @@ struct ImportView: View {
             )
             
             if record.isValid {
-                if seenApplicationNames.contains(applicationName) {
+                let normalizedName = record.normalizedApplicationName
+                if seenApplicationNames.contains(normalizedName) {
                     duplicateRecords.append("Row \(index + 1): Duplicate Application Name '\(applicationName)'")
                     processedDuplicateRows += 1
                 } else {
-                    seenApplicationNames.insert(applicationName)
+                    seenApplicationNames.insert(normalizedName)
                     validRecords.append(record)
                     processedValidRows += 1
                 }
@@ -1717,12 +1827,16 @@ struct ImportView: View {
                 processedInvalidRows += 1
             }
             
-            // Update progress
-            if index % 100 == 0 {
-                await MainActor.run {
-                    let progress = Double(index) / Double(totalRows)
-                    self.progress.update(operation: "Phase 2/5: Processing row \(index) of \(totalRows)...", progress: 0.2 + (progress * 0.6))
-                }
+            // Log progress for every 10000 records
+            if index % 10000 == 0 {
+                print("""
+                Processing progress:
+                Row: \(index)
+                Valid: \(processedValidRows)
+                Invalid: \(processedInvalidRows)
+                Duplicates: \(processedDuplicateRows)
+                Total processed: \(processedValidRows + processedInvalidRows + processedDuplicateRows)
+                """)
             }
         }
         
