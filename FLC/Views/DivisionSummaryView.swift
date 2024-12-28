@@ -1,365 +1,216 @@
 import SwiftUI
 import GRDB
-
-struct DivisionProgressView: View {
-    @EnvironmentObject private var databaseManager: DatabaseManager
-    @State private var records: [CombinedRecord] = []
-    @State private var isLoading = true
-    @State private var selectedOtapValues: Set<String> = ["P"]  // Default to Production
-    
-    private let otapValues = ["O", "T", "A", "P"]
-    
-    // Available divisions
-    private var divisions: [String] {
-        Array(Set(records.compactMap { $0.division }))
-            .filter { !$0.isEmpty }
-            .sorted()
-    }
-    
-    // Get departments for a specific division
-    private func departments(for division: String) -> [String] {
-        Array(Set(records.filter { $0.division == division }
-            .compactMap { $0.departmentSimple }))
-            .filter { !$0.isEmpty }
-            .sorted()
-    }
-    
-    // Count active applications (excluding Will Be and Out of Scope)
-    private var activeApplicationsCount: Int {
-        Set(records.filter { record in
-            selectedOtapValues.contains(record.otap) &&
-            (record.willBe ?? "").isEmpty &&
-            (record.inScopeOutScopeDivision?.lowercased() != "out")
-        }.map { $0.applicationName }).count
-    }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            if isLoading {
-                ProgressView("Loading data...")
-            } else {
-                // Overview Bar
-                HStack(spacing: 20) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "app.fill")
-                            .foregroundColor(.blue)
-                        VStack(alignment: .leading) {
-                            Text("Active Applications")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(activeApplicationsCount)")
-                                .font(.title2.bold())
-                        }
-                    }
-                    .padding()
-                    .background(RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(NSColor.controlBackgroundColor)))
-                    
-                    // OTAP Filter
-                    HStack {
-                        Text("OTAP:")
-                            .font(.subheadline)
-                        ForEach(otapValues, id: \.self) { value in
-                            Toggle(value, isOn: Binding(
-                                get: { selectedOtapValues.contains(value) },
-                                set: { isSelected in
-                                    if isSelected {
-                                        selectedOtapValues.insert(value)
-                                    } else {
-                                        selectedOtapValues.remove(value)
-                                    }
-                                }
-                            ))
-                            .toggleStyle(.switch)
-                        }
-                    }
-                }
-                .padding()
-                .background(Color(NSColor.controlBackgroundColor))
-                
-                // Tabs for divisions
-                TabView {
-                    ForEach(divisions, id: \.self) { division in
-                        DivisionTabContent(
-                            division: division,
-                            departments: departments(for: division),
-                            records: records,
-                            selectedOtapValues: selectedOtapValues
-                        )
-                        .tabItem {
-                            Text(division)
-                        }
-                    }
-                }
-            }
-        }
-        .padding()
-        .task {
-            await loadData()
-        }
-    }
-    
-    private func loadData() async {
-        isLoading = true
-        defer { isLoading = false }
-        
-        do {
-            records = try await databaseManager.fetchCombinedRecords()
-        } catch {
-            print("Error loading data: \(error)")
-        }
-    }
-}
+import UniformTypeIdentifiers
 
 struct DivisionTabContent: View {
     let division: String
-    let departments: [String]
-    let records: [CombinedRecord]
-    let selectedOtapValues: Set<String>
-    
-    // Division level statistics
-    private var divisionStats: (apps: Int, users: Int, packageProgress: Double, testingProgress: Double) {
-        let divisionRecords = records.filter { record in
-            record.division == division &&
-            selectedOtapValues.contains(record.otap) &&
-            (record.willBe ?? "").isEmpty &&
-            (record.inScopeOutScopeDivision?.lowercased() != "out")
-        }
-        
-        let apps = Set(divisionRecords.map { $0.applicationName }).count
-        let users = Set(divisionRecords.map { $0.systemAccount }).count
-        
-        let packageTotal = divisionRecords.reduce(0.0) { sum, record in
-            let status = (record.applicationPackageStatus ?? "").lowercased()
-            let points = {
-                if status == "ready" || status == "ready for testing" {
-                    return 100.0
-                } else if status == "in progress" {
-                    return 50.0
-                } else {
-                    return 0.0
-                }
-            }()
-            return sum + points
-        }
-        
-        let testingTotal = divisionRecords.reduce(0.0) { sum, record in
-            let status = (record.applicationTestStatus ?? "").lowercased()
-            let points = {
-                switch status {
-                case "ready", "completed", "passed":
-                    return 100.0
-                case "in progress":
-                    return 50.0
-                default:
-                    return 0.0
-                }
-            }()
-            return sum + points
-        }
-        
-        let packageProgress = divisionRecords.isEmpty ? 0.0 : packageTotal / Double(divisionRecords.count)
-        let testingProgress = divisionRecords.isEmpty ? 0.0 : testingTotal / Double(divisionRecords.count)
-        
-        return (apps, users, packageProgress, testingProgress)
-    }
+    @State private var departmentStats: [(department: String, migrationCluster: String?, applicationCount: Int, userCount: Int, packageProgress: Double, testingProgress: Double)] = []
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Division header with active apps count
-                HStack {
-                    Text("\(division)")
-                        .font(.title2.bold())
-                    Spacer()
-                }
-                .padding()
-                .background(Color(NSColor.controlBackgroundColor))
-                
-                // Division totals header
-                VStack(spacing: 4) {
-                    // Labels row
-                    HStack(spacing: 0) {
-                        Text("")
-                            .frame(width: 300, alignment: .leading)
-                        Text("Total of applications")
-                            .frame(width: 80, alignment: .center)
-                        Text("Total of users")
-                            .frame(width: 80, alignment: .center)
-                        Text("Average progress for package")
-                            .frame(width: 150, alignment: .center)
-                        Text("")
-                            .frame(width: 100, alignment: .center)
-                        Text("Average testing progress")
-                            .frame(width: 150, alignment: .center)
-                        Text("")
-                            .frame(width: 100, alignment: .center)
+        VStack(spacing: 0) {
+            // Department header
+            HStack(spacing: 0) {
+                Text("Department")
+                    .frame(width: 300, alignment: .leading)
+                Text("Migration Cluster")
+                    .frame(width: 150, alignment: .leading)
+                Text("# Apps")
+                    .frame(width: 80, alignment: .center)
+                Text("Users")
+                    .frame(width: 80, alignment: .center)
+                Text("Package progress")
+                    .frame(width: 150, alignment: .center)
+                Text("Testing progress")
+                    .frame(width: 150, alignment: .center)
+            }
+            .font(.headline)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            
+            Divider()
+            
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Department rows
+                    ForEach(departmentStats, id: \.department) { stat in
+                        DepartmentRow(stat: stat)
+                        Divider()
                     }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    
-                    // Values row
-                    HStack(spacing: 0) {
-                        Text("Totals")
-                            .frame(width: 300, alignment: .leading)
-                            .font(.headline)
-                        Text("\(divisionStats.apps)")
-                            .frame(width: 80, alignment: .center)
-                            .font(.headline)
-                        Text("\(divisionStats.users)")
-                            .frame(width: 80, alignment: .center)
-                            .font(.headline)
-                        AverageProgressCell(progress: divisionStats.packageProgress)
-                            .frame(width: 150)
-                        Text("")
-                            .frame(width: 100, alignment: .center)
-                        AverageProgressCell(progress: divisionStats.testingProgress)
-                            .frame(width: 150)
-                        Text("")
-                            .frame(width: 100, alignment: .center)
-                    }
-                }
-                .padding(.vertical, 4)
-                .padding(.horizontal)
-                .background(Color(NSColor.controlBackgroundColor))
-                
-                // Department header
-                HStack(spacing: 0) {
-                    Text("Department")
-                        .frame(width: 300, alignment: .leading)
-                    Text("# Apps")
-                        .frame(width: 80, alignment: .center)
-                    Text("Users")
-                        .frame(width: 80, alignment: .center)
-                    Text("Package progress")
-                        .frame(width: 150, alignment: .center)
-                    Text("Ready by")
-                        .frame(width: 100, alignment: .center)
-                    Text("Testing progress")
-                        .frame(width: 150, alignment: .center)
-                    Text("Ready by")
-                        .frame(width: 100, alignment: .center)
-                }
-                .font(.headline)
-                .padding(.vertical, 8)
-                .padding(.horizontal)
-                .background(Color(NSColor.controlBackgroundColor))
-                
-                // Department rows
-                ForEach(departments, id: \.self) { department in
-                    DepartmentRow(
-                        division: division,
-                        department: department,
-                        records: records,
-                        selectedOtapValues: selectedOtapValues
-                    )
-                    Divider()
                 }
             }
-            .background(Color(NSColor.windowBackgroundColor))
+        }
+        .task {
+            await loadDepartmentStats()
+        }
+    }
+    
+    private func loadDepartmentStats() async {
+        do {
+            let stats = try await DatabaseManager.shared.getDepartmentStats(forDivision: division)
+            departmentStats = stats
+        } catch {
+            print("Error loading department stats: \(error)")
         }
     }
 }
 
 struct DepartmentRow: View {
-    let division: String
-    let department: String
-    let records: [CombinedRecord]
-    let selectedOtapValues: Set<String>
-    
-    private var departmentRecords: [CombinedRecord] {
-        records.filter { record in
-            record.division == division &&
-            record.departmentSimple == department &&
-            selectedOtapValues.contains(record.otap)
-        }
-    }
-    
-    private var uniqueUsers: Int {
-        Set(departmentRecords.map { $0.systemAccount }).count
-    }
-    
-    private var packageProgress: Double {
-        let validApps = departmentRecords.filter { $0.inScopeOutScopeDivision?.lowercased() != "out" }
-        let total = validApps.reduce(0.0) { sum, record in
-            let status = (record.applicationPackageStatus ?? "").lowercased()
-            let points = {
-                if status == "ready" || status == "ready for testing" {
-                    return 100.0
-                } else if status == "in progress" {
-                    return 50.0
-                } else {
-                    return 0.0
-                }
-            }()
-            return sum + points
-        }
-        return validApps.isEmpty ? 0.0 : total / Double(validApps.count)
-    }
-    
-    private var testingProgress: Double {
-        let validApps = departmentRecords.filter { $0.inScopeOutScopeDivision?.lowercased() != "out" }
-        let total = validApps.reduce(0.0) { sum, record in
-            let status = (record.applicationTestStatus ?? "").lowercased()
-            let points = {
-                switch status {
-                case "ready", "completed", "passed":
-                    return 100.0
-                case "in progress":
-                    return 50.0
-                default:
-                    return 0.0
-                }
-            }()
-            return sum + points
-        }
-        return validApps.isEmpty ? 0.0 : total / Double(validApps.count)
-    }
-    
-    private var latestPackageReadinessDate: Date? {
-        departmentRecords
-            .compactMap { $0.applicationPackageReadinessDate }
-            .max()
-    }
-    
-    private var latestTestReadinessDate: Date? {
-        departmentRecords
-            .compactMap { $0.applicationTestReadinessDate }
-            .max()
-    }
-    
-    private var activeApplicationsCount: Int {
-        Set(departmentRecords.filter { record in
-            (record.willBe ?? "").isEmpty &&
-            (record.inScopeOutScopeDivision?.lowercased() != "out")
-        }.map { $0.applicationName }).count
-    }
+    let stat: (department: String, migrationCluster: String?, applicationCount: Int, userCount: Int, packageProgress: Double, testingProgress: Double)
     
     var body: some View {
         HStack(spacing: 0) {
-            Text(department)
+            Text(stat.department)
                 .frame(width: 300, alignment: .leading)
-            Text("\(activeApplicationsCount)")
+            Text(stat.migrationCluster ?? "-")
+                .frame(width: 150, alignment: .leading)
+            Text("\(stat.applicationCount)")
                 .frame(width: 80, alignment: .center)
-            Text("\(uniqueUsers)")
+            Text("\(stat.userCount)")
                 .frame(width: 80, alignment: .center)
-            AverageProgressCell(progress: packageProgress)
+            ProgressView(value: stat.packageProgress)
                 .frame(width: 150)
-            Text(latestPackageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
-                .frame(width: 100, alignment: .center)
-                .font(.system(size: 11))
-            AverageProgressCell(progress: testingProgress)
+            ProgressView(value: stat.testingProgress)
                 .frame(width: 150)
-            Text(latestTestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
-                .frame(width: 100, alignment: .center)
-                .font(.system(size: 11))
         }
         .padding(.vertical, 4)
-        .padding(.horizontal)
+        .padding(.horizontal, 8)
+    }
+}
+
+struct DivisionSummaryView: View {
+    @EnvironmentObject var databaseManager: DatabaseManager
+    @State private var selectedDivision: String = ""
+    @State private var divisions: [String] = []
+    @State private var showingExporter = false
+    @State private var csvData = ""
+    @State private var showContent = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Selection controls
+            VStack {
+                Text("Select Division")
+                    .font(.headline)
+                    .padding(.top)
+                
+                HStack {
+                    Text("Division:")
+                        .frame(width: 100, alignment: .trailing)
+                    Picker("Division", selection: $selectedDivision) {
+                        Text("Select Division").tag("")
+                        ForEach(divisions, id: \.self) { division in
+                            Text(division).tag(division)
+                        }
+                    }
+                    .frame(width: 200)
+                    
+                    Spacer()
+                    
+                    Text("Filters:")
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Button("Generate") {
+                        showContent = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(selectedDivision.isEmpty)
+                }
+                .padding(.horizontal)
+                .padding(.bottom)
+            }
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            Divider()
+            
+            // Content area
+            ZStack {
+                if showContent && !selectedDivision.isEmpty {
+                    DivisionTabContent(division: selectedDivision)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            
+            Divider()
+            
+            // Export bar
+            HStack {
+                Spacer()
+                Button(action: {
+                    Task {
+                        csvData = await generateCSVData()
+                        showingExporter = true
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Export to CSV")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(!showContent || selectedDivision.isEmpty)
+            }
+            .padding(8)
+            .background(Color(NSColor.windowBackgroundColor))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle("Division Progress")
+        .onAppear {
+            loadDivisions()
+        }
+        .fileExporter(
+            isPresented: $showingExporter,
+            document: CSVDocument(data: csvData.data(using: .utf8) ?? Data()),
+            contentType: .commaSeparatedText,
+            defaultFilename: "\(selectedDivision)_department_progress"
+        ) { result in
+            if case .success = result {
+                print("Successfully exported CSV")
+            }
+        }
+    }
+    
+    private func loadDivisions() {
+        Task {
+            do {
+                let records = try await databaseManager.fetchCombinedRecords()
+                await MainActor.run {
+                    divisions = Array(Set(records.compactMap { $0.division }))
+                        .filter { !$0.isEmpty }
+                        .sorted()
+                }
+            } catch {
+                print("Error loading divisions: \(error)")
+            }
+        }
+    }
+    
+    private func generateCSVData() async -> String {
+        do {
+            let stats = try await DatabaseManager.shared.getDepartmentStats(forDivision: selectedDivision)
+            
+            // CSV header
+            var csv = "Department,Migration Cluster,# Apps,Users,Package Progress,Testing Progress\n"
+            
+            // Add department rows
+            for stat in stats {
+                let packageProgress = String(format: "%.1f%%", stat.packageProgress * 100)
+                let testingProgress = String(format: "%.1f%%", stat.testingProgress * 100)
+                
+                csv += "\(stat.department),\(stat.migrationCluster ?? ""),\(stat.applicationCount),\(stat.userCount),\(packageProgress),\(testingProgress)\n"
+            }
+            
+            return csv
+        } catch {
+            print("Error generating CSV data: \(error)")
+            return ""
+        }
     }
 }
 
 #Preview {
-    DivisionProgressView()
+    DivisionSummaryView()
         .environmentObject(DatabaseManager.shared)
 } 
