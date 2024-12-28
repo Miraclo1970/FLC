@@ -117,14 +117,51 @@ struct DivisionTabContent: View {
     let records: [CombinedRecord]
     let selectedOtapValues: Set<String>
     
-    // Count active applications for this division
-    private var activeApplicationsCount: Int {
-        Set(records.filter { record in
+    // Division level statistics
+    private var divisionStats: (apps: Int, users: Int, packageProgress: Double, testingProgress: Double) {
+        let divisionRecords = records.filter { record in
             record.division == division &&
             selectedOtapValues.contains(record.otap) &&
             (record.willBe ?? "").isEmpty &&
             (record.inScopeOutScopeDivision?.lowercased() != "out")
-        }.map { $0.applicationName }).count
+        }
+        
+        let apps = Set(divisionRecords.map { $0.applicationName }).count
+        let users = Set(divisionRecords.map { $0.systemAccount }).count
+        
+        let packageTotal = divisionRecords.reduce(0.0) { sum, record in
+            let status = (record.applicationPackageStatus ?? "").lowercased()
+            let points = {
+                if status == "ready" || status == "ready for testing" {
+                    return 100.0
+                } else if status == "in progress" {
+                    return 50.0
+                } else {
+                    return 0.0
+                }
+            }()
+            return sum + points
+        }
+        
+        let testingTotal = divisionRecords.reduce(0.0) { sum, record in
+            let status = (record.applicationTestStatus ?? "").lowercased()
+            let points = {
+                switch status {
+                case "ready", "completed", "passed":
+                    return 100.0
+                case "in progress":
+                    return 50.0
+                default:
+                    return 0.0
+                }
+            }()
+            return sum + points
+        }
+        
+        let packageProgress = divisionRecords.isEmpty ? 0.0 : packageTotal / Double(divisionRecords.count)
+        let testingProgress = divisionRecords.isEmpty ? 0.0 : testingTotal / Double(divisionRecords.count)
+        
+        return (apps, users, packageProgress, testingProgress)
     }
     
     var body: some View {
@@ -135,13 +172,58 @@ struct DivisionTabContent: View {
                     Text("\(division)")
                         .font(.title2.bold())
                     Spacer()
-                    Text("# Apps: \(activeApplicationsCount)")
-                        .font(.headline)
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
                 
-                // Header
+                // Division totals header
+                VStack(spacing: 4) {
+                    // Labels row
+                    HStack(spacing: 0) {
+                        Text("")
+                            .frame(width: 300, alignment: .leading)
+                        Text("Total of applications")
+                            .frame(width: 80, alignment: .center)
+                        Text("Total of users")
+                            .frame(width: 80, alignment: .center)
+                        Text("Average progress for package")
+                            .frame(width: 150, alignment: .center)
+                        Text("")
+                            .frame(width: 100, alignment: .center)
+                        Text("Average testing progress")
+                            .frame(width: 150, alignment: .center)
+                        Text("")
+                            .frame(width: 100, alignment: .center)
+                    }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    
+                    // Values row
+                    HStack(spacing: 0) {
+                        Text("Totals")
+                            .frame(width: 300, alignment: .leading)
+                            .font(.headline)
+                        Text("\(divisionStats.apps)")
+                            .frame(width: 80, alignment: .center)
+                            .font(.headline)
+                        Text("\(divisionStats.users)")
+                            .frame(width: 80, alignment: .center)
+                            .font(.headline)
+                        AverageProgressCell(progress: divisionStats.packageProgress)
+                            .frame(width: 150)
+                        Text("")
+                            .frame(width: 100, alignment: .center)
+                        AverageProgressCell(progress: divisionStats.testingProgress)
+                            .frame(width: 150)
+                        Text("")
+                            .frame(width: 100, alignment: .center)
+                    }
+                }
+                .padding(.vertical, 4)
+                .padding(.horizontal)
+                .background(Color(NSColor.controlBackgroundColor))
+                
+                // Department header
                 HStack(spacing: 0) {
                     Text("Department")
                         .frame(width: 300, alignment: .leading)
