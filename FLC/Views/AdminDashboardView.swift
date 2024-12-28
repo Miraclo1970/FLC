@@ -26,6 +26,18 @@ struct AdminDashboardView: View {
                     Label("Query", systemImage: "magnifyingglass")
                 }
                 
+                Section("Organisation Analysis") {
+                    NavigationLink(value: "department-progress") {
+                        Label("Department Progress", systemImage: "building.2.fill")
+                    }
+                    NavigationLink(value: "division-progress") {
+                        Label("Division Progress", systemImage: "chart.bar.doc.horizontal.fill")
+                    }
+                    NavigationLink(value: "organisation-progress") {
+                        Label("Organisation Progress", systemImage: "building.2.fill")
+                    }
+                }
+                
                 NavigationLink(value: "reports") {
                     Label("Reports", systemImage: "chart.bar.doc.horizontal")
                 }
