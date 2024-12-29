@@ -8,9 +8,12 @@ struct DepartmentProgressView: View {
     @State private var records: [CombinedRecord] = []
     @State private var isLoading = true
     @State private var showResults = false
-    @State private var selectedOtapValues: Set<String> = ["P"]  // Default to Production
+    @State private var selectedEnvironments: Set<String> = ["P"]  // Default to Production
+    @State private var excludeNonActive: Bool = false  // Default to show all
+    @State private var selectedPlatforms: Set<String> = ["All"]  // Default to All selected
     
-    private let otapValues = ["O", "T", "A", "P"]
+    private let environments = ["P", "A", "T"]
+    private let platforms = ["All", "SAAS", "VDI", "Local"]
     
     // Available divisions and departments
     private var divisions: [String] {
@@ -66,19 +69,59 @@ struct DepartmentProgressView: View {
                         
                         Spacer()
                         
-                        // OTAP Filter
+                        // Environment Filter
                         VStack(alignment: .leading) {
-                            Text("OTAP:")
+                            Text("Environment:")
                                 .font(.subheadline)
-                            HStack {
-                                ForEach(otapValues, id: \.self) { value in
-                                    Toggle(value, isOn: Binding(
-                                        get: { selectedOtapValues.contains(value) },
+                            HStack(spacing: 8) {
+                                ForEach(environments, id: \.self) { env in
+                                    Toggle(env, isOn: Binding(
+                                        get: { selectedEnvironments.contains(env) },
                                         set: { isSelected in
                                             if isSelected {
-                                                selectedOtapValues.insert(value)
+                                                selectedEnvironments.insert(env)
+                                            } else if selectedEnvironments.count > 1 {  // Prevent deselecting all
+                                                selectedEnvironments.remove(env)
+                                            }
+                                        }
+                                    ))
+                                    .toggleStyle(.checkbox)
+                                }
+                            }
+                        }
+                        
+                        // Status Filter
+                        VStack(alignment: .leading) {
+                            Text("Status:")
+                                .font(.subheadline)
+                            Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
+                                .toggleStyle(.checkbox)
+                        }
+                        
+                        // Platform Filter
+                        VStack(alignment: .leading) {
+                            Text("Platform:")
+                                .font(.subheadline)
+                            HStack(spacing: 8) {
+                                ForEach(platforms, id: \.self) { platform in
+                                    Toggle(platform, isOn: Binding(
+                                        get: { 
+                                            selectedPlatforms.contains(platform)
+                                        },
+                                        set: { isSelected in
+                                            if platform == "All" {
+                                                if isSelected {
+                                                    selectedPlatforms = ["All"]
+                                                } else {
+                                                    selectedPlatforms = ["SAAS"]
+                                                }
                                             } else {
-                                                selectedOtapValues.remove(value)
+                                                if isSelected {
+                                                    selectedPlatforms.remove("All")
+                                                    selectedPlatforms.insert(platform)
+                                                } else if selectedPlatforms.count > 1 {
+                                                    selectedPlatforms.remove(platform)
+                                                }
                                             }
                                         }
                                     ))
@@ -95,7 +138,7 @@ struct DepartmentProgressView: View {
                                 .frame(width: 100)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(selectedDivision.isEmpty || selectedDepartment.isEmpty || selectedOtapValues.isEmpty)
+                        .disabled(selectedDivision.isEmpty || selectedDepartment.isEmpty)
                     }
                     .frame(width: 1130)  // Match the total width of the table columns below
                 }
@@ -138,7 +181,7 @@ struct DepartmentProgressView: View {
                                 .frame(width: 120, alignment: .center)
                                 Text("Ready by")
                                     .frame(width: 80, alignment: .center)
-                                Text("Application\nReadiness")
+                                    Text("Application\nReadiness")
                                     .frame(width: 120, alignment: .center)
                                     .multilineTextAlignment(.center)
                             }
@@ -342,7 +385,7 @@ struct DepartmentProgressView: View {
         let filteredRecords = records.filter { record in
             record.division == selectedDivision &&
             record.departmentSimple == selectedDepartment &&
-            selectedOtapValues.contains(record.otap)
+            selectedEnvironments.contains(record.otap)
         }
         
         // Group by application name to count unique users
@@ -353,7 +396,7 @@ struct DepartmentProgressView: View {
             .filter { !$0.isEmpty && $0 != "N/A" })
         
         // Convert to ApplicationInfo array
-        return groupedByApp.map { appName, records in
+        var applications = groupedByApp.map { appName, records in
             let uniqueUsers = Set(records.map { $0.systemAccount }).count
             let firstRecord = records.first
             
@@ -386,14 +429,29 @@ struct DepartmentProgressView: View {
                 testReadinessDate: firstRecord?.applicationTestReadinessDate
             )
         }
-        .sorted { $0.name < $1.name }
+        
+        // Apply status filter if enabled
+        if excludeNonActive {
+            applications = applications.filter { app in
+                let willBe = app.willBe
+                let inOutScope = app.inOutScope.lowercased()
+                return (willBe.isEmpty || willBe == "N/A") && inOutScope != "out"
+            }
+        }
+        
+        // Apply platform filter
+        applications = applications.filter { app in
+            selectedPlatforms.contains("All") || selectedPlatforms.contains(app.platform)
+        }
+        
+        return applications.sorted { $0.name < $1.name }
     }
     
     private var totalUniqueUsers: Int {
         let filteredRecords = records.filter { record in
             record.division == selectedDivision &&
             record.departmentSimple == selectedDepartment &&
-            selectedOtapValues.contains(record.otap)
+            selectedEnvironments.contains(record.otap)
         }
         return Set(filteredRecords.map { $0.systemAccount }).count
     }
