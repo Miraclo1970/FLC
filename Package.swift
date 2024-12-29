@@ -17,7 +17,18 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "CoreXLSX", package: "CoreXLSX")
             ],
-            path: "FLC"
+            path: "FLC",
+            resources: [
+                .process("Assets.xcassets"),
+                .process("Preview Content/Preview Assets.xcassets"),
+                .process("Templates/HR_template.xlsx"),
+                .process("Templates/TestStatus_template.xlsx"),
+                .process("Templates/PackageStatus_template.xlsx"),
+                .process("Templates/MigrationStatus_template.xlsx"),
+                .process("Templates/AD_template.xlsx"),
+                .process("Templates/Cluster_template.xlsx"),
+                .process("FLC.entitlements")
+            ]
         ),
         .testTarget(
             name: "FLCTests",
