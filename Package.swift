@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "FLC",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.0.0"),
