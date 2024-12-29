@@ -78,24 +78,12 @@ class ValidationConfigStore: ObservableObject {
             ValidationConfig(
                 title: "Migration",
                 rules: ValidationConfig.createRules([
-                    "Application Name is required and must be unique",
-                    "Application New is required",
-                    "Application Suite New is required",
-                    "Will Be is required",
-                    "In Scope/Out Scope Division is required",
-                    "Migration Platform is required",
-                    "Migration Application Readiness is required"
+                    "Application Name is required",
+                    "Will Be must exist in AD records if provided",
+                    "In/Out Scope Division must be 'Out' or 'On hold' if provided"
                 ]),
-                requiredFields: [
-                    "Application Name",
-                    "Application New",
-                    "Application Suite New",
-                    "Will Be",
-                    "In Scope/Out Scope Division",
-                    "Migration Platform",
-                    "Migration Application Readiness"
-                ],
-                optionalFields: []
+                requiredFields: ["Application Name"],
+                optionalFields: ["Application New", "Application Suite New", "Will Be", "In/Out Scope Division", "Migration Platform", "Migration Application Readiness"]
             ),
             ValidationConfig(
                 title: "Cluster",

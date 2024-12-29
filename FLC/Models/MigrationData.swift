@@ -21,15 +21,21 @@ struct MigrationData: Identifiable, Codable {
     var validationErrors: [String] {
         var errors: [String] = []
         
-        // Application Name is required and must be properly formatted
-        if applicationName.isEmpty || applicationName == "N/A" || 
-           applicationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // Only required field is application name
+        if applicationName.isEmpty || applicationName == "N/A" {
             errors.append("Application Name is required")
+            return errors
         }
         
-        // Other fields are required but can be empty
-        // No additional validation needed as empty strings are allowed
+        // Only validate "Will be" if it's filled in and not N/A
+        if !willBe.isEmpty && willBe != "N/A" {
+            // Don't validate against AD records for now
+            // if !DatabaseManager.shared.hasADApplication(willBe) {
+            //     errors.append("Will be application '\(willBe)' not found in AD records")
+            // }
+        }
         
+        // All other fields are accepted as-is
         return errors
     }
     
@@ -38,20 +44,20 @@ struct MigrationData: Identifiable, Codable {
     }
     
     init(applicationName: String, 
-         applicationNew: String = "",
-         applicationSuiteNew: String = "",
-         willBe: String = "",
-         inScopeOutScopeDivision: String = "",
-         migrationPlatform: String = "",
-         migrationApplicationReadiness: String = "") {
+         applicationNew: String = "N/A",
+         applicationSuiteNew: String = "N/A",
+         willBe: String = "N/A",
+         inScopeOutScopeDivision: String = "N/A",
+         migrationPlatform: String = "N/A",
+         migrationApplicationReadiness: String = "N/A") {
         self.id = UUID()
         self.applicationName = applicationName
-        self.applicationNew = applicationNew
-        self.applicationSuiteNew = applicationSuiteNew
-        self.willBe = willBe
-        self.inScopeOutScopeDivision = inScopeOutScopeDivision
-        self.migrationPlatform = migrationPlatform
-        self.migrationApplicationReadiness = migrationApplicationReadiness
+        self.applicationNew = applicationNew.isEmpty ? "N/A" : applicationNew
+        self.applicationSuiteNew = applicationSuiteNew.isEmpty ? "N/A" : applicationSuiteNew
+        self.willBe = willBe.isEmpty ? "N/A" : willBe
+        self.inScopeOutScopeDivision = inScopeOutScopeDivision.isEmpty ? "N/A" : inScopeOutScopeDivision
+        self.migrationPlatform = migrationPlatform.isEmpty ? "N/A" : migrationPlatform
+        self.migrationApplicationReadiness = migrationApplicationReadiness.isEmpty ? "N/A" : migrationApplicationReadiness
     }
 }
 

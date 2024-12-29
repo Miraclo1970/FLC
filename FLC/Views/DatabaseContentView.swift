@@ -758,130 +758,116 @@ struct DatabaseCombinedRecordsView: View {
         return formatter
     }()
     
-    // MARK: - Sub-views
-    private var headerView: some View {
+    var headerView: some View {
         HStack(spacing: 0) {
-            idHeaderSection
-            adDataHeaderSection
-            hrDataHeaderSection
-            packageStatusHeaderSection
-            testStatusHeaderSection
-            migrationHeaderSection
-            departmentAndMigrationHeaderSection
-        }
-        .padding(.vertical, 4)
-        .background(Color(NSColor.windowBackgroundColor))
-        .border(Color.gray.opacity(0.2), width: 1)
-    }
-    
-    private var idHeaderSection: some View {
-        Text("ID")
-            .frame(width: 80, alignment: .leading)
-            .padding(.leading, 16)
-            .font(.system(size: 11))
-    }
-    
-    private var adDataHeaderSection: some View {
-        Group {
-            Text("AD Group")
-                .frame(width: 150, alignment: .leading)
-            Text("System Account")
-                .frame(width: 150, alignment: .leading)
-            Text("Application Name")
-                .frame(width: 150, alignment: .leading)
-            Text("Application Suite")
-                .frame(width: 150, alignment: .leading)
-            Text("OTAP")
+            // ID Column
+            Text("ID")
                 .frame(width: 80, alignment: .leading)
-            Text("Critical")
-                .frame(width: 80, alignment: .leading)
-        }
-        .font(.system(size: 11))
-        .background(Color.blue.opacity(0.1))
-    }
-    
-    private var hrDataHeaderSection: some View {
-        Group {
-            Text("Department")
-                .frame(width: 150, alignment: .leading)
-            Text("Job Role")
-                .frame(width: 150, alignment: .leading)
-            Text("Division")
-                .frame(width: 150, alignment: .leading)
-            Text("Leave Date")
-                .frame(width: 150, alignment: .leading)
-            Text("Department Simple")
-                .frame(width: 150, alignment: .leading)
-            Text("Domain")
-                .frame(width: 150, alignment: .leading)
+                .padding(.leading, 16)
+            
+            // AD Data Section
+            HStack(spacing: 0) {
+                Text("AD Group")
+                    .frame(width: 150, alignment: .leading)
+                Text("System Account")
+                    .frame(width: 150, alignment: .leading)
+                Text("Application")
+                    .frame(width: 150, alignment: .leading)
+                Text("Suite")
+                    .frame(width: 150, alignment: .leading)
+                Text("OTAP")
+                    .frame(width: 80, alignment: .leading)
+                Text("Critical")
+                    .frame(width: 80, alignment: .leading)
+            }
+            .background(Color.blue.opacity(0.05))
+            
+            // HR Data Section
+            HStack(spacing: 0) {
+                Text("Department")
+                    .frame(width: 150, alignment: .leading)
+                Text("Job Role")
+                    .frame(width: 150, alignment: .leading)
+                Text("Division")
+                    .frame(width: 150, alignment: .leading)
+                Text("Leave Date")
+                    .frame(width: 150, alignment: .leading)
+                Text("Department Simple")
+                    .frame(width: 150, alignment: .leading)
+                Text("Domain")
+                    .frame(width: 150, alignment: .leading)
+            }
+            .background(Color.green.opacity(0.05))
+            
+            // Package Status Section
+            HStack(spacing: 0) {
+                Text("Package Status")
+                    .frame(width: 150, alignment: .leading)
+                Text("Package Readiness")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .background(Color.orange.opacity(0.05))
+            
+            // Test Status Section
+            HStack(spacing: 0) {
+                Text("Test Status")
+                    .frame(width: 150, alignment: .leading)
+                Text("Test Readiness")
+                    .frame(width: 200, alignment: .leading)
+                Text("Test Result")
+                    .frame(width: 150, alignment: .leading)
+                Text("Testing Plan Date")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .background(Color.purple.opacity(0.05))
+            
+            // Migration Section
+            HStack(spacing: 0) {
+                Text("New Application")
+                    .frame(width: 150, alignment: .leading)
+                Text("New Suite")
+                    .frame(width: 150, alignment: .leading)
+                Text("Will be")
+                    .frame(width: 150, alignment: .leading)
+                Text("In/Out Scope")
+                    .frame(width: 200, alignment: .leading)
+                Text("Platform")
+                    .frame(width: 150, alignment: .leading)
+                Text("Migration Readiness")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .background(Color.yellow.opacity(0.05))
+            
+            // Department and Migration Section
+            HStack(spacing: 0) {
+                Text("Department Simple")
+                    .frame(width: 150, alignment: .leading)
+                Text("Domain")
+                    .frame(width: 150, alignment: .leading)
+                Text("Migration Cluster")
+                    .frame(width: 150, alignment: .leading)
+                Text("Migration Readiness")
+                    .frame(width: 150, alignment: .leading)
+            }
+            .background(Color.indigo.opacity(0.05))
+            
+            // Metadata Section
+            HStack(spacing: 0) {
+                Text("Import Date")
+                    .frame(width: 200, alignment: .leading)
+                Text("Import Set")
+                    .frame(width: 150, alignment: .leading)
+            }
+            .background(Color.gray.opacity(0.05))
         }
         .font(.system(size: 11, weight: .bold))
-        .background(Color.green.opacity(0.05))
+        .padding(.vertical, 4)
+        .background(Color(NSColor.windowBackgroundColor))
     }
     
-    private var packageStatusHeaderSection: some View {
-        Group {
-            Text("Package Status")
-                .frame(width: 150, alignment: .leading)
-            Text("Package Readiness Date")
-                .frame(width: 200, alignment: .leading)
-        }
-        .font(.system(size: 11))
-        .background(Color.orange.opacity(0.1))
-    }
-    
-    private var testStatusHeaderSection: some View {
-        Group {
-            Text("Test Status")
-                .frame(width: 150, alignment: .leading)
-            Text("Test Date")
-                .frame(width: 200, alignment: .leading)
-            Text("Test Result")
-                .frame(width: 150, alignment: .leading)
-            Text("Test Plan Date")
-                .frame(width: 200, alignment: .leading)
-        }
-        .font(.system(size: 11))
-        .background(Color.purple.opacity(0.1))
-    }
-    
-    private var migrationHeaderSection: some View {
-        Group {
-            Text("Application New")
-                .frame(width: 150, alignment: .leading)
-            Text("Application Suite New")
-                .frame(width: 150, alignment: .leading)
-            Text("Will Be")
-                .frame(width: 150, alignment: .leading)
-            Text("In/Out Scope Division")
-                .frame(width: 200, alignment: .leading)
-            Text("Migration Platform")
-                .frame(width: 150, alignment: .leading)
-            Text("Migration App Readiness")
-                .frame(width: 200, alignment: .leading)
-        }
-        .font(.system(size: 11))
-        .background(Color.yellow.opacity(0.1))
-    }
-    
-    private var departmentAndMigrationHeaderSection: some View {
-        Group {
-            Text("Department Simple")
-                .frame(width: 150, alignment: .leading)
-            Text("Domain")
-                .frame(width: 150, alignment: .leading)
-            Text("Migration Cluster")
-                .frame(width: 150, alignment: .leading)
-            Text("Migration Readiness")
-                .frame(width: 150, alignment: .leading)
-        }
-        .font(.system(size: 11))
-        .background(Color.indigo.opacity(0.1))
-    }
-    
-    private var dataRowsView: some View {
+    var dataRowsView: some View {
         ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(spacing: 0, pinnedViews: []) {
+            LazyVStack(spacing: 0) {
                 ForEach(records, id: \.id) { record in
                     DataRowView(record: record, dateFormatter: dateFormatter, rowHeight: rowHeight)
                 }
@@ -934,17 +920,17 @@ struct DataRowView: View {
             
             // HR Data Section
             HStack(spacing: 0) {
-                Text(record.department ?? "N/A")
+                Text(record.department ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.jobRole ?? "N/A")
+                Text(record.jobRole ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.division ?? "N/A")
+                Text(record.division ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
+                Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.departmentSimple ?? "N/A")
+                Text(record.departmentSimple ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.domain ?? "N/A")
+                Text(record.domain ?? "")
                     .frame(width: 150, alignment: .leading)
             }
             .font(.system(size: 11))
@@ -952,9 +938,9 @@ struct DataRowView: View {
             
             // Package Status Section
             HStack(spacing: 0) {
-                Text(record.applicationPackageStatus ?? "N/A")
+                Text(record.applicationPackageStatus ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.applicationPackageReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
+                Text(record.applicationPackageReadinessDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "")
                     .frame(width: 200, alignment: .leading)
             }
             .font(.system(size: 11))
@@ -962,13 +948,13 @@ struct DataRowView: View {
             
             // Test Status Section
             HStack(spacing: 0) {
-                Text(record.applicationTestStatus ?? "N/A")
+                Text(record.applicationTestStatus ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.applicationTestReadinessDate.map { dateFormatter.string(from: $0) } ?? "N/A")
+                Text(record.applicationTestReadinessDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "")
                     .frame(width: 200, alignment: .leading)
-                Text(record.testResult ?? "N/A")
+                Text(record.testResult ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.testingPlanDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                Text(record.testingPlanDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "")
                     .frame(width: 200, alignment: .leading)
             }
             .font(.system(size: 11))
@@ -976,17 +962,17 @@ struct DataRowView: View {
             
             // Migration Section
             HStack(spacing: 0) {
-                Text(record.applicationNew ?? "N/A")
+                Text(record.applicationNew ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.applicationSuiteNew ?? "N/A")
+                Text(record.applicationSuiteNew ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.willBe ?? "N/A")
+                Text(record.willBe ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.inScopeOutScopeDivision ?? "N/A")
+                Text(record.inScopeOutScopeDivision ?? "")
                     .frame(width: 200, alignment: .leading)
-                Text(record.migrationPlatform ?? "N/A")
+                Text(record.migrationPlatform ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.migrationApplicationReadiness ?? "N/A")
+                Text(record.migrationApplicationReadiness ?? "")
                     .frame(width: 200, alignment: .leading)
             }
             .font(.system(size: 11))
@@ -994,17 +980,27 @@ struct DataRowView: View {
             
             // Department and Migration Section
             HStack(spacing: 0) {
-                Text(record.departmentSimple ?? "N/A")
+                Text(record.departmentSimple ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.domain ?? "N/A")
+                Text(record.domain ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.migrationCluster ?? "N/A")
+                Text(record.migrationCluster ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.migrationReadiness ?? "N/A")
+                Text(record.migrationReadiness ?? "")
                     .frame(width: 150, alignment: .leading)
             }
             .font(.system(size: 11))
             .background(Color.indigo.opacity(0.05))
+            
+            // Metadata Section
+            HStack(spacing: 0) {
+                Text(dateFormatter.string(from: record.importDate))
+                    .frame(width: 200, alignment: .leading)
+                Text(record.importSet)
+                    .frame(width: 150, alignment: .leading)
+            }
+            .font(.system(size: 11))
+            .background(Color.gray.opacity(0.05))
         }
         .frame(height: rowHeight)
         .padding(.vertical, 0)

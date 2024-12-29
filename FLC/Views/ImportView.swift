@@ -1701,7 +1701,7 @@ struct ImportView: View {
                             standardHeader = "Application Suite New"
                         case "will be", "willbe":
                             standardHeader = "Will Be"
-                        case "in/out scope division", "inscope/outscope", "in scope out scope division":
+                        case "in/out scope division", "inscope/outscope", "in scope out scope division", "in scope/out scope division":
                             standardHeader = "In/Out Scope Division"
                         case "migration platform", "migrationplatform":
                             standardHeader = "Migration Platform"
@@ -1802,12 +1802,17 @@ struct ImportView: View {
             let migrationPlatform = fullRowContent[safe: columnMap["Migration Platform"] ?? -1] ?? ""
             let migrationApplicationReadiness = fullRowContent[safe: columnMap["Migration Application Readiness"] ?? -1] ?? ""
             
+            print("Processing row - Application: \(applicationName), In/Out Scope: '\(inScopeOutScopeDivision)'")
+            
+            // Normalize In/Out Scope Division value
+            let normalizedInOutScope = inScopeOutScopeDivision.trimmingCharacters(in: .whitespacesAndNewlines)
+            
             let record = MigrationData(
                 applicationName: applicationName,
                 applicationNew: applicationNew,
                 applicationSuiteNew: applicationSuiteNew,
                 willBe: willBe,
-                inScopeOutScopeDivision: inScopeOutScopeDivision,
+                inScopeOutScopeDivision: normalizedInOutScope,
                 migrationPlatform: migrationPlatform,
                 migrationApplicationReadiness: migrationApplicationReadiness
             )

@@ -212,7 +212,7 @@ class DatabaseManager: ObservableObject {
                 t.column("importSet", .text).notNull()
             }
             
-            // Create combined records table if it doesn't exist
+            // Create combined_records table if it doesn't exist
             try db.create(table: "combined_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 // AD fields
@@ -283,13 +283,13 @@ class DatabaseManager: ObservableObject {
             // Create migration_records table if it doesn't exist
             try db.create(table: "migration_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
-                t.column("applicationName", .text).notNull()
-                t.column("applicationNew", .text).notNull()
-                t.column("applicationSuiteNew", .text).notNull()
-                t.column("willBe", .text).notNull()
-                t.column("inScopeOutScopeDivision", .text).notNull()
-                t.column("migrationPlatform", .text).notNull()
-                t.column("migrationApplicationReadiness", .text).notNull()
+                t.column("applicationName", .text).notNull()  // Only applicationName is required
+                t.column("applicationNew", .text)
+                t.column("applicationSuiteNew", .text)
+                t.column("willBe", .text)
+                t.column("inScopeOutScopeDivision", .text)
+                t.column("migrationPlatform", .text)
+                t.column("migrationApplicationReadiness", .text)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
                 // Create a unique index on applicationName
@@ -579,6 +579,9 @@ class DatabaseManager: ObservableObject {
     // Generate combined records from AD and HR data
     func generateCombinedRecords() async throws -> Int {
         try await performDatabaseOperation("Generate Combined Records", write: true) { db in
+            // First, clear existing combined records
+            try CombinedRecord.deleteAll(db)
+            
             // Get all AD records
             let adRecords = try ADRecord.fetchAll(db)
             print("Processing \(adRecords.count) AD records")
@@ -587,64 +590,39 @@ class DatabaseManager: ObservableObject {
             let hrRecords = try HRRecord.fetchAll(db)
             print("Found \(hrRecords.count) HR records for matching")
             
-            // Create a dictionary for faster HR record lookup
+            // Create dictionaries for faster lookups
             let hrLookup = Dictionary(uniqueKeysWithValues: hrRecords.map { ($0.systemAccount, $0) })
-            
-            // Get existing package status records for lookup
             let packageRecords = try PackageRecord.fetchAll(db)
             let packageLookup = Dictionary(uniqueKeysWithValues: packageRecords.map { ($0.applicationName, $0) })
-            
-            // Get existing test records for lookup
             let testRecords = try TestRecord.fetchAll(db)
             let testLookup = Dictionary(uniqueKeysWithValues: testRecords.map { ($0.applicationName, $0) })
-            
-            // Get existing migration records for lookup
             let migrationRecords = try MigrationRecord.fetchAll(db)
             let migrationLookup = Dictionary(uniqueKeysWithValues: migrationRecords.map { ($0.applicationName, $0) })
             
-            // Process in batches of 100
-            let batchSize = 100
             var combinedCount = 0
             
-            for batchStart in stride(from: 0, to: adRecords.count, by: batchSize) {
-                // Check for cancellation at the start of each batch
-                try Task.checkCancellation()
+            // Process each AD record
+            for adRecord in adRecords {
+                let hrRecord = hrLookup[adRecord.systemAccount]
+                let packageRecord = packageLookup[adRecord.applicationName]
+                let testRecord = testLookup[adRecord.applicationName]
+                let migrationRecord = migrationLookup[adRecord.applicationName]
                 
-                let batchEnd = min(batchStart + batchSize, adRecords.count)
-                let batch = Array(adRecords[batchStart..<batchEnd])
+                // Create combined record with optional fields
+                let combinedRecord = CombinedRecord(
+                    adRecord: adRecord,
+                    hrRecord: hrRecord,
+                    packageRecord: packageRecord,
+                    testRecord: testRecord,
+                    migrationRecord: migrationRecord,
+                    importDate: Date(),
+                    importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
+                )
                 
-                for adRecord in batch {
-                    let hrRecord = hrLookup[adRecord.systemAccount]
-                    let packageRecord = packageLookup[adRecord.applicationName]
-                    let testRecord = testLookup[adRecord.applicationName]
-                    let migrationRecord = migrationLookup[adRecord.applicationName]
-                    
-                    let combinedRecord = CombinedRecord(
-                        adRecord: adRecord,
-                        hrRecord: hrRecord,
-                        packageRecord: packageRecord,
-                        testRecord: testRecord,
-                        migrationRecord: migrationRecord,
-                        importDate: Date(),
-                        importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
-                    )
-                    
-                    // Try to find existing record by adGroup and systemAccount
-                    if let existingRecord = try CombinedRecord
-                        .filter(Column("adGroup") == adRecord.adGroup && Column("systemAccount") == adRecord.systemAccount)
-                        .fetchOne(db) {
-                        // Update existing record
-                        var updatedRecord = combinedRecord
-                        updatedRecord.id = existingRecord.id
-                        try updatedRecord.update(db)
-                    } else {
-                        // Insert new record
-                        try combinedRecord.insert(db)
-                    }
-                    combinedCount += 1
-                }
+                // Insert new record
+                try combinedRecord.insert(db)
+                combinedCount += 1
                 
-                // Report progress after each batch
                 if combinedCount % 1000 == 0 {
                     print("Processed \(combinedCount) combined records...")
                 }
@@ -1232,26 +1210,63 @@ class DatabaseManager: ObservableObject {
     
     // Save migration records
     func saveMigrationRecords(_ records: [MigrationData]) async throws -> (saved: Int, skipped: Int) {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.write { db in
-            var saved = 0
-            var skipped = 0
+        try await performDatabaseOperation("Save Migration Records", write: true) { db in
+            var counts = (saved: 0, skipped: 0)
+            
+            // Get all valid AD application names
+            let adApplicationNames = try ADRecord
+                .select(Column("applicationName"))
+                .asRequest(of: String.self)
+                .fetchSet(db)
             
             for data in records {
-                let record = MigrationRecord(from: data)
-                do {
-                    try record.insert(db)
-                    saved += 1
-                } catch let error as DatabaseError where error.resultCode == .SQLITE_CONSTRAINT {
-                    // Record already exists
-                    skipped += 1
+                // Only process if application exists in AD records
+                if adApplicationNames.contains(data.applicationName) {
+                    let record = MigrationRecord(from: data)
+                    
+                    // Try to find existing record by applicationName
+                    if let existingRecord = try MigrationRecord
+                        .filter(Column("applicationName") == data.applicationName)
+                        .fetchOne(db) {
+                        // Update existing record with new data, preserving id
+                        var updatedRecord = record
+                        updatedRecord.id = existingRecord.id
+                        try updatedRecord.update(db)
+                    } else {
+                        // Insert new record only if it exists in AD
+                        try record.insert(db)
+                    }
+                    
+                    // Update ALL matching records in combined_records table
+                    try db.execute(
+                        sql: """
+                            UPDATE combined_records
+                            SET applicationNew = ?,
+                                applicationSuiteNew = ?,
+                                willBe = ?,
+                                inScopeOutScopeDivision = ?,
+                                migrationPlatform = ?,
+                                migrationApplicationReadiness = ?
+                            WHERE applicationName = ?
+                            """,
+                        arguments: [
+                            data.applicationNew,
+                            data.applicationSuiteNew,
+                            data.willBe,
+                            data.inScopeOutScopeDivision,
+                            data.migrationPlatform,
+                            data.migrationApplicationReadiness,
+                            data.applicationName
+                        ]
+                    )
+                    counts.saved += 1
+                } else {
+                    print("Skipping migration record for \(data.applicationName) - not found in AD records")
+                    counts.skipped += 1
                 }
             }
             
-            return (saved: saved, skipped: skipped)
+            return counts
         }
     }
     
@@ -1392,5 +1407,26 @@ class DatabaseManager: ObservableObject {
         
         let flcDir = appSupportDir.appendingPathComponent("FLC")
         return flcDir.appendingPathComponent("database.sqlite").path
+    }
+    
+    // Fetch all unique AD application names
+    func fetchADApplicationNames() async throws -> [String] {
+        try await performDatabaseOperation("Fetch AD Application Names", write: false) { db in
+            try String.fetchAll(db, sql: "SELECT DISTINCT applicationName FROM ad_records")
+        }
+    }
+    
+    // Synchronous check for AD application existence
+    func hasADApplication(_ applicationName: String) -> Bool {
+        guard let dbPool = dbPool else { return false }
+        do {
+            return try dbPool.read { db in
+                try String.fetchAll(db, sql: "SELECT DISTINCT applicationName FROM ad_records")
+                    .contains { $0.lowercased() == applicationName.lowercased() }
+            }
+        } catch {
+            print("Error checking AD application: \(error)")
+            return false
+        }
     }
 } 

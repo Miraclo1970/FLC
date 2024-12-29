@@ -114,43 +114,64 @@ struct DepartmentProgressView: View {
                                     Text("\(selectedDepartment)")
                                         .font(.headline)
                                 }
-                                .frame(width: 400, alignment: .leading)
+                                .frame(width: 300, alignment: .leading)
+                                .padding(.leading, 8)
+                                Text("")
+                                    .frame(width: 100, alignment: .leading)
+                                Text("")
+                                    .frame(width: 80, alignment: .leading)
+                                Text("")
+                                    .frame(width: 80, alignment: .leading)
                                 Text("Users")
+                                    .frame(width: 60, alignment: .center)
+                                VStack {
+                                    Text("Average")
+                                    Text("Package")
+                                }
+                                .frame(width: 120, alignment: .center)
+                                Text("Ready by")
                                     .frame(width: 80, alignment: .center)
-                                Text("Package progress")
-                                    .frame(width: 150, alignment: .center)
+                                VStack {
+                                    Text("Average")
+                                    Text("Testing")
+                                }
+                                .frame(width: 120, alignment: .center)
                                 Text("Ready by")
-                                    .frame(width: 100, alignment: .center)
-                                Text("Testing progress")
-                                    .frame(width: 150, alignment: .center)
-                                Text("Ready by")
-                                    .frame(width: 100, alignment: .center)
-                                Text("Migration progress")
-                                    .frame(width: 150, alignment: .center)
+                                    .frame(width: 80, alignment: .center)
+                                Text("Application\nReadiness")
+                                    .frame(width: 120, alignment: .center)
+                                    .multilineTextAlignment(.center)
                             }
                             .frame(width: 1130)
-                            .padding()
+                            .padding(.vertical, 8)
                             .background(Color(NSColor.controlBackgroundColor))
                             .cornerRadius(8)
                             
                             // Values row
                             HStack(spacing: 0) {
                                 Text("")
-                                    .frame(width: 400, alignment: .leading)
+                                    .frame(width: 300, alignment: .leading)
+                                    .padding(.leading, 8)
+                                Text("")
+                                    .frame(width: 100, alignment: .leading)
+                                Text("")
+                                    .frame(width: 80, alignment: .leading)
+                                Text("")
+                                    .frame(width: 80, alignment: .leading)
                                 Text("\(totalUniqueUsers)")
-                                    .frame(width: 80, alignment: .center)
+                                    .frame(width: 60, alignment: .center)
                                 AverageProgressCell(progress: Double(averagePackageProgress) ?? 0)
-                                    .frame(width: 150)
+                                    .frame(width: 120)
                                 Text(latestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
-                                    .frame(width: 100, alignment: .center)
+                                    .frame(width: 80, alignment: .center)
                                     .font(.system(size: 11))
                                 AverageProgressCell(progress: Double(averageTestingProgress) ?? 0)
-                                    .frame(width: 150)
+                                    .frame(width: 120)
                                 Text(latestTestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
-                                    .frame(width: 100, alignment: .center)
+                                    .frame(width: 80, alignment: .center)
                                     .font(.system(size: 11))
                                 AverageProgressCell(progress: Double(averageMigrationProgress) ?? 0)
-                                    .frame(width: 150)
+                                    .frame(width: 120)
                             }
                             .padding(.vertical, 4)
                             .background(Color(NSColor.controlBackgroundColor))
@@ -160,20 +181,33 @@ struct DepartmentProgressView: View {
                                 // Header
                                 HStack(spacing: 0) {
                                     Text("Application")
-                                        .frame(width: 400, alignment: .leading)
+                                        .frame(width: 300, alignment: .leading)
                                         .padding(.leading, 8)
+                                    Text("Will be")
+                                        .frame(width: 100, alignment: .leading)
+                                    Text("Platform")
+                                        .frame(width: 80, alignment: .leading)
+                                    Text("In/Out Scope")
+                                        .frame(width: 80, alignment: .leading)
                                     Text("Users")
+                                        .frame(width: 60, alignment: .center)
+                                    VStack {
+                                        Text("Average")
+                                        Text("Package")
+                                    }
+                                    .frame(width: 120, alignment: .center)
+                                    Text("Ready by")
                                         .frame(width: 80, alignment: .center)
-                                    Text("Package progress")
-                                        .frame(width: 150, alignment: .center)
+                                    VStack {
+                                        Text("Average")
+                                        Text("Testing")
+                                    }
+                                    .frame(width: 120, alignment: .center)
                                     Text("Ready by")
-                                        .frame(width: 100, alignment: .center)
-                                    Text("Testing progress")
-                                        .frame(width: 150, alignment: .center)
-                                    Text("Ready by")
-                                        .frame(width: 100, alignment: .center)
-                                    Text("Migration progress")
-                                        .frame(width: 150, alignment: .center)
+                                        .frame(width: 80, alignment: .center)
+                                    Text("Application\nReadiness")
+                                        .frame(width: 120, alignment: .center)
+                                        .multilineTextAlignment(.center)
                                 }
                                 .font(.headline)
                                 .padding(.vertical, 8)
@@ -183,23 +217,43 @@ struct DepartmentProgressView: View {
                                 ForEach(departmentApplications, id: \.name) { app in
                                     HStack(spacing: 0) {
                                         Text(app.name)
-                                            .frame(width: 400, alignment: .leading)
+                                            .frame(width: 300, alignment: .leading)
                                             .lineLimit(1)
                                             .padding(.leading, 8)
+                                        Text(app.willBe)
+                                            .frame(width: 100, alignment: .leading)
+                                        Text(app.platform == "N/A" ? "" : app.platform)
+                                            .frame(width: 80, alignment: .leading)
+                                        Text(app.inOutScope == "N/A" ? "" : app.inOutScope)
+                                            .frame(width: 80, alignment: .leading)
                                         Text("\(app.uniqueUsers)")
-                                            .frame(width: 80, alignment: .center)
+                                            .frame(width: 60, alignment: .center)
                                         DepartmentProgressCell(status: app.packageStatus)
-                                            .frame(width: 150)
+                                            .frame(width: 120)
                                         Text(app.packageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
-                                            .frame(width: 100, alignment: .center)
+                                            .frame(width: 80, alignment: .center)
                                             .font(.system(size: 11))
                                         DepartmentProgressCell(status: app.testingStatus)
-                                            .frame(width: 150)
+                                            .frame(width: 120)
                                         Text(app.testReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
-                                            .frame(width: 100, alignment: .center)
+                                            .frame(width: 80, alignment: .center)
                                             .font(.system(size: 11))
-                                        DepartmentProgressCell(status: app.migrationStatus)
-                                            .frame(width: 150)
+                                        Text(app.applicationReadiness)
+                                            .frame(width: 120)
+                                            .foregroundColor({
+                                                switch app.applicationReadiness {
+                                                case "Sunset":
+                                                    return .orange
+                                                case "Out of scope":
+                                                    return .cyan
+                                                case "Migration ready":
+                                                    return .green
+                                                case "In Progress":
+                                                    return .blue
+                                                default:
+                                                    return .gray
+                                                }
+                                            }())
                                     }
                                     .padding(.vertical, 4)
                                 }
@@ -231,48 +285,108 @@ struct DepartmentProgressView: View {
     private struct ApplicationInfo: Identifiable {
         let id = UUID()
         let name: String
+        let willBe: String
+        let platform: String
+        let inOutScope: String
         let uniqueUsers: Int
         let packageStatus: String
         let packageReadinessDate: Date?
         let testingStatus: String
         let testReadinessDate: Date?
-        let migrationStatus: String
+        var applicationReadiness: String {
+            if !willBe.isEmpty && willBe != "N/A" {
+                return "Sunset"  // Say goodbye to an application
+            }
+            if inOutScope.lowercased() == "out" {
+                return "Out of scope"      // Will be shown as blue cross
+            }
+            
+            // Calculate combined progress
+            let packagePoints = {
+                switch packageStatus.lowercased() {
+                case "ready", "ready for testing", "completed", "passed":
+                    return 100.0
+                case "in progress":
+                    return 50.0
+                default:
+                    return 0.0
+                }
+            }()
+            
+            let testingPoints = {
+                switch testingStatus.lowercased() {
+                case "ready", "completed", "passed":
+                    return 100.0
+                case "in progress":
+                    return 50.0
+                default:
+                    return 0.0
+                }
+            }()
+            
+            let combinedProgress = (packagePoints + testingPoints) / 2
+            
+            switch combinedProgress {
+            case 0:
+                return "Not Started"
+            case 100:
+                return "Migration ready"
+            default:
+                return "In Progress"
+            }
+        }
     }
     
     private var departmentApplications: [ApplicationInfo] {
+        // First, filter AD records by division, department, and OTAP
         let filteredRecords = records.filter { record in
             record.division == selectedDivision &&
             record.departmentSimple == selectedDepartment &&
             selectedOtapValues.contains(record.otap)
         }
         
+        // Group by application name to count unique users
         let groupedByApp = Dictionary(grouping: filteredRecords) { $0.applicationName }
         
+        // Create a set of all "Will be" targets
+        let willBeTargets = Set(filteredRecords.compactMap { $0.willBe }
+            .filter { !$0.isEmpty && $0 != "N/A" })
+        
+        // Convert to ApplicationInfo array
         return groupedByApp.map { appName, records in
             let uniqueUsers = Set(records.map { $0.systemAccount }).count
-            let packageStatus = records.first?.applicationPackageStatus ?? "Not Started"
-            let packageReadinessDate = records.first?.applicationPackageReadinessDate
-            let testingStatus = records.first?.applicationTestStatus ?? "Not Started"
-            let testReadinessDate = records.first?.applicationTestReadinessDate
+            let firstRecord = records.first
             
-            print("App: \(appName)")
-            print("- Package Status: \(packageStatus)")
-            print("- Package Ready: \(packageReadinessDate?.description ?? "nil")")
-            print("- Test Status: \(testingStatus)")
-            print("- Test Ready: \(testReadinessDate?.description ?? "nil")")
-            
-            let migrationStatus = records.first?.migrationReadiness ?? "Not Started"
+            // If this app is a "Will be" target, use its platform info
+            let platform: String
+            if willBeTargets.contains(appName) {
+                // Find records where this app is the target
+                let targetRecords = filteredRecords.filter { record in 
+                    guard let willBe = record.willBe else { return false }
+                    return willBe == appName 
+                }
+                if let targetRecord = targetRecords.first {
+                    platform = targetRecord.migrationPlatform ?? "N/A"
+                } else {
+                    platform = firstRecord?.migrationPlatform ?? "N/A"
+                }
+            } else {
+                platform = firstRecord?.migrationPlatform ?? "N/A"
+            }
             
             return ApplicationInfo(
                 name: appName,
+                willBe: firstRecord?.willBe ?? "",
+                platform: platform,
+                inOutScope: firstRecord?.inScopeOutScopeDivision ?? "N/A",
                 uniqueUsers: uniqueUsers,
-                packageStatus: packageStatus,
-                packageReadinessDate: packageReadinessDate,
-                testingStatus: testingStatus,
-                testReadinessDate: testReadinessDate,
-                migrationStatus: migrationStatus
+                packageStatus: firstRecord?.applicationPackageStatus ?? "Not Started",
+                packageReadinessDate: firstRecord?.applicationPackageReadinessDate,
+                testingStatus: firstRecord?.applicationTestStatus ?? "Not Started",
+                testReadinessDate: firstRecord?.applicationTestReadinessDate
             )
-        }.sorted { $0.name < $1.name }
+        }
+        .sorted { $0.name < $1.name }
     }
     
     private var totalUniqueUsers: Int {
@@ -343,8 +457,8 @@ struct DepartmentProgressView: View {
     
     private var averageMigrationProgress: String {
         let total = departmentApplications.reduce(0.0) { sum, app in
-            sum + (app.migrationStatus.lowercased() == "ready" ? 100.0 :
-                  app.migrationStatus.lowercased() == "in progress" ? 50.0 : 0.0)
+            sum + (app.applicationReadiness == "Migration ready" ? 100.0 :
+                  app.applicationReadiness == "In Progress" ? 50.0 : 0.0)
         }
         let average = departmentApplications.isEmpty ? 0.0 : total / Double(departmentApplications.count)
         return String(format: "%.0f", average)
