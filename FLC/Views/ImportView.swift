@@ -1623,6 +1623,7 @@ struct ImportView: View {
         
         let worksheet = try xlsx.parseWorksheet(at: worksheetPath)
         let sharedStrings = try xlsx.parseSharedStrings()
+        // Note: totalRows is kept for GRDB compatibility, even though unused
         let totalRows = worksheet.data?.rows.count ?? 0
         
         // Find the start marker and header row

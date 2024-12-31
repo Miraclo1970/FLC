@@ -137,6 +137,17 @@ class DatabaseManager: ObservableObject {
     private let currentVersion = 4  // Increment this to force schema update
     private let versionKey = "database_version"
     
+    // Add fetch method for combined records
+    func fetchAllRecords() async throws -> [CombinedRecord] {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        return try await dbPool.read { db in
+            try CombinedRecord.fetchAll(db)
+        }
+    }
+    
     private init() {
         do {
             let fileManager = FileManager.default
@@ -172,9 +183,6 @@ class DatabaseManager: ObservableObject {
         
         try dbPool.write { db in
             print("Starting database setup...")
-            
-            // Drop test_records table to force recreation
-            try? db.drop(table: "test_records")
             
             // Create users table if it doesn't exist
             try db.create(table: "users", ifNotExists: true) { t in
