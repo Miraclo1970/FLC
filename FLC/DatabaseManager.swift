@@ -44,18 +44,54 @@ struct ADRecord: Codable, FetchableRecord, PersistableRecord {
 }
 
 // HR record structure for database
-struct HRRecord: Codable, FetchableRecord, PersistableRecord {
+struct HRRecord: Codable, FetchableRecord, PersistableRecord, Identifiable {
     var id: Int64?
     let systemAccount: String
     let department: String?
     let jobRole: String?
     let division: String?
     let leaveDate: Date?
-    let employeeNumber: String?
+    let departmentSimple: String?
     let importDate: Date
     let importSet: String
     
     static let databaseTableName = "hr_records"
+    
+    enum Columns {
+        static let id = Column("id")
+        static let systemAccount = Column("systemAccount")
+        static let department = Column("department")
+        static let jobRole = Column("jobRole")
+        static let division = Column("division")
+        static let leaveDate = Column("leaveDate")
+        static let departmentSimple = Column("departmentSimple")
+        static let importDate = Column("importDate")
+        static let importSet = Column("importSet")
+    }
+    
+    static let databaseColumnEncodingStrategy: DatabaseColumnEncodingStrategy = .custom { key in
+        switch key {
+        case CodingKeys.systemAccount: return "systemAccount"
+        case CodingKeys.jobRole: return "jobRole"
+        case CodingKeys.leaveDate: return "leaveDate"
+        case CodingKeys.departmentSimple: return "departmentSimple"
+        case CodingKeys.importDate: return "importDate"
+        case CodingKeys.importSet: return "importSet"
+        default: return key.stringValue
+        }
+    }
+    
+    static let databaseColumnDecodingStrategy: DatabaseColumnDecodingStrategy = .custom { key in
+        switch key {
+        case "systemAccount": return CodingKeys.systemAccount
+        case "jobRole": return CodingKeys.jobRole
+        case "leaveDate": return CodingKeys.leaveDate
+        case "departmentSimple": return CodingKeys.departmentSimple
+        case "importDate": return CodingKeys.importDate
+        case "importSet": return CodingKeys.importSet
+        default: return CodingKeys(stringValue: key) ?? CodingKeys.id
+        }
+    }
     
     init(from data: HRData) {
         self.id = nil
@@ -64,7 +100,7 @@ struct HRRecord: Codable, FetchableRecord, PersistableRecord {
         self.jobRole = data.jobRole
         self.division = data.division
         self.leaveDate = data.leaveDate
-        self.employeeNumber = data.employeeNumber
+        self.departmentSimple = data.departmentSimple
         self.importDate = Date()
         
         // Create a more descriptive import set identifier
@@ -77,7 +113,6 @@ struct HRRecord: Codable, FetchableRecord, PersistableRecord {
 // Package status record structure for database
 struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
     var id: Int64?
-    let systemAccount: String
     let applicationName: String
     let packageStatus: String
     let packageReadinessDate: Date?
@@ -88,7 +123,6 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
     
     init(from data: PackageStatusData) {
         self.id = data.id
-        self.systemAccount = data.systemAccount
         self.applicationName = data.applicationName
         self.packageStatus = data.packageStatus
         self.packageReadinessDate = data.packageReadinessDate
@@ -97,48 +131,68 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
     }
 }
 
-class DatabaseManager {
+class DatabaseManager: ObservableObject {
     public static let shared: DatabaseManager = DatabaseManager()
-    private var dbPool: DatabasePool?
-    private let currentVersion = 3  // Incremented version for test_records table
+    @Published private var dbPool: DatabasePool?
+    private let currentVersion = 4  // Increment this to force schema update
+    private let versionKey = "database_version"
     
-    private init() {
-        do {
-            try setupDatabase()
-        } catch {
-            print("Critical error during database initialization: \(error)")
+    // Add fetch method for combined records
+    func fetchAllRecords() async throws -> [CombinedRecord] {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        return try await dbPool.read { db in
+            try CombinedRecord.fetchAll(db)
         }
     }
     
-    private func setupDatabase() throws {
-        // Get the Application Support directory
-        guard let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find Application Support directory"])
+    private init() {
+        do {
+            let fileManager = FileManager.default
+            let appSupportURL = try fileManager.url(for: .applicationSupportDirectory,
+                                                  in: .userDomainMask,
+                                                  appropriateFor: nil,
+                                                  create: true)
+            let dbFolderURL = appSupportURL.appendingPathComponent("FLC", isDirectory: true)
+            try fileManager.createDirectory(at: dbFolderURL, withIntermediateDirectories: true)
+            
+            let dbURL = dbFolderURL.appendingPathComponent("database.sqlite")
+            print("Database path: \(dbURL.path)")
+            
+            // Check if we need to delete the existing database due to version mismatch
+            let defaults = UserDefaults.standard
+            let savedVersion = defaults.integer(forKey: versionKey)
+            if savedVersion < currentVersion {
+                try? fileManager.removeItem(at: dbURL)
+                defaults.set(currentVersion, forKey: versionKey)
+            }
+            
+            dbPool = try DatabasePool(path: dbURL.path)
+            try createTables()
+        } catch {
+            print("Database initialization error: \(error)")
         }
-        
-        // Create FLC directory if it doesn't exist
-        let flcDir = appSupportDir.appendingPathComponent("FLC")
-        try? FileManager.default.createDirectory(at: flcDir, withIntermediateDirectories: true)
-        
-        // Set up database path
-        let dbPath = flcDir.appendingPathComponent("database.sqlite").path
-        
-        // Create or open database
-        dbPool = try DatabasePool(path: dbPath)
-        
+    }
+    
+    private func createTables() throws {
         guard let dbPool = dbPool else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
         }
         
         try dbPool.write { db in
-            // Create users table
+            print("Starting database setup...")
+            
+            // Create users table if it doesn't exist
             try db.create(table: "users", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("username", .text).notNull().unique()
                 t.column("password", .text).notNull()
+                t.column("userType", .text).notNull()
             }
             
-            // Create AD records table
+            // Create AD records table if it doesn't exist
             try db.create(table: "ad_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("adGroup", .text).notNull()
@@ -153,7 +207,7 @@ class DatabaseManager {
                 t.uniqueKey(["adGroup", "systemAccount"])
             }
             
-            // Create HR records table
+            // Create HR records table if it doesn't exist
             try db.create(table: "hr_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("systemAccount", .text).notNull().unique()
@@ -161,12 +215,12 @@ class DatabaseManager {
                 t.column("jobRole", .text)
                 t.column("division", .text)
                 t.column("leaveDate", .datetime)
-                t.column("employeeNumber", .text)
+                t.column("departmentSimple", .text)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
             }
             
-            // Create combined records table
+            // Create combined_records table if it doesn't exist
             try db.create(table: "combined_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 // AD fields
@@ -181,61 +235,95 @@ class DatabaseManager {
                 t.column("jobRole", .text)
                 t.column("division", .text)
                 t.column("leaveDate", .datetime)
-                t.column("employeeNumber", .text)
                 // Package tracking fields
                 t.column("applicationPackageStatus", .text)
                 t.column("applicationPackageReadinessDate", .datetime)
                 // Test tracking fields
                 t.column("applicationTestStatus", .text)
                 t.column("applicationTestReadinessDate", .datetime)
+                t.column("testResult", .text)
+                t.column("testingPlanDate", .datetime)
+                // Migration fields
+                t.column("applicationNew", .text)
+                t.column("applicationSuiteNew", .text)
+                t.column("willBe", .text)
+                t.column("inScopeOutScopeDivision", .text)
+                t.column("migrationPlatform", .text)
+                t.column("migrationApplicationReadiness", .text)
                 // Department and Migration fields
                 t.column("departmentSimple", .text)
+                t.column("domain", .text)
                 t.column("migrationCluster", .text)
+                t.column("migrationClusterReadiness", .text)
                 t.column("migrationReadiness", .text)
                 // Metadata
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
-                // Create a unique index on the combination of adGroup and systemAccount
-                t.uniqueKey(["adGroup", "systemAccount"])
             }
             
-            // Create package status records table
+            // Create package status records table if it doesn't exist
             try db.create(table: "package_status_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
-                t.column("systemAccount", .text)
                 t.column("applicationName", .text).notNull()
                 t.column("packageStatus", .text).notNull()
                 t.column("packageReadinessDate", .datetime)
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
-                // Create a unique index on applicationName only since systemAccount is not used
+                // Create a unique index on applicationName
                 t.uniqueKey(["applicationName"])
             }
             
-            // Create test_records table
+            // Create test_records table if it doesn't exist
             try db.create(table: "test_records", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("applicationName", .text).notNull()
                 t.column("testStatus", .text).notNull()
-                t.column("testDate", .date).notNull()
+                t.column("testDate", .datetime)
                 t.column("testResult", .text).notNull()
-                t.column("testComments", .text)
-                t.column("importDate", .date).notNull()
+                t.column("testingPlanDate", .datetime)
+                t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
-                // Create a unique index on applicationName and importSet
-                t.uniqueKey(["applicationName", "importSet"])
+                // Create a unique index on applicationName
+                t.uniqueKey(["applicationName"])
             }
+            
+            // Create migration_records table if it doesn't exist
+            try db.create(table: "migration_records", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("applicationName", .text).notNull()  // Only applicationName is required
+                t.column("applicationNew", .text)
+                t.column("applicationSuiteNew", .text)
+                t.column("willBe", .text)
+                t.column("inScopeOutScopeDivision", .text)
+                t.column("migrationPlatform", .text)
+                t.column("migrationApplicationReadiness", .text)
+                t.column("importDate", .datetime).notNull()
+                t.column("importSet", .text).notNull()
+                // Create a unique index on applicationName
+                t.uniqueKey(["applicationName"])
+            }
+            
+            // Create cluster_records table if it doesn't exist
+            try db.create(table: "cluster_records", ifNotExists: true) { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("department", .text).notNull()
+                t.column("departmentSimple", .text)
+                t.column("domain", .text)
+                t.column("migrationCluster", .text)
+                t.column("migrationClusterReadiness", .text)
+                t.column("importDate", .datetime).notNull()
+                t.column("importSet", .text).notNull()
+                // Create a unique index on department
+                t.uniqueKey(["department"])
+            }
+            
+            print("Database setup completed successfully")
         }
-        print("Database setup completed successfully")
     }
     
     // Save AD records to database with upsert behavior
     func saveADRecords(_ records: [ADData]) async throws -> (saved: Int, skipped: Int) {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.write { db -> (Int, Int) in
+        try await performDatabaseOperation("Save AD Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
@@ -264,11 +352,7 @@ class DatabaseManager {
     
     // Save HR records to database with upsert behavior
     func saveHRRecords(_ records: [HRData]) async throws -> (saved: Int, skipped: Int) {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.write { db -> (Int, Int) in
+        try await performDatabaseOperation("Save HR Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
@@ -294,69 +378,71 @@ class DatabaseManager {
     
     // Save package status records to database with upsert behavior
     func savePackageRecords(_ records: [PackageStatusData]) async throws -> (saved: Int, skipped: Int) {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        print("Attempting to save \(records.count) package status records")
-        
-        return try await dbPool.write { db -> (Int, Int) in
+        try await performDatabaseOperation("Save Package Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
                 let dbRecord = PackageRecord(from: record)
                 print("Processing package record for application: \(dbRecord.applicationName)")
                 
-                // Try to find existing record by applicationName only
+                // First, save/update the package_status_records table
                 if let existingRecord = try PackageRecord
                     .filter(Column("applicationName") == record.applicationName)
                     .fetchOne(db) {
-                    print("Found existing record for \(dbRecord.applicationName), updating...")
-                    // Update existing record with new data, preserving id
                     var updatedRecord = dbRecord
                     updatedRecord.id = existingRecord.id
                     try updatedRecord.update(db)
-                    counts.saved += 1
                 } else {
-                    print("No existing record for \(dbRecord.applicationName), inserting new record...")
-                    // Insert new record
                     try dbRecord.insert(db)
-                    counts.saved += 1
+                }
+                
+                // Then update ALL matching records in combined_records table
+                // This ensures consistency across all instances of the same application
+                try db.execute(
+                    sql: """
+                        UPDATE combined_records
+                        SET applicationPackageStatus = ?,
+                            applicationPackageReadinessDate = ?
+                        WHERE applicationName = ?
+                        """,
+                    arguments: [
+                        record.packageStatus,
+                        record.packageReadinessDate,
+                        record.applicationName
+                    ]
+                )
+                
+                counts.saved += 1
+                
+                // Print progress every 100 records
+                if counts.saved % 100 == 0 {
+                    print("Processed \(counts.saved) package records...")
                 }
             }
             
-            print("Finished saving package records - Saved: \(counts.saved), Skipped: \(counts.skipped)")
             return counts
         }
     }
     
     // Fetch AD records with pagination
     func fetchADRecords(limit: Int = 1000, offset: Int = 0) async throws -> [ADRecord] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.read { db in
+        try await performDatabaseOperation("Fetch AD Records", write: false) { db in
             try ADRecord
                 .limit(limit, offset: offset)
                 .fetchAll(db)
         }
     }
     
-    // Fetch all HR records
+    // Fetch HR records
     func fetchHRRecords() async throws -> [HRRecord] {
-        try await dbPool?.read { db in
+        try await performDatabaseOperation("Fetch HR Records", write: false) { db in
             try HRRecord.fetchAll(db)
-        } ?? []
+        }
     }
     
     // Fetch package status records with pagination
     func fetchPackageRecords(limit: Int = 1000, offset: Int = 0) async throws -> [PackageRecord] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.read { db in
+        try await performDatabaseOperation("Fetch Package Records", write: false) { db in
             try PackageRecord
                 .order(sql: "applicationName ASC")
                 .limit(limit, offset: offset)
@@ -399,217 +485,168 @@ class DatabaseManager {
         }
     }
     
-    func validateUser(username: String, password: String) -> (success: Bool, userType: String?) {
-        do {
-            guard let dbPool = dbPool else {
-                print("No database connection")
-                return (false, nil)
-            }
-            
-            print("Attempting to validate user: \(username)")
-            
+    @MainActor
+    func validateUser(username: String, password: String) async throws -> (success: Bool, userType: String?) {
+        try await performDatabaseOperation("Validate User") { db in
             // Special case for admin - no password required
             if username == "admin" {
                 return (true, "admin")
             }
             
-            // For other users, check both username and password
-            let user = try dbPool.read { db in
-                try User.filter(Column("username") == username)
-                    .filter(Column("password") == password)
-                    .fetchOne(db)
-            }
+            let user = try User.filter(Column("username") == username)
+                .filter(Column("password") == password)
+                .fetchOne(db)
             
-            if let user = user {
-                print("User found: \(user.username) with type: \(user.userType)")
-                return (true, user.userType)
-            }
-            
-            print("Invalid credentials for user: \(username)")
-            return (false, nil)
-            
-        } catch {
-            print("Validate user error: \(error)")
-            return (false, nil)
+            return (user != nil, user?.userType)
         }
     }
     
-    func listAllUsers() {
-        do {
-            guard let dbPool = dbPool else { return }
-            
-            let users = try dbPool.read { db in
-                try User.fetchAll(db)
-            }
+    @MainActor
+    func listAllUsers() async throws {
+        _ = try await performDatabaseOperation("List Users", write: false) { db in
+            let users = try User.fetchAll(db)
             
             print("\n=== Current Users ===")
             for user in users {
                 print("Username: \(user.username), Type: \(user.userType)")
             }
             print("===================\n")
-        } catch {
-            print("Error listing users: \(error)")
+            return users  // Return the users array even though we're discarding it
         }
     }
     
     // Delete AD record
     func deleteADRecord(_ record: ADRecord) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Delete AD Record", write: true) { db in
             try record.delete(db)
+            return true
         }
     }
     
     // Delete HR record
     func deleteHRRecord(_ record: HRRecord) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Delete HR Record", write: true) { db in
             try record.delete(db)
+            return true
         }
     }
     
     // Clear all AD records
     func clearADRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Clear AD Records", write: true) { db in
             try db.execute(sql: "DELETE FROM ad_records")
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='ad_records'")
+            return true
         }
     }
     
     // Clear all HR records
     func clearHRRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Clear HR Records", write: true) { db in
             try db.execute(sql: "DELETE FROM hr_records")
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='hr_records'")
+            return true
         }
     }
     
     // Clear all package status records
     func clearPackageRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Clear Package Records", write: true) { db in
             try db.execute(sql: "DELETE FROM package_status_records")
-        }
-    }
-    
-    // Fetch combined records with pagination
-    func fetchCombinedRecords(limit: Int = 1000, offset: Int = 0) async throws -> [CombinedRecord] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.read { db in
-            try CombinedRecord
-                .limit(limit, offset: offset)
-                .fetchAll(db)
-        }
-    }
-    
-    // Generate combined records from AD and HR data
-    func generateCombinedRecords() async throws -> Int {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.write { db -> Int in
-            // First, clear existing combined records
-            try db.execute(sql: "DELETE FROM combined_records")
-            
-            // Fetch all AD records, HR records, and Package Status records
-            let adRecords = try ADRecord.fetchAll(db)
-            let hrRecords = try HRRecord.fetchAll(db)
-            let packageRecords = try PackageRecord.fetchAll(db)
-            let testRecords = try TestRecord.fetchAll(db)
-            
-            print("Fetched \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, and \(testRecords.count) test records")
-            
-            // Create dictionaries for faster lookup
-            let hrBySystemAccount = Dictionary(
-                uniqueKeysWithValues: hrRecords.map { ($0.systemAccount, $0) }
-            )
-            let packageByAppName = Dictionary(
-                uniqueKeysWithValues: packageRecords.map { ($0.applicationName, $0) }
-            )
-            let testByAppName = Dictionary(
-                uniqueKeysWithValues: testRecords.map { ($0.applicationName, $0) }
-            )
-            
-            var combinedCount = 0
-            
-            // For each AD record, create a combined record with HR and Package Status data if available
-            for adRecord in adRecords {
-                // Find matching HR record
-                let hrRecord = hrBySystemAccount[adRecord.systemAccount]
-                
-                // Find matching Package Status record
-                let packageRecord = packageByAppName[adRecord.applicationName]
-                
-                // Find matching Test record
-                let testRecord = testByAppName[adRecord.applicationName]
-                
-                // Create combined record with optional HR, Package Status, and Test data
-                let combinedRecord = CombinedRecord(
-                    id: nil,
-                    adGroup: adRecord.adGroup,
-                    systemAccount: adRecord.systemAccount,
-                    applicationName: adRecord.applicationName,
-                    applicationSuite: adRecord.applicationSuite,
-                    otap: adRecord.otap,
-                    critical: adRecord.critical,
-                    department: hrRecord?.department,
-                    jobRole: hrRecord?.jobRole,
-                    division: hrRecord?.division,
-                    leaveDate: hrRecord?.leaveDate,
-                    employeeNumber: hrRecord?.employeeNumber,
-                    applicationPackageStatus: packageRecord?.packageStatus,
-                    applicationPackageReadinessDate: packageRecord?.packageReadinessDate,
-                    applicationTestStatus: testRecord?.testStatus,
-                    applicationTestReadinessDate: testRecord?.testDate,
-                    departmentSimple: nil,
-                    migrationCluster: nil,
-                    migrationReadiness: nil,
-                    importDate: Date(),
-                    importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
-                )
-                
-                // Insert the combined record
-                try combinedRecord.insert(db)
-                combinedCount += 1
-                
-                // Print progress every 10000 records
-                if combinedCount % 10000 == 0 {
-                    print("Processed \(combinedCount) combined records...")
-                }
-            }
-            
-            print("Generated \(combinedCount) combined records from \(adRecords.count) AD records, \(hrRecords.count) HR records, \(packageRecords.count) package status records, and \(testRecords.count) test records")
-            return combinedCount
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='package_status_records'")
+            return true
         }
     }
     
     // Clear all combined records
     func clearCombinedRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Clear Combined Records", write: true) { db in
             try db.execute(sql: "DELETE FROM combined_records")
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='combined_records'")
+            return true
+        }
+    }
+    
+    // Clear all test records
+    func clearTestRecords() async throws {
+        _ = try await performDatabaseOperation("Clear Test Records", write: true) { db in
+            try db.execute(sql: "DELETE FROM test_records")
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='test_records'")
+            return true
+        }
+    }
+    
+    // Fetch combined records without pagination
+    func fetchCombinedRecords(limit: Int = 1000, offset: Int = 0) async throws -> [CombinedRecord] {
+        try await performDatabaseOperation("Fetch Combined Records", write: false) { db in
+            try CombinedRecord.fetchAll(db)  // Fetch all records without limit
+        }
+    }
+    
+    // Generate combined records from AD and HR data
+    func generateCombinedRecords() async throws -> Int {
+        try await performDatabaseOperation("Generate Combined Records", write: true) { db in
+            // First, clear existing combined records
+            try CombinedRecord.deleteAll(db)
+            
+            // Get all AD records
+            let adRecords = try ADRecord.fetchAll(db)
+            
+            // Get all HR records for lookup
+            let hrRecords = try HRRecord.fetchAll(db)
+            print("Found \(hrRecords.count) HR records for matching")
+            
+            // Create dictionaries for faster lookups
+            let hrLookup = Dictionary(uniqueKeysWithValues: hrRecords.map { ($0.systemAccount, $0) })
+            let packageRecords = try PackageRecord.fetchAll(db)
+            let packageLookup = Dictionary(uniqueKeysWithValues: packageRecords.map { ($0.applicationName, $0) })
+            let testRecords = try TestRecord.fetchAll(db)
+            let testLookup = Dictionary(uniqueKeysWithValues: testRecords.map { ($0.applicationName, $0) })
+            let migrationRecords = try MigrationRecord.fetchAll(db)
+            let migrationLookup = Dictionary(uniqueKeysWithValues: migrationRecords.map { ($0.applicationName, $0) })
+            
+            // Get all cluster records and create a lookup by department
+            let clusterRecords = try ClusterRecord.fetchAll(db)
+            let clusterLookup = Dictionary(uniqueKeysWithValues: clusterRecords.map { ($0.department, $0) })
+            print("Found \(clusterRecords.count) cluster records for matching")
+            
+            var combinedCount = 0
+            
+            // Process each AD record
+            for adRecord in adRecords {
+                let hrRecord = hrLookup[adRecord.systemAccount]
+                let packageRecord = packageLookup[adRecord.applicationName]
+                let testRecord = testLookup[adRecord.applicationName]
+                let migrationRecord = migrationLookup[adRecord.applicationName]
+                
+                // Get cluster record based on HR department if available
+                let clusterRecord = hrRecord.flatMap { hr in
+                    clusterLookup[hr.department ?? ""]
+                }
+                
+                // Create combined record with optional fields
+                let combinedRecord = CombinedRecord(
+                    adRecord: adRecord,
+                    hrRecord: hrRecord,
+                    packageRecord: packageRecord,
+                    testRecord: testRecord,
+                    migrationRecord: migrationRecord,
+                    clusterRecord: clusterRecord,
+                    importDate: Date(),
+                    importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
+                )
+                
+                // Insert new record
+                try combinedRecord.insert(db)
+                combinedCount += 1
+                
+                if combinedCount % 1000 == 0 {
+                    print("Processed \(combinedCount) combined records...")
+                }
+            }
+            
+            print("Generated \(combinedCount) combined records")
+            return combinedCount
         }
     }
     
@@ -618,14 +655,10 @@ class DatabaseManager {
                      field: String, 
                      operator: String, 
                      value: String) async throws -> [Any] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
         // First get the database state
         try await debugPrintRecords()
         
-        return try await dbPool.read { db in
+        return try await performDatabaseOperation("Execute Query", write: false) { db in
             // Build the SQL query based on data type
             let tableName: String
             switch dataType {
@@ -639,6 +672,10 @@ class DatabaseManager {
                 tableName = "package_status_records"
             case .testing:
                 tableName = "test_records"
+            case .migration:
+                tableName = "migration_records"
+            case .cluster:
+                tableName = "cluster_records"
             }
             
             // Convert field name to database column name
@@ -663,8 +700,6 @@ class DatabaseManager {
                 mappedColumnName = "applicationname"
             case "application_suite":
                 mappedColumnName = "applicationsuite"
-            case "employee_number":
-                mappedColumnName = "employeenumber"
             case "leave_date":
                 mappedColumnName = "leavedate"
             case "package_status":
@@ -677,8 +712,8 @@ class DatabaseManager {
                 mappedColumnName = "testdate"
             case "test_result":
                 mappedColumnName = "testresult"
-            case "test_comments":
-                mappedColumnName = "testcomments"
+            case "testing_plan_date":
+                mappedColumnName = "testingPlanDate"
             default:
                 mappedColumnName = columnName
             }
@@ -768,15 +803,21 @@ class DatabaseManager {
                 let testResults = try TestRecord.fetchAll(db, sql: sql, arguments: arguments)
                 print("Found \(testResults.count) test records")
                 return testResults as [Any]
+            case .migration:
+                let migrationResults = try MigrationRecord.fetchAll(db, sql: sql, arguments: arguments)
+                print("Found \(migrationResults.count) migration records")
+                return migrationResults as [Any]
+            case .cluster:
+                let clusterResults = try ClusterRecord.fetchAll(db, sql: sql, arguments: arguments)
+                print("Found \(clusterResults.count) cluster records")
+                return clusterResults as [Any]
             }
         }
     }
     
     // Debug function to check database contents
     func debugPrintRecords() async throws {
-        guard let dbPool = dbPool else { return }
-        
-        try await dbPool.read { db in
+        _ = try await performDatabaseOperation("Debug Print Records", write: false) { db in
             print("\n=== Database Contents ===")
             
             // Check AD records
@@ -807,6 +848,7 @@ class DatabaseManager {
             }
             
             print("=====================\n")
+            return true  // Return a value even though we're discarding it
         }
     }
     
@@ -814,11 +856,7 @@ class DatabaseManager {
     
     // Package tracking updates
     func updatePackageStatus(forSystemAccount: String, adGroup: String, status: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Package Status", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -827,15 +865,12 @@ class DatabaseManager {
                     """,
                 arguments: [status, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     func updatePackageReadinessDate(forSystemAccount: String, adGroup: String, date: Date) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Package Readiness Date", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -844,16 +879,13 @@ class DatabaseManager {
                     """,
                 arguments: [date, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     // Test tracking updates
     func updateTestStatus(forSystemAccount: String, adGroup: String, status: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Test Status", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -862,15 +894,12 @@ class DatabaseManager {
                     """,
                 arguments: [status, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     func updateTestReadinessDate(forSystemAccount: String, adGroup: String, date: Date) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Test Readiness Date", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -879,16 +908,13 @@ class DatabaseManager {
                     """,
                 arguments: [date, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     // Department and Migration updates
     func updateDepartmentSimple(forSystemAccount: String, adGroup: String, department: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Department Simple", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -897,15 +923,12 @@ class DatabaseManager {
                     """,
                 arguments: [department, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     func updateMigrationCluster(forSystemAccount: String, adGroup: String, cluster: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Migration Cluster", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -914,15 +937,12 @@ class DatabaseManager {
                     """,
                 arguments: [cluster, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
     func updateMigrationReadiness(forSystemAccount: String, adGroup: String, readiness: String) async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        try await dbPool.write { db in
+        _ = try await performDatabaseOperation("Update Migration Readiness", write: true) { db in
             try db.execute(
                 sql: """
                     UPDATE combined_records
@@ -931,6 +951,7 @@ class DatabaseManager {
                     """,
                 arguments: [readiness, forSystemAccount, adGroup]
             )
+            return true
         }
     }
     
@@ -947,11 +968,7 @@ class DatabaseManager {
     
     // Check database tables and contents
     func checkDatabaseState() async throws -> String {
-        guard let dbPool = dbPool else {
-            return "No database connection"
-        }
-        
-        return try await dbPool.read { db in
+        try await performDatabaseOperation("Check Database State", write: false) { db in
             var report = "\n=== Database State ===\n"
             
             // Check tables exist
@@ -1000,13 +1017,7 @@ class DatabaseManager {
     
     // Generate package records from combined records
     func generatePackageRecords() async throws -> Int {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        print("Starting package records generation from combined records")
-        
-        return try await dbPool.write { db -> Int in
+        try await performDatabaseOperation("Generate Package Records", write: true) { db in
             // Get all combined records
             let combinedRecords = try CombinedRecord.fetchAll(db)
             var packageCount = 0
@@ -1020,7 +1031,6 @@ class DatabaseManager {
                     
                     let packageStatusData = PackageStatusData(
                         id: nil,
-                        systemAccount: record.systemAccount,
                         applicationName: record.applicationName,
                         packageStatus: packageStatus,
                         packageReadinessDate: record.applicationPackageReadinessDate,
@@ -1052,18 +1062,13 @@ class DatabaseManager {
     
     // Save test records to database with upsert behavior
     func saveTestRecords(_ records: [TestingData]) async throws -> (saved: Int, skipped: Int) {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        print("Attempting to save \(records.count) test records")
-        
-        return try await dbPool.write { db -> (Int, Int) in
+        try await performDatabaseOperation("Save Test Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
             for record in records {
                 let dbRecord = TestRecord(from: record)
                 print("Processing test record for application: \(dbRecord.applicationName)")
+                print("Test plan date: \(String(describing: record.testingPlanDate))")
                 
                 // Try to find existing record by applicationName only
                 if let existingRecord = try TestRecord
@@ -1081,6 +1086,33 @@ class DatabaseManager {
                     try dbRecord.insert(db)
                     counts.saved += 1
                 }
+                
+                // Update ALL matching records in combined_records table
+                // This ensures consistency across all instances of the same application
+                try db.execute(
+                    sql: """
+                        UPDATE combined_records
+                        SET applicationTestStatus = ?,
+                            applicationTestReadinessDate = ?,
+                            testingPlanDate = ?
+                        WHERE applicationName = ?
+                        """,
+                    arguments: [
+                        record.testStatus,
+                        record.testDate,
+                        record.testingPlanDate,
+                        record.applicationName
+                    ]
+                )
+                
+                // Verify the update
+                if let updatedRecord = try CombinedRecord
+                    .filter(Column("applicationName") == record.applicationName)
+                    .fetchOne(db) {
+                    print("Updated combined record - Application: \(updatedRecord.applicationName)")
+                    print("Test Status: \(updatedRecord.applicationTestStatus ?? "nil")")
+                    print("Test Plan Date: \(String(describing: updatedRecord.testingPlanDate))")
+                }
             }
             
             print("Finished saving test records - Saved: \(counts.saved), Skipped: \(counts.skipped)")
@@ -1090,11 +1122,7 @@ class DatabaseManager {
     
     // Fetch test records with pagination
     func fetchTestRecords(limit: Int = 1000, offset: Int = 0) async throws -> [TestRecord] {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        return try await dbPool.read { db in
+        try await performDatabaseOperation("Fetch Test Records", write: false) { db in
             try TestRecord
                 .order(sql: "applicationName ASC")
                 .limit(limit, offset: offset)
@@ -1102,65 +1130,332 @@ class DatabaseManager {
         }
     }
     
-    // Clear all test records
-    func clearTestRecords() async throws {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        _ = try await dbPool.write { db in
-            try db.execute(sql: "DELETE FROM test_records")
-        }
-    }
-    
     // Generate test records from combined records
     func generateTestRecords() async throws -> Int {
-        guard let dbPool = dbPool else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
-        }
-        
-        print("Starting test records generation from combined records")
-        
-        return try await dbPool.write { db -> Int in
+        return try await performDatabaseOperation("Generate Test Records", write: true) { db in
+            // First, clear existing test records
+            try TestRecord.deleteAll(db)
+            
+            // Get all AD records to get valid application names
+            let adApplicationNames = try ADRecord
+                .select(Column("applicationName"))
+                .asRequest(of: String.self)
+                .fetchSet(db)
+            
+            print("Found \(adApplicationNames.count) valid application names from AD records")
+            
             // Get all combined records
             let combinedRecords = try CombinedRecord.fetchAll(db)
             var testCount = 0
             
             print("Found \(combinedRecords.count) combined records to process")
             
-            // Create test records from combined records
+            // Create test records from combined records, but only for valid application names
             for record in combinedRecords {
-                if let testStatus = record.applicationTestStatus {
-                    print("Processing combined record for \(record.applicationName) with status: \(testStatus)")
-                    
-                    let testingData = TestingData(
-                        applicationName: record.applicationName,
-                        testStatus: testStatus,
-                        testDate: record.applicationTestReadinessDate ?? Date(),
-                        testResult: "Pending",
-                        testComments: nil
-                    )
-                    
-                    let testRecord = TestRecord(from: testingData)
-                    
-                    // Try to find existing record
-                    if let existingRecord = try TestRecord
-                        .filter(Column("applicationName") == record.applicationName)
-                        .fetchOne(db) {
-                        print("Updating existing test record for \(record.applicationName)")
-                        var updatedRecord = testRecord
-                        updatedRecord.id = existingRecord.id
-                        try updatedRecord.update(db)
-                    } else {
-                        print("Creating new test record for \(record.applicationName)")
-                        try testRecord.insert(db)
+                // Only process if the application name exists in AD records
+                if adApplicationNames.contains(record.applicationName) {
+                    // Process if either testStatus or testingPlanDate is set
+                    if let testStatus = record.applicationTestStatus {
+                        print("Processing combined record for \(record.applicationName) with status: \(testStatus)")
+                        
+                        let testResult = switch testStatus {
+                            case "Ready": "Not Started"
+                            case "In Progress": "In Progress"
+                            case "Completed": "Passed"
+                            default: "Not Started"
+                        }
+                        
+                        let testingData = TestingData(
+                            applicationName: record.applicationName,
+                            testStatus: testStatus,
+                            testDate: record.applicationTestReadinessDate,
+                            testResult: testResult,
+                            testingPlanDate: record.testingPlanDate
+                        )
+                        
+                        // Create test record
+                        let testRecord = TestRecord(from: testingData)
+                        
+                        // Try to find existing record by applicationName
+                        if let existingRecord = try TestRecord
+                            .filter(Column("applicationName") == record.applicationName)
+                            .fetchOne(db) {
+                            // Update existing record with new data, preserving id
+                            var updatedRecord = testRecord
+                            updatedRecord.id = existingRecord.id
+                            try updatedRecord.update(db)
+                        } else {
+                            // Insert new record
+                            try testRecord.insert(db)
+                        }
+                        testCount += 1
+                    } else if record.testingPlanDate != nil {
+                        print("Processing combined record for \(record.applicationName) with test plan date but no status")
+                        
+                        let testingData = TestingData(
+                            applicationName: record.applicationName,
+                            testStatus: "Not Started",  // Default status for records with only test plan date
+                            testDate: nil,
+                            testResult: "Not Started",
+                            testingPlanDate: record.testingPlanDate
+                        )
+                        
+                        // Create test record
+                        let testRecord = TestRecord(from: testingData)
+                        
+                        // Try to find existing record by applicationName
+                        if let existingRecord = try TestRecord
+                            .filter(Column("applicationName") == record.applicationName)
+                            .fetchOne(db) {
+                            // Update existing record with new data, preserving id
+                            var updatedRecord = testRecord
+                            updatedRecord.id = existingRecord.id
+                            try updatedRecord.update(db)
+                        } else {
+                            // Insert new record
+                            try testRecord.insert(db)
+                        }
+                        testCount += 1
                     }
-                    testCount += 1
                 }
             }
             
-            print("Generated \(testCount) test records from \(combinedRecords.count) combined records")
+            print("Generated \(testCount) test records")
             return testCount
+        }
+    }
+    
+    // Save migration records
+    func saveMigrationRecords(_ records: [MigrationData]) async throws -> (saved: Int, skipped: Int) {
+        try await performDatabaseOperation("Save Migration Records", write: true) { db in
+            var counts = (saved: 0, skipped: 0)
+            
+            // Get all valid AD application names
+            let adApplicationNames = try ADRecord
+                .select(Column("applicationName"))
+                .asRequest(of: String.self)
+                .fetchSet(db)
+            
+            for data in records {
+                // Only process if application exists in AD records
+                if adApplicationNames.contains(data.applicationName) {
+                    let record = MigrationRecord(from: data)
+                    
+                    // Try to find existing record by applicationName
+                    if let existingRecord = try MigrationRecord
+                        .filter(Column("applicationName") == data.applicationName)
+                        .fetchOne(db) {
+                        // Update existing record with new data, preserving id
+                        var updatedRecord = record
+                        updatedRecord.id = existingRecord.id
+                        try updatedRecord.update(db)
+                    } else {
+                        // Insert new record only if it exists in AD
+                        try record.insert(db)
+                    }
+                    
+                    // Update ALL matching records in combined_records table
+                    try db.execute(
+                        sql: """
+                            UPDATE combined_records
+                            SET applicationNew = ?,
+                                applicationSuiteNew = ?,
+                                willBe = ?,
+                                inScopeOutScopeDivision = ?,
+                                migrationPlatform = ?,
+                                migrationApplicationReadiness = ?
+                            WHERE applicationName = ?
+                            """,
+                        arguments: [
+                            data.applicationNew,
+                            data.applicationSuiteNew,
+                            data.willBe,
+                            data.inScopeOutScopeDivision,
+                            data.migrationPlatform,
+                            data.migrationApplicationReadiness,
+                            data.applicationName
+                        ]
+                    )
+                    counts.saved += 1
+                } else {
+                    print("Skipping migration record for \(data.applicationName) - not found in AD records")
+                    counts.skipped += 1
+                }
+            }
+            
+            return counts
+        }
+    }
+    
+    // Clear migration records
+    func clearMigrationRecords() async throws {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        try await dbPool.write { db in
+            _ = try MigrationRecord.deleteAll(db)
+        }
+    }
+    
+    // Fetch migration records
+    func fetchMigrationRecords(limit: Int? = nil) async throws -> [MigrationRecord] {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        return try await dbPool.read { db in
+            if let limit = limit {
+                return try MigrationRecord.limit(limit).fetchAll(db)
+            } else {
+                return try MigrationRecord.fetchAll(db)
+            }
+        }
+    }
+    
+    // Save cluster records to database with upsert behavior
+    func saveClusterRecords(_ records: [ClusterData]) async throws -> (saved: Int, skipped: Int) {
+        try await performDatabaseOperation("Save Cluster Records", write: true) { db in
+            var counts = (saved: 0, skipped: 0)
+            
+            // Get all HR departments for validation
+            let hrDepartments = try HRRecord
+                .select(Column("department"))
+                .filter(Column("department") != nil)
+                .asRequest(of: String.self)
+                .fetchSet(db)
+            
+            for record in records {
+                // Validate department exists in HR records
+                if !hrDepartments.contains(record.department) {
+                    print("Skipping cluster record for department \(record.department) - not found in HR records")
+                    counts.skipped += 1
+                    continue
+                }
+                
+                let dbRecord = ClusterRecord(from: record)
+                
+                // Try to find existing record
+                if let existingRecord = try ClusterRecord.filter(Column("department") == record.department).fetchOne(db) {
+                    // Update existing record with new data, preserving id
+                    var updatedRecord = dbRecord
+                    updatedRecord.id = existingRecord.id
+                    try updatedRecord.update(db)
+                    counts.saved += 1
+                } else {
+                    // Insert new cluster record since department exists in HR
+                    try dbRecord.insert(db)
+                    counts.saved += 1
+                }
+            }
+            
+            return counts
+        }
+    }
+    
+    // Fetch cluster records with pagination
+    func fetchClusterRecords(limit: Int = 1000, offset: Int = 0) async throws -> [ClusterRecord] {
+        try await performDatabaseOperation("Fetch Cluster Records", write: false) { db in
+            try ClusterRecord
+                .order(sql: "department ASC")
+                .limit(limit, offset: offset)
+                .fetchAll(db)
+        }
+    }
+    
+    // Clear cluster records
+    func clearClusterRecords() async throws {
+        try await performDatabaseOperation("Clear Cluster Records", write: true) { db in
+            try db.execute(sql: "DELETE FROM cluster_records")
+            return
+        }
+    }
+    
+    // Generic database operation handler with error handling
+    private func performDatabaseOperation<T>(_ operation: String, write: Bool = false, action: @escaping (Database) throws -> T) async throws -> T {
+        guard let dbPool = dbPool else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No database connection"])
+        }
+        
+        do {
+            if write {
+                return try await dbPool.write { db in
+                    try action(db)
+                }
+            } else {
+                return try await dbPool.read { db in
+                    try action(db)
+                }
+            }
+        } catch {
+            print("Error during \(operation): \(error)")
+            throw error
+        }
+    }
+    
+    public func reinitialize() async throws {
+        // Close existing connection if any
+        dbPool = nil
+        
+        do {
+            let fileManager = FileManager.default
+            let appSupportURL = try fileManager.url(for: .applicationSupportDirectory,
+                                                  in: .userDomainMask,
+                                                  appropriateFor: nil,
+                                                  create: true)
+            let dbFolderURL = appSupportURL.appendingPathComponent("FLC", isDirectory: true)
+            try fileManager.createDirectory(at: dbFolderURL, withIntermediateDirectories: true)
+            
+            let dbURL = dbFolderURL.appendingPathComponent("database.sqlite")
+            print("Database path: \(dbURL.path)")
+            
+            // Force recreation by removing the old database
+            try? fileManager.removeItem(at: dbURL)
+            
+            // Reset the version in UserDefaults to force recreation
+            let defaults = UserDefaults.standard
+            defaults.set(0, forKey: versionKey)
+            
+            // Create new database connection
+            dbPool = try DatabasePool(path: dbURL.path)
+            try createTables()
+            
+            // Ensure initial data is seeded
+            ensureInitialData()
+        } catch {
+            print("Database reinitialization error: \(error)")
+            throw error
+        }
+    }
+    
+    // Function to get the database file path
+    func getDatabasePath() throws -> String {
+        guard let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find Application Support directory"])
+        }
+        
+        let flcDir = appSupportDir.appendingPathComponent("FLC")
+        return flcDir.appendingPathComponent("database.sqlite").path
+    }
+    
+    // Fetch all unique AD application names
+    func fetchADApplicationNames() async throws -> [String] {
+        try await performDatabaseOperation("Fetch AD Application Names", write: false) { db in
+            try String.fetchAll(db, sql: "SELECT DISTINCT applicationName FROM ad_records")
+        }
+    }
+    
+    // Synchronous check for AD application existence
+    func hasADApplication(_ applicationName: String) -> Bool {
+        guard let dbPool = dbPool else { return false }
+        do {
+            return try dbPool.read { db in
+                try String.fetchAll(db, sql: "SELECT DISTINCT applicationName FROM ad_records")
+                    .contains { $0.lowercased() == applicationName.lowercased() }
+            }
+        } catch {
+            print("Error checking AD application: \(error)")
+            return false
         }
     }
 } 

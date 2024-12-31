@@ -1,14 +1,12 @@
 import SwiftUI
 
 struct AdminDashboardView: View {
-    @Binding var isLoggedIn: Bool
     @StateObject private var progress = ImportProgress()
     @State private var selectedItem: String? = nil
-    @State private var isEnglish = true
+    @EnvironmentObject private var loginManager: LoginManager
     
     var body: some View {
         NavigationSplitView {
-            // Sidebar
             List(selection: $selectedItem) {
                 NavigationLink(value: "import") {
                     Label("Import", systemImage: "square.and.arrow.down")
@@ -26,6 +24,16 @@ struct AdminDashboardView: View {
                     Label("Query", systemImage: "magnifyingglass")
                 }
                 
+<<<<<<< HEAD
+                Section("Analysis") {
+                    NavigationLink(value: "department-progress") {
+                        Label("Department Progress", systemImage: "building.2.fill")
+                    }
+                    
+                    NavigationLink(value: "division-progress") {
+                        Label("Division Progress", systemImage: "building.columns.fill")
+                    }
+=======
                 Section("Organisation Analysis") {
                     NavigationLink(value: "department-progress") {
                         Label("Department Progress", systemImage: "building.2.fill")
@@ -40,61 +48,75 @@ struct AdminDashboardView: View {
                 
                 NavigationLink(value: "reports") {
                     Label("Reports", systemImage: "chart.bar.doc.horizontal")
+>>>>>>> origin/main
                 }
                 
+                Divider()
+                
                 NavigationLink(value: "admin") {
-                    Label("Admin Stuff", systemImage: "gear")
+                    Label("Admin", systemImage: "gear")
+                }
+                
+                NavigationLink(value: "export") {
+                    Label("Export", systemImage: "square.and.arrow.down.on.square")
+                }
+                
+                NavigationLink(value: "dbtest") {
+                    Label("DB Test", systemImage: "hammer")
+                }
+                
+                Divider()
+                
+                Button(action: {
+                    loginManager.logout()
+                }) {
+                    Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
                 }
             }
-            .listStyle(SidebarListStyle())
-            .frame(minWidth: 200)
-            .navigationTitle("Admin Dashboard")
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button(action: toggleSidebar) {
-                        Image(systemName: "sidebar.left")
-                    }
-                }
-                ToolbarItem(placement: .automatic) {
-                    Button(action: {
-                        isLoggedIn = false
-                    }) {
-                        Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
-                            .foregroundColor(.red)
-                    }
-                }
-            }
+            .navigationSplitViewColumnWidth(min: 200, ideal: 200)
         } detail: {
-            NavigationStack {
-                if let selectedItem {
-                    switch selectedItem {
-                    case "import":
-                        ImportView()
-                            .environmentObject(progress)
-                    case "validation":
-                        ValidationView(progress: progress)
-                    case "content":
-                        DatabaseContentView()
-                    case "query":
-                        QueryView()
-                    case "reports":
-                        Text("Reports")
-                    case "admin":
-                        TestDataGeneratorView()
-                    default:
-                        Text("Select an option from the sidebar")
-                    }
-                } else {
-                    VStack {
-                        Text("Select an option from the sidebar")
-                            .font(.title)
-                            .foregroundColor(.gray)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(NSColor.windowBackgroundColor))
+            if let selectedItem {
+                switch selectedItem {
+                case "import":
+                    ImportView()
+                        .environmentObject(progress)
+                case "validation":
+                    ValidationView(progress: progress)
+                case "content":
+                    DatabaseContentView()
+                case "query":
+                    QueryView()
+                case "department-progress":
+                    DepartmentProgressView()
+                case "division-progress":
+                    DivisionProgressView()
+                case "export":
+                    ExportView()
+                case "admin":
+                    AdminStuffView()
+                case "dbtest":
+                    DatabaseMaintenanceView()
+                default:
+                    Text("Select an item from the sidebar")
                 }
+            } else {
+                VStack {
+                    Text("Select an item from the sidebar")
+                        .font(.title)
+                        .foregroundColor(.gray)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(
+                    Image("falc_logo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 400)
+                        .opacity(0.1)
+                )
+                .background(Color(NSColor.windowBackgroundColor))
             }
         }
+        .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 800, minHeight: 600)
         .onChange(of: progress.validRecords.count) { oldValue, newValue in
             if newValue > 0 {
@@ -106,13 +128,33 @@ struct AdminDashboardView: View {
                 selectedItem = "validation"
             }
         }
-    }
-    
-    private func toggleSidebar() {
-        NSApp.keyWindow?.firstResponder?.tryToPerform(#selector(NSSplitViewController.toggleSidebar(_:)), with: nil)
+        .onChange(of: progress.validPackageRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
+        .onChange(of: progress.validMigrationRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
+        .onChange(of: progress.validTestRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
+        .onChange(of: progress.validClusterRecords.count) { oldValue, newValue in
+            if newValue > 0 {
+                selectedItem = "validation"
+            }
+        }
     }
 }
 
-#Preview {
-    AdminDashboardView(isLoggedIn: .constant(true))
+struct AdminDashboardView_Previews: PreviewProvider {
+    static var previews: some View {
+        AdminDashboardView()
+            .environmentObject(DatabaseManager.shared)
+            .environmentObject(LoginManager(isLoggedIn: .constant(true)))
+    }
 } 

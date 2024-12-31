@@ -6,9 +6,9 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
     var id: Int64?
     let applicationName: String
     let testStatus: String
-    let testDate: Date
+    let testDate: Date?
     let testResult: String
-    let testComments: String?
+    let testingPlanDate: Date?
     let importDate: Date
     let importSet: String
     
@@ -21,7 +21,7 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
         static let testStatus = Column("testStatus")
         static let testDate = Column("testDate")
         static let testResult = Column("testResult")
-        static let testComments = Column("testComments")
+        static let testingPlanDate = Column("testingPlanDate")
         static let importDate = Column("importDate")
         static let importSet = Column("importSet")
     }
@@ -33,7 +33,7 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
         container[Columns.testStatus] = testStatus
         container[Columns.testDate] = testDate
         container[Columns.testResult] = testResult
-        container[Columns.testComments] = testComments
+        container[Columns.testingPlanDate] = testingPlanDate
         container[Columns.importDate] = importDate
         container[Columns.importSet] = importSet
     }
@@ -44,7 +44,7 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
         self.testStatus = data.testStatus
         self.testDate = data.testDate
         self.testResult = data.testResult
-        self.testComments = data.testComments
+        self.testingPlanDate = data.testingPlanDate
         self.importDate = Date()
         
         // Create a descriptive import set identifier
@@ -54,14 +54,18 @@ struct TestRecord: Codable, FetchableRecord, PersistableRecord {
     }
 }
 
+// Test data structure with basic validation
+// Only records with non-empty required fields will be imported into the database
 struct TestingData: Identifiable, Codable {
     let id: UUID
     let applicationName: String
     let testStatus: String
-    let testDate: Date
+    let testDate: Date?
     let testResult: String
-    let testComments: String?
+    let testingPlanDate: Date?
     
+    // Basic validation to ensure required fields are not empty
+    // Records that don't pass validation will be skipped during import
     var validationErrors: [String] {
         var errors: [String] = []
         
@@ -84,12 +88,12 @@ struct TestingData: Identifiable, Codable {
         return validationErrors.isEmpty
     }
     
-    init(applicationName: String, testStatus: String, testDate: Date, testResult: String, testComments: String? = nil) {
+    init(applicationName: String, testStatus: String, testDate: Date?, testResult: String, testingPlanDate: Date? = nil) {
         self.id = UUID()
         self.applicationName = applicationName
         self.testStatus = testStatus
         self.testDate = testDate
         self.testResult = testResult
-        self.testComments = testComments
+        self.testingPlanDate = testingPlanDate
     }
 } 

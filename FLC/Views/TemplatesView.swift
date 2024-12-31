@@ -17,6 +17,11 @@ struct TemplatesView: View {
                 title: isEnglish ? "Download AD Template" : "Download AD Sjabloon",
                 action: downloadADTemplate
             )
+            
+            DownloadButton(
+                title: isEnglish ? "Download Migration Template" : "Download Migratie Sjabloon",
+                action: downloadMigrationTemplate
+            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
@@ -31,6 +36,11 @@ struct TemplatesView: View {
     private func downloadADTemplate() {
         // TODO: Implement AD template download
         print("Downloading AD template...")
+    }
+    
+    private func downloadMigrationTemplate() {
+        // TODO: Implement Migration template download
+        print("Downloading Migration template...")
     }
 }
 

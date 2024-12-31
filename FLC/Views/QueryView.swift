@@ -38,12 +38,21 @@ struct QueryView: View {
         "Department": .text,
         "Job Role": .text,
         "Division": .text,
-        "Employee Number": .text,
         "Leave Date": .date,
         
         // Package Status fields
         "Package Status": .text,
-        "Package Readiness Date": .date
+        "Package Readiness Date": .date,
+        
+        // Test fields
+        "Test Status": .text,
+        "Test Date": .date,
+        "Test Result": .text,
+        "Testing Plan Date": .date,
+        
+        // Migration fields
+        "Migration Platform": .text,
+        "Migration Application Readiness": .text
     ]
     
     // Available operators based on field type
@@ -85,14 +94,82 @@ struct QueryView: View {
         case .ad:
             return ["AD Group", "System Account", "Application Name", "Application Suite", "OTAP", "Critical"]
         case .hr:
-            return ["System Account", "Department", "Job Role", "Division", "Employee Number", "Leave Date"]
+            return ["System Account", "Department", "Job Role", "Division", "Leave Date"]
         case .combined:
             return ["AD Group", "System Account", "Application Name", "Application Suite", "OTAP", "Critical",
-                   "Department", "Job Role", "Division", "Employee Number", "Leave Date"]
+                   "Department", "Job Role", "Division", "Leave Date"]
         case .packageStatus:
-            return ["System Account", "Application Name", "Package Status", "Package Readiness Date"]
+            return ["Application Name", "Package Status", "Package Readiness Date"]
         case .testing:
-            return ["Test Record"]
+            return ["Application Name", "Test Status", "Test Date", "Test Result", "Testing Plan Date"]
+        case .migration:
+            return ["Application Name", "Application Suite New", "Will Be", "In/Out Scope Division", "Migration Platform", "Migration Application Readiness"]
+        case .cluster:
+            return ["Department", "Department Simple", "Domain", "Migration Cluster"]
+        }
+    }
+    
+    private func executeQuery() {
+        guard !selectedField.isEmpty && !filterValue.isEmpty else { return }
+        
+        isLoading = true
+        errorMessage = nil
+        queryResults = []
+        
+        Task {
+            do {
+                let results = try await DatabaseManager.shared.executeQuery(
+                    dataType: selectedDataType,
+                    field: selectedField,
+                    operator: selectedOperator,
+                    value: filterValue
+                )
+                
+                await MainActor.run {
+                    queryResults = results
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
+            }
+        }
+    }
+    
+    private var resultsView: some View {
+        Group {
+            switch selectedDataType {
+            case .ad:
+                if let results = queryResults as? [ADRecord] {
+                    ADResultsTableView(results: results)
+                }
+            case .hr:
+                if let results = queryResults as? [HRRecord] {
+                    HRResultsTableView(results: results)
+                }
+            case .combined:
+                if let results = queryResults as? [CombinedRecord] {
+                    CombinedResultsTableView(results: results)
+                }
+            case .packageStatus:
+                if let results = queryResults as? [PackageRecord] {
+                    PackageResultsTableView(results: results)
+                }
+            case .testing:
+                if let results = queryResults as? [TestRecord] {
+                    TestResultsTableView(results: results)
+                }
+            case .migration:
+                if let results = queryResults as? [MigrationRecord] {
+                    MigrationResultsTableView(results: results)
+                }
+            case .cluster:
+                if let results = queryResults as? [ClusterRecord] {
+                    ClusterResultsTableView(results: results)
+                }
+            }
         }
     }
     
@@ -110,6 +187,8 @@ struct QueryView: View {
                     Text("Combined Data").tag(ImportProgress.DataType.combined)
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
                     Text("Testing").tag(ImportProgress.DataType.testing)
+                    Text("Migration").tag(ImportProgress.DataType.migration)
+                    Text("Cluster").tag(ImportProgress.DataType.cluster)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -232,65 +311,7 @@ struct QueryView: View {
                         .foregroundColor(.secondary)
                 } else {
                     ScrollView(.horizontal, showsIndicators: true) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            switch selectedDataType {
-                            case .ad:
-                                if let results = queryResults as? [ADRecord] {
-                                    ADResultsTableView(results: results)
-                                }
-                            case .hr:
-                                if let results = queryResults as? [HRRecord] {
-                                    HRResultsTableView(results: results)
-                                }
-                            case .combined:
-                                if let results = queryResults as? [CombinedRecord] {
-                                    CombinedResultsTableView(results: results)
-                                }
-                            case .packageStatus:
-                                if let results = queryResults as? [PackageRecord] {
-                                    PackageResultsTableView(results: results)
-                                }
-                            case .testing:
-                                if let results = queryResults as? [TestingData] {
-                                    VStack(spacing: 0) {
-                                        // Header
-                                        HStack(spacing: 0) {
-                                            Text("Application Name")
-                                                .frame(width: 200, alignment: .leading)
-                                            Text("Test Status")
-                                                .frame(width: 150, alignment: .leading)
-                                            Text("Test Date")
-                                                .frame(width: 150, alignment: .leading)
-                                            Text("Test Result")
-                                                .frame(width: 150, alignment: .leading)
-                                            Text("Comments")
-                                                .frame(width: 200, alignment: .leading)
-                                        }
-                                        .padding(.vertical, 4)
-                                        .font(.system(size: 11, weight: .bold))
-                                        .background(Color(NSColor.windowBackgroundColor))
-                                        
-                                        // Results
-                                        ForEach(results) { record in
-                                            HStack(spacing: 0) {
-                                                Text(record.applicationName)
-                                                    .frame(width: 200, alignment: .leading)
-                                                Text(record.testStatus)
-                                                    .frame(width: 150, alignment: .leading)
-                                                Text(dateFormatter.string(from: record.testDate))
-                                                    .frame(width: 150, alignment: .leading)
-                                                Text(record.testResult)
-                                                    .frame(width: 150, alignment: .leading)
-                                                Text(record.testComments ?? "")
-                                                    .frame(width: 200, alignment: .leading)
-                                            }
-                                            .padding(.vertical, 4)
-                                            .font(.system(size: 11))
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        resultsView
                     }
                     
                     Text("\(queryResults.count) results found")
@@ -308,35 +329,6 @@ struct QueryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
-    }
-    
-    private func executeQuery() {
-        guard !selectedField.isEmpty && !filterValue.isEmpty else { return }
-        
-        isLoading = true
-        errorMessage = nil
-        queryResults = []
-        
-        Task {
-            do {
-                let results = try await DatabaseManager.shared.executeQuery(
-                    dataType: selectedDataType,
-                    field: selectedField,
-                    operator: selectedOperator,
-                    value: filterValue
-                )
-                
-                await MainActor.run {
-                    queryResults = results
-                    isLoading = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    isLoading = false
-                }
-            }
-        }
     }
 }
 
@@ -407,13 +399,13 @@ struct HRResultsTableView: View {
                     .frame(width: 200, alignment: .leading)
                 Text("Department")
                     .frame(width: 200, alignment: .leading)
+                Text("Department Simple")
+                    .frame(width: 200, alignment: .leading)
                 Text("Job Role")
                     .frame(width: 200, alignment: .leading)
                 Text("Division")
                     .frame(width: 200, alignment: .leading)
                 Text("Leave Date")
-                    .frame(width: 120, alignment: .leading)
-                Text("Employee #")
                     .frame(width: 120, alignment: .leading)
             }
             .padding(.vertical, 4)
@@ -427,13 +419,13 @@ struct HRResultsTableView: View {
                         .frame(width: 200, alignment: .leading)
                     Text(record.department ?? "N/A")
                         .frame(width: 200, alignment: .leading)
+                    Text(record.departmentSimple ?? "N/A")
+                        .frame(width: 200, alignment: .leading)
                     Text(record.jobRole ?? "N/A")
                         .frame(width: 200, alignment: .leading)
                     Text(record.division ?? "N/A")
                         .frame(width: 200, alignment: .leading)
                     Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
-                        .frame(width: 120, alignment: .leading)
-                    Text(record.employeeNumber ?? "N/A")
                         .frame(width: 120, alignment: .leading)
                 }
                 .frame(height: rowHeight)
@@ -482,8 +474,6 @@ struct CombinedResultsTableView: View {
                         .frame(width: 200, alignment: .leading)
                     Text("Leave Date")
                         .frame(width: 120, alignment: .leading)
-                    Text("Employee #")
-                        .frame(width: 120, alignment: .leading)
                 }
                 .background(Color.green.opacity(0.1))
             }
@@ -519,8 +509,6 @@ struct CombinedResultsTableView: View {
                             .frame(width: 200, alignment: .leading)
                         Text(record.leaveDate.map { dateFormatter.string(from: $0) } ?? "N/A")
                             .frame(width: 120, alignment: .leading)
-                        Text(record.employeeNumber ?? "N/A")
-                            .frame(width: 120, alignment: .leading)
                     }
                     .background(Color.green.opacity(0.05))
                 }
@@ -545,8 +533,6 @@ struct PackageResultsTableView: View {
         VStack(spacing: 0) {
             // Header
             HStack(spacing: 0) {
-                Text("System Account")
-                    .frame(width: 200, alignment: .leading)
                 Text("Application Name")
                     .frame(width: 200, alignment: .leading)
                 Text("Package Status")
@@ -561,8 +547,6 @@ struct PackageResultsTableView: View {
             // Results
             ForEach(results, id: \.id) { (record: PackageRecord) in
                 HStack(spacing: 0) {
-                    Text(record.systemAccount)
-                        .frame(width: 200, alignment: .leading)
                     Text(record.applicationName)
                         .frame(width: 200, alignment: .leading)
                     Text(record.packageStatus)
@@ -571,6 +555,146 @@ struct PackageResultsTableView: View {
                         .frame(width: 120, alignment: .leading)
                 }
                 .frame(height: rowHeight)
+                .font(.system(size: 11))
+            }
+        }
+    }
+}
+
+struct TestResultsTableView: View {
+    let results: [TestRecord]
+    private let rowHeight: CGFloat = 18
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("Application Name")
+                    .frame(width: 200, alignment: .leading)
+                Text("Test Status")
+                    .frame(width: 150, alignment: .leading)
+                Text("Test Date")
+                    .frame(width: 150, alignment: .leading)
+                Text("Test Result")
+                    .frame(width: 150, alignment: .leading)
+                Text("Testing Plan Date")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ForEach(Array(results.enumerated()), id: \.element.id) { index, record in
+                HStack(spacing: 0) {
+                    Text(record.applicationName)
+                        .frame(width: 200, alignment: .leading)
+                        .lineLimit(1)
+                    Text(record.testStatus)
+                        .frame(width: 150, alignment: .leading)
+                        .lineLimit(1)
+                    Text(record.testDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                        .frame(width: 150, alignment: .leading)
+                        .lineLimit(1)
+                    Text(record.testResult)
+                        .frame(width: 150, alignment: .leading)
+                        .lineLimit(1)
+                    Text(record.testingPlanDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                        .frame(width: 200, alignment: .leading)
+                        .lineLimit(1)
+                }
+                .frame(height: rowHeight)
+                .font(.system(size: 11))
+                .background(index % 2 == 0 ? Color.clear : Color(NSColor.controlBackgroundColor))
+            }
+        }
+    }
+}
+
+struct MigrationResultsTableView: View {
+    let results: [MigrationRecord]
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("Application Name")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application Suite New")
+                    .frame(width: 200, alignment: .leading)
+                Text("Will Be")
+                    .frame(width: 150, alignment: .leading)
+                Text("In/Out Scope Division")
+                    .frame(width: 200, alignment: .leading)
+                Text("Migration Platform")
+                    .frame(width: 200, alignment: .leading)
+                Text("Application Readiness")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ForEach(results, id: \.id) { record in
+                HStack(spacing: 0) {
+                    Text(record.applicationName)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.applicationSuiteNew)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.willBe)
+                        .frame(width: 150, alignment: .leading)
+                    Text(record.inScopeOutScopeDivision)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.migrationPlatform)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.migrationApplicationReadiness)
+                        .frame(width: 200, alignment: .leading)
+                }
+                .padding(.vertical, 4)
+                .font(.system(size: 11))
+            }
+        }
+    }
+}
+
+struct ClusterResultsTableView: View {
+    let results: [ClusterRecord]
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("Department")
+                    .frame(width: 200, alignment: .leading)
+                Text("Department Simple")
+                    .frame(width: 200, alignment: .leading)
+                Text("Domain")
+                    .frame(width: 200, alignment: .leading)
+                Text("Migration Cluster")
+                    .frame(width: 200, alignment: .leading)
+                Text("Migration Cluster Readiness")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ForEach(results, id: \.id) { record in
+                HStack(spacing: 0) {
+                    Text(record.department)
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.departmentSimple ?? "")
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.domain ?? "")
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.migrationCluster ?? "")
+                        .frame(width: 200, alignment: .leading)
+                    Text(record.migrationClusterReadiness ?? "")
+                        .frame(width: 200, alignment: .leading)
+                }
+                .padding(.vertical, 4)
                 .font(.system(size: 11))
             }
         }

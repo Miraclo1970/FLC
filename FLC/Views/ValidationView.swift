@@ -12,9 +12,9 @@ struct ValidHRRecordsView: View {
         return records.filter { record in
             record.systemAccount.localizedCaseInsensitiveContains(searchText) ||
             (record.department ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.departmentSimple ?? "").localizedCaseInsensitiveContains(searchText) ||
             (record.jobRole ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.division ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.employeeNumber ?? "").localizedCaseInsensitiveContains(searchText)
+            (record.division ?? "").localizedCaseInsensitiveContains(searchText)
         }
     }
     
@@ -31,15 +31,14 @@ struct ValidHRRecordsView: View {
                             .frame(width: 200, alignment: .leading)
                         Text("Department")
                             .frame(width: 200, alignment: .leading)
+                        Text("Department Simple")
+                            .frame(width: 150, alignment: .leading)
                         Text("Job Role")
                             .frame(width: 200, alignment: .leading)
                         Text("Division")
                             .frame(width: 200, alignment: .leading)
                         Text("Leave Date")
                             .frame(width: 120, alignment: .leading)
-                        Text("Employee Number")
-                            .frame(width: 150, alignment: .leading)
-                        Spacer()
                     }
                     .padding(.vertical, 8)
                     .background(Color(NSColor.separatorColor).opacity(0.2))
@@ -59,6 +58,9 @@ struct ValidHRRecordsView: View {
                                 Text(record.department ?? "N/A")
                                     .frame(width: 200, alignment: .leading)
                                     .lineLimit(1)
+                                Text(record.departmentSimple ?? "N/A")
+                                    .frame(width: 150, alignment: .leading)
+                                    .lineLimit(1)
                                 Text(record.jobRole ?? "N/A")
                                     .frame(width: 200, alignment: .leading)
                                     .lineLimit(1)
@@ -67,9 +69,6 @@ struct ValidHRRecordsView: View {
                                     .lineLimit(1)
                                 Text(record.leaveDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
                                     .frame(width: 120, alignment: .leading)
-                                    .lineLimit(1)
-                                Text(record.employeeNumber ?? "N/A")
-                                    .frame(width: 150, alignment: .leading)
                                     .lineLimit(1)
                                 Spacer()
                             }
@@ -117,8 +116,8 @@ struct ValidationView: View {
                     progress.invalidPackageRecords.count +
                     progress.duplicatePackageRecords.count
             valid = progress.validPackageRecords.count
-            invalid = 0  // Package status doesn't track invalid records yet
-            duplicates = 0  // Package status doesn't track duplicates yet
+            invalid = progress.invalidPackageRecords.count
+            duplicates = progress.duplicatePackageRecords.count
         case .testing:
             total = progress.validTestRecords.count +
                     progress.invalidTestRecords.count +
@@ -126,6 +125,20 @@ struct ValidationView: View {
             valid = progress.validTestRecords.count
             invalid = progress.invalidTestRecords.count
             duplicates = progress.duplicateTestRecords.count
+        case .migration:
+            total = progress.validMigrationRecords.count +
+                    progress.invalidMigrationRecords.count +
+                    progress.duplicateMigrationRecords.count
+            valid = progress.validMigrationRecords.count
+            invalid = progress.invalidMigrationRecords.count
+            duplicates = progress.duplicateMigrationRecords.count
+        case .cluster:
+            total = progress.validClusterRecords.count +
+                    progress.invalidClusterRecords.count +
+                    progress.duplicateClusterRecords.count
+            valid = progress.validClusterRecords.count
+            invalid = progress.invalidClusterRecords.count
+            duplicates = progress.duplicateClusterRecords.count
         case .combined:
             total = 0  // Combined view doesn't have its own records
         }
@@ -151,6 +164,9 @@ struct ValidationView: View {
                     Text("AD Data").tag(ImportProgress.DataType.ad)
                     Text("HR Data").tag(ImportProgress.DataType.hr)
                     Text("Package Status").tag(ImportProgress.DataType.packageStatus)
+                    Text("Testing").tag(ImportProgress.DataType.testing)
+                    Text("Migration").tag(ImportProgress.DataType.migration)
+                    Text("Cluster").tag(ImportProgress.DataType.cluster)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
@@ -163,6 +179,13 @@ struct ValidationView: View {
                         progress.selectedDataType = .ad
                     }
                     print("ValidationView - Data type changed from \(oldValue) to \(newValue)")
+                    print("ValidationView - Current record counts:")
+                    print("- Valid Package Records: \(progress.validPackageRecords.count)")
+                    print("- Invalid Package Records: \(progress.invalidPackageRecords.count)")
+                    print("- Duplicate Package Records: \(progress.duplicatePackageRecords.count)")
+                    print("- Valid Migration Records: \(progress.validMigrationRecords.count)")
+                    print("- Invalid Migration Records: \(progress.invalidMigrationRecords.count)")
+                    print("- Duplicate Migration Records: \(progress.duplicateMigrationRecords.count)")
                 }
             }
             .padding(.horizontal)
@@ -199,9 +222,11 @@ struct ValidationView: View {
                             .buttonStyle(.borderedProminent)
                             
                             if isSaving {
-                                ProgressView(value: saveProgress, total: 1.0)
-                                    .progressViewStyle(.linear)
-                                    .frame(width: 200)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Saving...")
+                                        .foregroundColor(.secondary)
+                                    ProgressView()
+                                }
                             }
                         }
                     }
@@ -243,10 +268,21 @@ struct ValidationView: View {
             TabView(selection: $selectedTab) {
                 // Valid Records Tab
                 Group {
-                    if progress.selectedDataType == .ad {
+                    switch progress.selectedDataType {
+                    case .ad:
                         ValidRecordsView(records: progress.validRecords, searchText: searchText)
-                    } else {
+                    case .hr:
                         ValidHRRecordsView(records: progress.validHRRecords, searchText: searchText)
+                    case .packageStatus:
+                        ValidPackageStatusRecordsView(records: progress.validPackageRecords, searchText: searchText)
+                    case .testing:
+                        ValidTestRecordsView(records: progress.validTestRecords, searchText: searchText)
+                    case .migration:
+                        ValidMigrationRecordsView(records: progress.validMigrationRecords, searchText: searchText)
+                    case .cluster:
+                        ValidClusterRecordsView(records: progress.validClusterRecords, searchText: searchText)
+                    case .combined:
+                        Text("Combined records cannot be validated")
                     }
                 }
                 .tabItem {
@@ -255,20 +291,48 @@ struct ValidationView: View {
                 .tag(0)
                 
                 // Invalid Records Tab
-                InvalidRecordsView(
-                    records: progress.selectedDataType == .ad ? progress.invalidRecords : progress.invalidHRRecords,
-                    searchText: searchText
-                )
+                Group {
+                    switch progress.selectedDataType {
+                    case .ad:
+                        InvalidRecordsView(records: progress.invalidRecords, searchText: searchText)
+                    case .hr:
+                        InvalidRecordsView(records: progress.invalidHRRecords, searchText: searchText)
+                    case .packageStatus:
+                        InvalidRecordsView(records: progress.invalidPackageRecords, searchText: searchText)
+                    case .testing:
+                        InvalidRecordsView(records: progress.invalidTestRecords, searchText: searchText)
+                    case .migration:
+                        InvalidRecordsView(records: progress.invalidMigrationRecords, searchText: searchText)
+                    case .cluster:
+                        InvalidRecordsView(records: progress.invalidClusterRecords, searchText: searchText)
+                    default:
+                        Text("No invalid records to display")
+                    }
+                }
                 .tabItem {
                     Label("Invalid", systemImage: "xmark.circle")
                 }
                 .tag(1)
                 
                 // Duplicate Records Tab
-                DuplicateRecordsView(
-                    records: progress.selectedDataType == .ad ? progress.duplicateRecords : progress.duplicateHRRecords,
-                    searchText: searchText
-                )
+                Group {
+                    switch progress.selectedDataType {
+                    case .ad:
+                        DuplicateRecordsView(records: progress.duplicateRecords, searchText: searchText)
+                    case .hr:
+                        DuplicateRecordsView(records: progress.duplicateHRRecords, searchText: searchText)
+                    case .packageStatus:
+                        DuplicateRecordsView(records: progress.duplicatePackageRecords, searchText: searchText)
+                    case .testing:
+                        DuplicateRecordsView(records: progress.duplicateTestRecords, searchText: searchText)
+                    case .migration:
+                        DuplicateRecordsView(records: progress.duplicateMigrationRecords, searchText: searchText)
+                    case .cluster:
+                        DuplicateRecordsView(records: progress.duplicateClusterRecords, searchText: searchText)
+                    default:
+                        Text("No duplicate records to display")
+                    }
+                }
                 .tabItem {
                     Label("Duplicates", systemImage: "doc.on.doc")
                 }
@@ -493,6 +557,10 @@ extension ValidationView {
             return !progress.validPackageRecords.isEmpty
         case .testing:
             return !progress.validTestRecords.isEmpty
+        case .migration:
+            return !progress.validMigrationRecords.isEmpty
+        case .cluster:
+            return !progress.validClusterRecords.isEmpty
         case .combined:
             return false  // Combined view doesn't have its own records
         }
@@ -512,6 +580,12 @@ extension ValidationView {
         case .testing:
             return !progress.invalidTestRecords.isEmpty ||
                    !progress.duplicateTestRecords.isEmpty
+        case .migration:
+            return !progress.invalidMigrationRecords.isEmpty ||
+                   !progress.duplicateMigrationRecords.isEmpty
+        case .cluster:
+            return !progress.invalidClusterRecords.isEmpty ||
+                   !progress.duplicateClusterRecords.isEmpty
         case .combined:
             return false  // Combined view doesn't have its own records
         }
@@ -662,6 +736,56 @@ extension ValidationView {
                         saveProgress = 1.0
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
+                case .migration:
+                    let records = progress.validMigrationRecords
+                    var totalSaved = 0
+                    var totalSkipped = 0
+                    let totalBatches = Int(ceil(Double(records.count) / Double(batchSize)))
+                    
+                    for batchIndex in 0..<totalBatches {
+                        let start = batchIndex * batchSize
+                        let end = min(start + batchSize, records.count)
+                        let batch = Array(records[start..<end])
+                        
+                        let (saved, skipped) = try await DatabaseManager.shared.saveMigrationRecords(batch)
+                        totalSaved += saved
+                        totalSkipped += skipped
+                        
+                        await MainActor.run {
+                            saveProgress = Double(end) / Double(records.count)
+                            saveResult = "Processing: \(end)/\(records.count) records..."
+                        }
+                    }
+                    
+                    await MainActor.run {
+                        saveProgress = 1.0
+                        saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
+                    }
+                case .cluster:
+                    let records = progress.validClusterRecords
+                    var totalSaved = 0
+                    var totalSkipped = 0
+                    let totalBatches = Int(ceil(Double(records.count) / Double(batchSize)))
+                    
+                    for batchIndex in 0..<totalBatches {
+                        let start = batchIndex * batchSize
+                        let end = min(start + batchSize, records.count)
+                        let batch = Array(records[start..<end])
+                        
+                        let (saved, skipped) = try await DatabaseManager.shared.saveClusterRecords(batch)
+                        totalSaved += saved
+                        totalSkipped += skipped
+                        
+                        await MainActor.run {
+                            saveProgress = Double(end) / Double(records.count)
+                            saveResult = "Processing: \(end)/\(records.count) records..."
+                        }
+                    }
+                    
+                    await MainActor.run {
+                        saveProgress = 1.0
+                        saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
+                    }
                 case .combined:
                     break  // Combined view doesn't have its own records to save
                 }
@@ -676,6 +800,304 @@ extension ValidationView {
                 isSaving = false
             }
         }
+    }
+}
+
+struct ValidPackageStatusRecordsView: View {
+    let records: [PackageStatusData]
+    let searchText: String
+    
+    var filteredRecords: [PackageStatusData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.packageStatus.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            if records.isEmpty {
+                Text("No package status records available")
+                    .foregroundColor(.secondary)
+                    .padding()
+            } else {
+                ScrollView {
+                    ForEach(Array(filteredRecords.enumerated()), id: \.1.applicationName) { index, record in
+                        HStack(spacing: 0) {
+                            Text("#\(index + 1)")
+                                .frame(width: 50, alignment: .leading)
+                                .padding(.leading, 10)
+                                .foregroundColor(.secondary)
+                            Text(record.applicationName)
+                                .frame(width: 250, alignment: .leading)
+                            Text(record.packageStatus)
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.packageReadinessDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                                .frame(width: 150, alignment: .leading)
+                            Text(DateFormatter.hrDateFormatter.string(from: record.importDate))
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.importSet)
+                                .frame(width: 200, alignment: .leading)
+                        }
+                        .font(.system(.body, design: .monospaced))
+                        .padding(.vertical, 4)
+                        .background(index % 2 == 0 ? Color.clear : Color(NSColor.separatorColor).opacity(0.05))
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ValidMigrationRecordsView: View {
+    let records: [MigrationData]
+    let searchText: String
+    
+    var filteredRecords: [MigrationData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.applicationName.localizedCaseInsensitiveContains(searchText) ||
+            record.applicationNew.localizedCaseInsensitiveContains(searchText) ||
+            record.applicationSuiteNew.localizedCaseInsensitiveContains(searchText) ||
+            record.willBe.localizedCaseInsensitiveContains(searchText) ||
+            record.inScopeOutScopeDivision.localizedCaseInsensitiveContains(searchText) ||
+            record.migrationPlatform.localizedCaseInsensitiveContains(searchText) ||
+            record.migrationApplicationReadiness.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("#")
+                            .frame(width: 50, alignment: .leading)
+                            .padding(.leading, 25)
+                        Text("Application Name")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Application New")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Application Suite New")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Will Be")
+                            .frame(width: 150, alignment: .leading)
+                        Text("In/Out Scope Division")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Migration Platform")
+                            .frame(width: 200, alignment: .leading)
+                        Text("Application Readiness")
+                            .frame(width: 200, alignment: .leading)
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.separatorColor).opacity(0.2))
+                    .font(.headline)
+                    
+                    // Records
+                    List {
+                        ForEach(Array(filteredRecords.enumerated()), id: \.element.id) { index, record in
+                            HStack(spacing: 0) {
+                                Text("#\(index + 1)")
+                                    .frame(width: 50, alignment: .leading)
+                                    .padding(.leading, 10)
+                                    .foregroundColor(.secondary)
+                                Text(record.applicationName)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.applicationNew)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.applicationSuiteNew)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.willBe)
+                                    .frame(width: 150, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.inScopeOutScopeDivision)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.migrationPlatform)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Text(record.migrationApplicationReadiness)
+                                    .frame(width: 200, alignment: .leading)
+                                    .lineLimit(1)
+                                Spacer()
+                            }
+                            .font(.system(.body, design: .monospaced))
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+struct ValidTestRecordsView: View {
+    let records: [TestingData]
+    let searchText: String
+    
+    private func matchesSearch(_ record: TestingData) -> Bool {
+        let searchLower = searchText.lowercased()
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .none
+        
+        return searchText.isEmpty || 
+            record.applicationName.lowercased().contains(searchLower) ||
+            record.testStatus.lowercased().contains(searchLower) ||
+            record.testResult.lowercased().contains(searchLower) ||
+            (record.testingPlanDate.map { dateFormatter.string(from: $0).lowercased().contains(searchLower) } ?? false)
+    }
+    
+    var filteredRecords: [TestingData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter(matchesSearch)
+    }
+    
+    private var headerView: some View {
+        HStack(spacing: 0) {
+            Text("#")
+                .frame(width: 50, alignment: .leading)
+                .padding(.leading, 25)
+            Text("Application Name")
+                .frame(width: 200, alignment: .leading)
+            Text("Test Status")
+                .frame(width: 150, alignment: .leading)
+            Text("Test Readiness Date")
+                .frame(width: 150, alignment: .leading)
+            Text("Test Result")
+                .frame(width: 150, alignment: .leading)
+            Text("Testing Plan Date")
+                .frame(width: 200, alignment: .leading)
+        }
+        .padding(.vertical, 8)
+        .background(Color(NSColor.separatorColor).opacity(0.2))
+        .font(.headline)
+    }
+    
+    private func recordRow(index: Int, record: TestingData) -> some View {
+        HStack(spacing: 0) {
+            Text("#\(index + 1)")
+                .frame(width: 50, alignment: .leading)
+                .padding(.leading, 25)
+            Text(record.applicationName)
+                .frame(width: 200, alignment: .leading)
+                .lineLimit(1)
+            Text(record.testStatus)
+                .frame(width: 150, alignment: .leading)
+                .lineLimit(1)
+            Text(record.testDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                .frame(width: 150, alignment: .leading)
+                .lineLimit(1)
+            Text(record.testResult)
+                .frame(width: 150, alignment: .leading)
+                .lineLimit(1)
+            Text(record.testingPlanDate.map { DateFormatter.hrDateFormatter.string(from: $0) } ?? "N/A")
+                .frame(width: 200, alignment: .leading)
+                .lineLimit(1)
+        }
+        .font(.system(.body, design: .monospaced))
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    headerView
+                    
+                    List {
+                        ForEach(Array(filteredRecords.enumerated()), id: \.1.id) { index, record in
+                            recordRow(index: index, record: record)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ValidClusterRecordsView: View {
+    let records: [ClusterData]
+    let searchText: String
+    
+    var filteredRecords: [ClusterData] {
+        if searchText.isEmpty {
+            return records
+        }
+        return records.filter { record in
+            record.department.localizedCaseInsensitiveContains(searchText) ||
+            (record.departmentSimple ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.domain ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.migrationCluster ?? "").localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 0) {
+                Text("Department")
+                    .frame(width: 200, alignment: .leading)
+                Text("Department Simple")
+                    .frame(width: 200, alignment: .leading)
+                Text("Domain")
+                    .frame(width: 150, alignment: .leading)
+                Text("Migration Cluster")
+                    .frame(width: 200, alignment: .leading)
+            }
+            .padding(.vertical, 4)
+            .font(.system(size: 11, weight: .bold))
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            // Results
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(filteredRecords) { record in
+                        HStack(spacing: 0) {
+                            Text(record.department)
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.departmentSimple ?? "")
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.domain ?? "")
+                                .frame(width: 150, alignment: .leading)
+                            Text(record.migrationCluster ?? "")
+                                .frame(width: 200, alignment: .leading)
+                        }
+                        .frame(height: 18)
+                        .font(.system(size: 11))
+                        .background(filteredRecords.firstIndex(where: { $0.id == record.id })!.isMultiple(of: 2) ? Color(NSColor.controlBackgroundColor) : Color.clear)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct VisualEffectView: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+    
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let visualEffectView = NSVisualEffectView()
+        visualEffectView.material = material
+        visualEffectView.blendingMode = blendingMode
+        visualEffectView.state = .active
+        return visualEffectView
+    }
+    
+    func updateNSView(_ visualEffectView: NSVisualEffectView, context: Context) {
+        visualEffectView.material = material
+        visualEffectView.blendingMode = blendingMode
     }
 }
 

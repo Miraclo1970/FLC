@@ -1,64 +1,77 @@
-import SwiftUI
+import Foundation
 
 class ImportProgress: ObservableObject {
-    enum DataType {
-        case ad
-        case hr
-        case combined
-        case packageStatus
-        case testing
+    enum DataType: String {
+        case ad = "AD"
+        case hr = "HR"
+        case packageStatus = "Package Status"
+        case testing = "Testing"
+        case migration = "Migration"
+        case combined = "Combined"
+        case cluster = "Cluster"
     }
     
-    @Published var isProcessing: Bool = false
-    @Published var currentOperation: String = ""
+    @Published var isProcessing = false
     @Published var progressValue: Double = 0.0
+    @Published var currentOperation = ""
     @Published var selectedDataType: DataType = .ad
     
-    // Validation data for AD
+    // AD Records
     @Published var validRecords: [ADData] = []
     @Published var invalidRecords: [String] = []
     @Published var duplicateRecords: [String] = []
     
-    // Validation data for HR
+    // HR Records
     @Published var validHRRecords: [HRData] = []
     @Published var invalidHRRecords: [String] = []
     @Published var duplicateHRRecords: [String] = []
     
-    // Validation data for package status
+    // Package Status Records
     @Published var validPackageRecords: [PackageStatusData] = []
     @Published var invalidPackageRecords: [String] = []
     @Published var duplicatePackageRecords: [String] = []
     
-    // Validation data for testing
+    // Test Records
     @Published var validTestRecords: [TestingData] = []
     @Published var invalidTestRecords: [String] = []
     @Published var duplicateTestRecords: [String] = []
     
+    // Migration Records
+    @Published var validMigrationRecords: [MigrationData] = []
+    @Published var invalidMigrationRecords: [String] = []
+    @Published var duplicateMigrationRecords: [String] = []
+    
+    // Cluster Records
+    @Published var validClusterRecords: [ClusterData] = []
+    @Published var invalidClusterRecords: [String] = []
+    @Published var duplicateClusterRecords: [String] = []
+    
     func reset() {
         isProcessing = false
-        currentOperation = ""
         progressValue = 0.0
-        selectedDataType = .ad  // Reset to AD by default
-        // Reset AD data
+        currentOperation = ""
         validRecords = []
         invalidRecords = []
         duplicateRecords = []
-        // Reset HR data
         validHRRecords = []
         invalidHRRecords = []
         duplicateHRRecords = []
-        // Reset package status data
         validPackageRecords = []
         invalidPackageRecords = []
         duplicatePackageRecords = []
-        // Reset test data
         validTestRecords = []
         invalidTestRecords = []
         duplicateTestRecords = []
+        validMigrationRecords = []
+        invalidMigrationRecords = []
+        duplicateMigrationRecords = []
+        validClusterRecords = []
+        invalidClusterRecords = []
+        duplicateClusterRecords = []
     }
     
     func update(operation: String, progress: Double) {
         currentOperation = operation
-        progressValue = min(max(progress, 0.0), 1.0)
+        progressValue = progress
     }
 } 

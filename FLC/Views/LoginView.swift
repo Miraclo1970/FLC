@@ -81,6 +81,14 @@ struct LoginView: View {
                 Text(isEnglish ? "Invalid username or password" : "Ongeldige gebruikersnaam of wachtwoord")
                     .foregroundColor(.red)
             }
+            
+            Spacer()
+            
+            // Version information at the bottom
+            Text("v0.93.6 (db: v4)")
+                .font(.system(size: 10))
+                .foregroundColor(.gray)
+                .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
@@ -90,16 +98,29 @@ struct LoginView: View {
     }
     
     private func login() {
-        let result = DatabaseManager.shared.validateUser(username: username, password: password)
-        
-        if result.success {
-            userType = result.userType
-            isLoggedIn = true
-        } else {
-            errorMessage = isEnglish ? "Invalid username or password" : "Ongeldige gebruikersnaam of wachtwoord"
-            showError = true
-            password = ""  // Clear password field on error
-            focusedField = .password  // Focus back on password field
+        Task {
+            do {
+                let result = try await DatabaseManager.shared.validateUser(username: username, password: password)
+                
+                await MainActor.run {
+                    if result.success {
+                        userType = result.userType
+                        isLoggedIn = true
+                    } else {
+                        errorMessage = isEnglish ? "Invalid username or password" : "Ongeldige gebruikersnaam of wachtwoord"
+                        showError = true
+                        password = ""  // Clear password field on error
+                        focusedField = .password  // Focus back on password field
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = isEnglish ? "Login error: \(error.localizedDescription)" : "Inlogfout: \(error.localizedDescription)"
+                    showError = true
+                    password = ""  // Clear password field on error
+                    focusedField = .password  // Focus back on password field
+                }
+            }
         }
     }
 }
