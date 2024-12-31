@@ -15,7 +15,8 @@ struct ContentView: View {
         if isLoggedIn {
             switch userType {
             case "admin":
-                AdminDashboardView(isLoggedIn: $isLoggedIn)
+                AdminDashboardView()
+                    .environmentObject(LoginManager(isLoggedIn: $isLoggedIn))
             case "manager":
                 ManagerDashboardView(isLoggedIn: $isLoggedIn)
             case "user":
@@ -26,6 +27,18 @@ struct ContentView: View {
         } else {
             LoginView(isLoggedIn: $isLoggedIn, userType: $userType)
         }
+    }
+}
+
+class LoginManager: ObservableObject {
+    @Binding var isLoggedIn: Bool
+    
+    init(isLoggedIn: Binding<Bool>) {
+        _isLoggedIn = isLoggedIn
+    }
+    
+    func logout() {
+        isLoggedIn = false
     }
 }
 

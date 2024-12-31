@@ -40,6 +40,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
     var departmentSimple: String?
     var domain: String?
     var migrationCluster: String?
+    var migrationClusterReadiness: String?
     var migrationReadiness: String?
     
     // Metadata
@@ -82,6 +83,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         case departmentSimple
         case domain
         case migrationCluster
+        case migrationClusterReadiness
         case migrationReadiness
         // Metadata
         case importDate
@@ -122,6 +124,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         static let departmentSimple = Column("departmentSimple")
         static let domain = Column("domain")
         static let migrationCluster = Column("migrationCluster")
+        static let migrationClusterReadiness = Column("migrationClusterReadiness")
         static let migrationReadiness = Column("migrationReadiness")
         // Metadata
         static let importDate = Column("importDate")
@@ -162,6 +165,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         container[Columns.departmentSimple] = departmentSimple
         container[Columns.domain] = domain
         container[Columns.migrationCluster] = migrationCluster
+        container[Columns.migrationClusterReadiness] = migrationClusterReadiness
         container[Columns.migrationReadiness] = migrationReadiness
         // Metadata
         container[Columns.importDate] = importDate
@@ -189,6 +193,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         case CodingKeys.departmentSimple: return "departmentSimple"
         case CodingKeys.domain: return "domain"
         case CodingKeys.migrationCluster: return "migrationCluster"
+        case CodingKeys.migrationClusterReadiness: return "migrationClusterReadiness"
         case CodingKeys.migrationReadiness: return "migrationReadiness"
         case CodingKeys.importDate: return "importDate"
         case CodingKeys.importSet: return "importSet"
@@ -220,6 +225,7 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
          departmentSimple: String?,
          domain: String?,
          migrationCluster: String?,
+         migrationClusterReadiness: String?,
          migrationReadiness: String?,
          importDate: Date,
          importSet: String) {
@@ -247,12 +253,13 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.departmentSimple = departmentSimple
         self.domain = domain
         self.migrationCluster = migrationCluster
+        self.migrationClusterReadiness = migrationClusterReadiness
         self.migrationReadiness = migrationReadiness
         self.importDate = importDate
         self.importSet = importSet
     }
     
-    init(adRecord: ADRecord, hrRecord: HRRecord?, packageRecord: PackageRecord?, testRecord: TestRecord?, migrationRecord: MigrationRecord?, importDate: Date, importSet: String) {
+    init(adRecord: ADRecord, hrRecord: HRRecord?, packageRecord: PackageRecord?, testRecord: TestRecord?, migrationRecord: MigrationRecord?, clusterRecord: ClusterRecord?, importDate: Date, importSet: String) {
         self.id = nil
         
         // AD fields
@@ -288,9 +295,11 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.migrationApplicationReadiness = migrationRecord?.migrationApplicationReadiness
         
         // Department and Migration fields
-        self.departmentSimple = hrRecord?.departmentSimple
-        self.domain = nil
-        self.migrationCluster = nil
+        // Use Cluster's departmentSimple if available, otherwise fall back to HR's
+        self.departmentSimple = clusterRecord?.departmentSimple ?? hrRecord?.departmentSimple
+        self.domain = clusterRecord?.domain
+        self.migrationCluster = clusterRecord?.migrationCluster
+        self.migrationClusterReadiness = clusterRecord?.migrationClusterReadiness
         self.migrationReadiness = nil
         
         // Metadata

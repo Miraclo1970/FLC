@@ -254,12 +254,11 @@ class DatabaseManager: ObservableObject {
                 t.column("departmentSimple", .text)
                 t.column("domain", .text)
                 t.column("migrationCluster", .text)
+                t.column("migrationClusterReadiness", .text)
                 t.column("migrationReadiness", .text)
                 // Metadata
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
-                // Create a unique index on the combination of adGroup and systemAccount
-                t.uniqueKey(["adGroup", "systemAccount"])
             }
             
             // Create package status records table if it doesn't exist
@@ -592,7 +591,6 @@ class DatabaseManager: ObservableObject {
             
             // Get all AD records
             let adRecords = try ADRecord.fetchAll(db)
-            print("Processing \(adRecords.count) AD records")
             
             // Get all HR records for lookup
             let hrRecords = try HRRecord.fetchAll(db)
@@ -607,6 +605,11 @@ class DatabaseManager: ObservableObject {
             let migrationRecords = try MigrationRecord.fetchAll(db)
             let migrationLookup = Dictionary(uniqueKeysWithValues: migrationRecords.map { ($0.applicationName, $0) })
             
+            // Get all cluster records and create a lookup by department
+            let clusterRecords = try ClusterRecord.fetchAll(db)
+            let clusterLookup = Dictionary(uniqueKeysWithValues: clusterRecords.map { ($0.department, $0) })
+            print("Found \(clusterRecords.count) cluster records for matching")
+            
             var combinedCount = 0
             
             // Process each AD record
@@ -616,6 +619,11 @@ class DatabaseManager: ObservableObject {
                 let testRecord = testLookup[adRecord.applicationName]
                 let migrationRecord = migrationLookup[adRecord.applicationName]
                 
+                // Get cluster record based on HR department if available
+                let clusterRecord = hrRecord.flatMap { hr in
+                    clusterLookup[hr.department ?? ""]
+                }
+                
                 // Create combined record with optional fields
                 let combinedRecord = CombinedRecord(
                     adRecord: adRecord,
@@ -623,6 +631,7 @@ class DatabaseManager: ObservableObject {
                     packageRecord: packageRecord,
                     testRecord: testRecord,
                     migrationRecord: migrationRecord,
+                    clusterRecord: clusterRecord,
                     importDate: Date(),
                     importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
                 )
@@ -1319,13 +1328,25 @@ class DatabaseManager: ObservableObject {
             for record in records {
                 // Validate department exists in HR records
                 if !hrDepartments.contains(record.department) {
+                    print("Skipping cluster record for department \(record.department) - not found in HR records")
                     counts.skipped += 1
                     continue
                 }
                 
                 let dbRecord = ClusterRecord(from: record)
-                try dbRecord.insert(db)
-                counts.saved += 1
+                
+                // Try to find existing record
+                if let existingRecord = try ClusterRecord.filter(Column("department") == record.department).fetchOne(db) {
+                    // Update existing record with new data, preserving id
+                    var updatedRecord = dbRecord
+                    updatedRecord.id = existingRecord.id
+                    try updatedRecord.update(db)
+                    counts.saved += 1
+                } else {
+                    // Insert new cluster record since department exists in HR
+                    try dbRecord.insert(db)
+                    counts.saved += 1
+                }
             }
             
             return counts

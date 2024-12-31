@@ -18,6 +18,7 @@ struct FLCApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(DatabaseManager.shared)
+                .preferredColorScheme(.dark)
         }
     }
 }

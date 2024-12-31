@@ -453,22 +453,11 @@ struct DatabaseContentView: View {
                 }
             case .cluster:
                 print("Loading cluster records page \(currentPage)...")
-                let newRecords = try await DatabaseManager.shared.fetchClusterRecords(limit: pageSize, offset: currentPage * pageSize)
+                let newRecords = try await DatabaseManager.shared.fetchClusterRecords(limit: 10000, offset: 0)  // Load all at once
                 if !Task.isCancelled {  // Check again after fetch
-                    if resetData {
-                        clusterRecords = newRecords
-                    } else {
-                        clusterRecords.append(contentsOf: newRecords)
-                    }
-                    hasMoreData = !newRecords.isEmpty && newRecords.count == pageSize
-                    
-                    // If we have more data, immediately load the next batch
-                    if hasMoreData && !resetData && !Task.isCancelled {
-                        currentPage += 1
-                        await loadData(resetData: false)
-                    }
-                    
-                    print("Loaded \(newRecords.count) cluster records, total: \(clusterRecords.count), hasMore: \(hasMoreData)")
+                    clusterRecords = newRecords
+                    hasMoreData = false  // No more data to load
+                    print("Loaded \(newRecords.count) cluster records")
                 }
             }
         } catch {

@@ -5,8 +5,24 @@ struct AverageProgressCell: View {
     
     // Stabilize the progress value
     private var stableProgress: Double {
-        // Round to nearest 5 to prevent small fluctuations
-        (progress / 5.0).rounded() * 5.0
+        max(0, min(100, progress))
+    }
+    
+    private var statusColor: Color {
+        switch stableProgress {
+        case 0:
+            return Color.gray
+        case 1...20:
+            return Color.blue.opacity(0.3)
+        case 21...80:
+            return Color.blue.opacity(0.6)
+        case 81...99:
+            return Color.blue.opacity(0.9)
+        case 100:
+            return Color.green
+        default:
+            return Color.gray
+        }
     }
     
     var body: some View {
@@ -16,8 +32,8 @@ struct AverageProgressCell: View {
                     .fill(Color.gray.opacity(0.3))
                     .overlay(
                         Rectangle()
-                            .fill(Color.blue)
-                            .frame(width: geometry.size.width * CGFloat(stableProgress / 100.0))
+                            .fill(statusColor)
+                            .frame(width: max(0, geometry.size.width * CGFloat(stableProgress / 100.0)))
                         , alignment: .leading
                     )
             }
@@ -26,7 +42,8 @@ struct AverageProgressCell: View {
             
             Text(String(format: "%.0f%%", stableProgress))
                 .font(.system(size: 11))
-                .frame(width: 30, alignment: .trailing)
+                .foregroundColor(statusColor)
+                .frame(width: 40, alignment: .trailing)
         }
         .padding(.horizontal, 8)
     }
@@ -59,8 +76,9 @@ struct DepartmentProgressCell: View {
     
     // Stabilize the progress value
     private var stableProgress: Double {
-        // Round to nearest 5 to prevent small fluctuations
-        (progress / 5.0).rounded() * 5.0
+        // Clamp progress between 0 and 100, then round to nearest 5
+        let clampedProgress = max(0, min(100, progress))
+        return (clampedProgress / 5.0).rounded() * 5.0
     }
     
     var body: some View {
@@ -71,7 +89,7 @@ struct DepartmentProgressCell: View {
                     .overlay(
                         Rectangle()
                             .fill(Color.blue)
-                            .frame(width: geometry.size.width * CGFloat(stableProgress / 100.0))
+                            .frame(width: max(0, geometry.size.width * CGFloat(stableProgress / 100.0)))
                         , alignment: .leading
                     )
             }
@@ -83,5 +101,55 @@ struct DepartmentProgressCell: View {
                 .frame(width: 30, alignment: .trailing)
         }
         .padding(.horizontal, 8)
+    }
+}
+
+struct OverallProgressCell: View {
+    let progress: Double
+    
+    // Stabilize the progress value
+    private var stableProgress: Double {
+        max(0, min(100, progress))
+    }
+    
+    private var statusColor: Color {
+        switch stableProgress {
+        case 0:
+            return Color.gray
+        case 1...20:
+            return Color.blue.opacity(0.3)
+        case 21...80:
+            return Color.blue.opacity(0.6)
+        case 81...99:
+            return Color.blue.opacity(0.9)
+        case 100:
+            return Color.green
+        default:
+            return Color.gray
+        }
+    }
+    
+    private var statusText: String {
+        switch stableProgress {
+        case 0:
+            return "Not started"
+        case 1...20:
+            return "Started"
+        case 21...80:
+            return "In progress"
+        case 81...99:
+            return "Finishing"
+        case 100:
+            return "Migration Ready"
+        default:
+            return "Unknown"
+        }
+    }
+    
+    var body: some View {
+        Text(statusText)
+            .font(.system(size: 11))
+            .foregroundColor(statusColor)
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 } 
