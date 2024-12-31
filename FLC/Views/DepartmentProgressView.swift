@@ -535,58 +535,6 @@ struct DepartmentProgressView: View {
     }
 }
 
-struct DepartmentProgressCell: View {
-    let status: String
-    
-    private var progress: Double {
-        let lowercasedStatus = status.lowercased()
-        
-        // Package status specific
-        if lowercasedStatus == "ready for testing" {
-            return 100.0
-        }
-        
-        // Common statuses
-        switch lowercasedStatus {
-        case "ready", "completed", "passed":
-            return 100.0
-        case "in progress":
-            return 50.0
-        case "not started", "":
-            return 0.0
-        default:
-            print("Unknown status: \(status)")
-            return 0.0
-        }
-    }
-    
-    var body: some View {
-        HStack(spacing: 4) {
-            ProgressView(value: progress, total: 100)
-                .frame(width: 80, height: 6)
-            Text(String(format: "%.0f%%", progress))
-                .font(.system(size: 11))
-                .frame(width: 30, alignment: .trailing)
-        }
-        .padding(.horizontal, 8)
-    }
-}
-
-struct AverageProgressCell: View {
-    let progress: Double
-    
-    var body: some View {
-        HStack(spacing: 4) {
-            ProgressView(value: progress, total: 100)
-                .frame(width: 80, height: 6)
-            Text(String(format: "%.0f%%", progress))
-                .font(.system(size: 11))
-                .frame(width: 30, alignment: .trailing)
-        }
-        .padding(.horizontal, 8)
-    }
-}
-
 extension DateFormatter {
     static let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
