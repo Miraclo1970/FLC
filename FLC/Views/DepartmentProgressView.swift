@@ -11,6 +11,8 @@ struct DepartmentProgressView: View {
     @State private var selectedEnvironments: Set<String> = ["P"]  // Default to Production
     @State private var excludeNonActive: Bool = false  // Default to show all
     @State private var selectedPlatforms: Set<String> = ["All"]  // Default to All selected
+    @State private var isExporting = false
+    @State private var exportError: String?
     
     private let environments = ["P", "A", "T"]
     private let platforms = ["All", "SAAS", "VDI", "Local"]
@@ -59,6 +61,7 @@ struct DepartmentProgressView: View {
                                 .font(.subheadline)
                             Picker("", selection: $selectedDepartment) {
                                 Text("Select Department Simple").tag("")
+                                Text("All Departments").tag("All")
                                 ForEach(departments, id: \.self) { department in
                                     Text(department).tag(department)
                                 }
@@ -306,6 +309,44 @@ struct DepartmentProgressView: View {
                         }
                     }
                 }
+                
+                Spacer()
+                
+                // Export Bar
+                VStack(spacing: 8) {
+                    Divider()
+                    HStack {
+                        Text("Export Progress Report")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        if let error = exportError {
+                            Text(error)
+                                .foregroundColor(.red)
+                                .font(.caption)
+                        }
+                        
+                        Button(action: exportAsCSV) {
+                            HStack {
+                                if isExporting {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                        .frame(width: 16, height: 16)
+                                } else {
+                                    Image(systemName: "arrow.down.doc")
+                                }
+                                Text("Export to CSV")
+                            }
+                            .frame(width: 120)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isExporting || departmentApplications.isEmpty)
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                }
+                .background(Color(NSColor.windowBackgroundColor))
             }
         }
         .padding()
@@ -384,7 +425,7 @@ struct DepartmentProgressView: View {
         // First, filter AD records by division, department, and OTAP
         let filteredRecords = records.filter { record in
             record.division == selectedDivision &&
-            record.departmentSimple == selectedDepartment &&
+            (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
             selectedEnvironments.contains(record.otap)
         }
         
@@ -450,7 +491,7 @@ struct DepartmentProgressView: View {
     private var totalUniqueUsers: Int {
         let filteredRecords = records.filter { record in
             record.division == selectedDivision &&
-            record.departmentSimple == selectedDepartment &&
+            (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
             selectedEnvironments.contains(record.otap)
         }
         return Set(filteredRecords.map { $0.systemAccount }).count
@@ -532,6 +573,64 @@ struct DepartmentProgressView: View {
         departmentApplications
             .compactMap { $0.testReadinessDate }
             .max()
+    }
+    
+    private func exportAsCSV() {
+        isExporting = true
+        exportError = nil
+        
+        Task {
+            do {
+                // Get save location from user
+                let panel = NSSavePanel()
+                panel.allowedContentTypes = [.commaSeparatedText]
+                panel.nameFieldStringValue = "department_progress_\(selectedDivision)_\(selectedDepartment == "All" ? "all" : selectedDepartment).csv"
+                
+                let response = await panel.beginSheetModal(for: NSApp.keyWindow!)
+                
+                if response == .OK, let url = panel.url {
+                    // Create CSV content
+                    var csvContent = "Application Name,Will Be,Platform,In/Out Scope,Users,Package Status,Package Ready By,Testing Status,Test Ready By,Application Readiness\n"
+                    
+                    for app in departmentApplications {
+                        let fields = [
+                            app.name,
+                            app.willBe,
+                            app.platform,
+                            app.inOutScope,
+                            String(app.uniqueUsers),
+                            app.packageStatus,
+                            app.packageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "",
+                            app.testingStatus,
+                            app.testReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "",
+                            app.applicationReadiness
+                        ].map { field in
+                            // Escape fields that contain commas or quotes
+                            let escaped = field.replacingOccurrences(of: "\"", with: "\"\"")
+                            return "\"\(escaped)\""
+                        }
+                        
+                        csvContent += fields.joined(separator: ",") + "\n"
+                    }
+                    
+                    // Add summary row
+                    csvContent += "\nSummary\n"
+                    csvContent += "Total Users,\(totalUniqueUsers)\n"
+                    csvContent += "Average Package Progress,\(averagePackageProgress)%\n"
+                    csvContent += "Average Testing Progress,\(averageTestingProgress)%\n"
+                    
+                    try csvContent.write(to: url, atomically: true, encoding: .utf8)
+                }
+            } catch {
+                await MainActor.run {
+                    exportError = "Export failed: \(error.localizedDescription)"
+                }
+            }
+            
+            await MainActor.run {
+                isExporting = false
+            }
+        }
     }
 }
 
