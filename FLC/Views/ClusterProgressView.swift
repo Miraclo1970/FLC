@@ -1,8 +1,8 @@
 import SwiftUI
 import GRDB
 
-struct DivisionSummary {
-    let division: String
+struct ClusterSummary {
+    let cluster: String
     let applications: Int
     let users: Int
     let packageProgress: Double
@@ -13,20 +13,14 @@ struct DivisionSummary {
     let status: String
 }
 
-struct DivisionProgressView: View {
+struct ClusterProgressView: View {
     @EnvironmentObject private var databaseManager: DatabaseManager
     @State private var records: [CombinedRecord] = []
+    @State private var selectedCluster: String = ""
     @State private var selectedDivision: String = ""
-    @State private var selectedCluster: String = "All"
     @State private var isLoading = true
     @State private var isExporting = false
     @State private var exportError: String?
-    
-    private var divisions: [String] {
-        Array(Set(records.compactMap { $0.division }))
-            .filter { !$0.isEmpty }
-            .sorted()
-    }
     
     private var clusters: [String] {
         var clusterSet = Set(records.compactMap { $0.migrationCluster })
@@ -34,10 +28,16 @@ struct DivisionProgressView: View {
         return Array(clusterSet).sorted()
     }
     
+    private var divisions: [String] {
+        Array(Set(records.compactMap { $0.division }))
+            .filter { !$0.isEmpty }
+            .sorted()
+    }
+    
     private var filteredRecords: [CombinedRecord] {
         records.filter { record in
-            record.division == selectedDivision &&
-            (selectedCluster == "All" || record.migrationCluster == selectedCluster)
+            (selectedCluster.isEmpty || selectedCluster == "All" || record.migrationCluster == selectedCluster) &&
+            (selectedDivision.isEmpty || record.division == selectedDivision)
         }
     }
     
@@ -47,7 +47,7 @@ struct DivisionProgressView: View {
             .sorted()
     }
     
-    private func calculateDivisionTotals(from departmentStats: [DivisionSummary]) -> (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?) {
+    private func calculateClusterTotals(from departmentStats: [ClusterSummary]) -> (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?) {
         // Simple sum for applications and users
         let totalApplications = departmentStats.reduce(0) { $0 + $1.applications }
         let totalUsers = departmentStats.reduce(0) { $0 + $1.users }
@@ -79,33 +79,48 @@ struct DivisionProgressView: View {
             if isLoading {
                 ProgressView("Loading data...")
             } else {
-                // Division and Cluster Filters
+                // Cluster and Division Filters
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Division Progress")
+                    Text("Cluster Progress")
                         .font(.headline)
                     
-                    VStack(alignment: .leading) {
-                        Text("Division:")
-                            .font(.subheadline)
-                        Picker("", selection: $selectedDivision) {
-                            ForEach(divisions, id: \.self) { division in
-                                Text(division).tag(division)
+                    HStack(spacing: 20) {
+                        VStack(alignment: .leading) {
+                            Text("Division:")
+                                .font(.subheadline)
+                            Picker("", selection: $selectedDivision) {
+                                Text("Select Division").tag("")
+                                ForEach(divisions, id: \.self) { division in
+                                    Text(division).tag(division)
+                                }
                             }
+                            .frame(width: 200)
                         }
-                        .frame(width: 200)
+                        
+                        VStack(alignment: .leading) {
+                            Text("Cluster:")
+                                .font(.subheadline)
+                            Picker("", selection: $selectedCluster) {
+                                Text("Select Cluster").tag("")
+                                ForEach(clusters, id: \.self) { cluster in
+                                    Text(cluster).tag(cluster)
+                                }
+                            }
+                            .frame(width: 200)
+                        }
                     }
                 }
                 .padding(.bottom, 8)
                 
-                if !selectedDivision.isEmpty {
+                if !selectedCluster.isEmpty {
                     ScrollView {
                         VStack(spacing: 8) {
                             // Header
                             HStack(spacing: 0) {
-                                Text("Department")
+                                Text("Migration Cluster")
                                     .frame(width: 350, alignment: .leading)
                                     .padding(.leading, 8)
-                                Text("Migration Cluster")
+                                Text("Department")
                                     .frame(width: 120, alignment: .leading)
                                 Text("Apps")
                                     .frame(width: 60, alignment: .center)
@@ -133,20 +148,20 @@ struct DivisionProgressView: View {
                             .background(Color(NSColor.controlBackgroundColor))
                             .cornerRadius(8)
                             
-                            // Division total row
+                            // Cluster total row
                             let departmentStats = departments.map { department in
                                 let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
                                 return calculateStats(for: departmentRecords)
                             }
                             
-                            let totals = calculateDivisionTotals(from: departmentStats)
+                            let totals = calculateClusterTotals(from: departmentStats)
                             
                             HStack(spacing: 0) {
-                                Text("Total \(selectedDivision)")
+                                Text(selectedCluster == "All" ? "Total All Clusters" : "Total \(selectedCluster)")
                                     .bold()
                                     .frame(width: 350, alignment: .leading)
                                     .padding(.leading, 8)
-                                Text("")  // Empty Migration Cluster for total
+                                Text("")  // Empty Department for total
                                     .frame(width: 120, alignment: .leading)
                                 Text("\(totals.applications)")
                                     .bold()
@@ -177,12 +192,12 @@ struct DivisionProgressView: View {
                             ForEach(departments, id: \.self) { department in
                                 let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
                                 let stats = calculateStats(for: departmentRecords)
-                                let migrationCluster = departmentRecords.first?.migrationCluster ?? ""
+                                let clusterName = selectedCluster == "All" ? (departmentRecords.first?.migrationCluster ?? "") : selectedCluster
                                 HStack(spacing: 0) {
-                                    Text(department)
+                                    Text(clusterName)
                                         .frame(width: 350, alignment: .leading)
                                         .padding(.leading, 8)
-                                    Text(migrationCluster)
+                                    Text(department)
                                         .frame(width: 120, alignment: .leading)
                                     Text("\(stats.applications)")
                                         .frame(width: 60, alignment: .center)
@@ -208,7 +223,7 @@ struct DivisionProgressView: View {
                         }
                     }
                 } else {
-                    Text("Please select a division")
+                    Text("Please select a cluster")
                         .foregroundColor(.gray)
                 }
                 
@@ -218,7 +233,7 @@ struct DivisionProgressView: View {
                 VStack(spacing: 8) {
                     Divider()
                     HStack {
-                        Text("Export Division Progress Report")
+                        Text("Export Cluster Progress Report")
                             .font(.headline)
                         
                         Spacer()
@@ -243,7 +258,7 @@ struct DivisionProgressView: View {
                             .frame(width: 120)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isExporting || selectedDivision.isEmpty)
+                        .disabled(isExporting || selectedCluster.isEmpty)
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 8)
@@ -264,7 +279,7 @@ struct DivisionProgressView: View {
         return formatter.string(from: date)
     }
     
-    private func calculateStats(for records: [CombinedRecord]) -> DivisionSummary {
+    private func calculateStats(for records: [CombinedRecord]) -> ClusterSummary {
         let uniqueApps = Set(records.map { $0.applicationName }).count
         let uniqueUsers = Set(records.compactMap { $0.systemAccount }).count
         
@@ -310,8 +325,8 @@ struct DivisionProgressView: View {
         let packageReadyDate = records.compactMap { $0.applicationPackageReadinessDate }.max()
         let testReadyDate = records.compactMap { $0.applicationTestReadinessDate }.max()
         
-        return DivisionSummary(
-            division: selectedDivision,
+        return ClusterSummary(
+            cluster: selectedCluster,
             applications: uniqueApps,
             users: uniqueUsers,
             packageProgress: packageProgress,
@@ -338,9 +353,6 @@ struct DivisionProgressView: View {
         do {
             isLoading = true
             records = try await databaseManager.fetchAllRecords()
-            if let firstDivision = divisions.first {
-                selectedDivision = firstDivision
-            }
         } catch {
             print("Error loading records: \(error)")
         }
@@ -356,23 +368,22 @@ struct DivisionProgressView: View {
                 // Get save location from user
                 let panel = NSSavePanel()
                 panel.allowedContentTypes = [.commaSeparatedText]
-                panel.nameFieldStringValue = "division_progress_\(selectedDivision).csv"
+                panel.nameFieldStringValue = selectedCluster == "All" ? "all_clusters_progress.csv" : "cluster_progress_\(selectedCluster).csv"
                 
                 let response = await panel.beginSheetModal(for: NSApp.keyWindow!)
                 
                 if response == .OK, let url = panel.url {
                     // Create CSV content
-                    var csvContent = "Department,Migration Cluster,Applications,Users,Package Progress,Package Ready By,Testing Progress,Test Ready By,Overall Progress\n"
+                    var csvContent = "Migration Cluster,Department,Applications,Users,Package Progress,Package Ready By,Testing Progress,Test Ready By,Overall Progress\n"
                     
                     // Add department rows
                     for department in departments {
                         let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
                         let stats = calculateStats(for: departmentRecords)
-                        let migrationCluster = departmentRecords.first?.migrationCluster ?? ""
                         
                         let fields = [
+                            selectedCluster,
                             department,
-                            migrationCluster,
                             String(stats.applications),
                             String(stats.users),
                             String(format: "%.1f", stats.packageProgress),
@@ -389,15 +400,15 @@ struct DivisionProgressView: View {
                         csvContent += fields.joined(separator: ",") + "\n"
                     }
                     
-                    // Add division totals
+                    // Add cluster totals
                     let departmentStats = departments.map { department in
                         let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
                         return calculateStats(for: departmentRecords)
                     }
                     
-                    let totals = calculateDivisionTotals(from: departmentStats)
+                    let totals = calculateClusterTotals(from: departmentStats)
                     
-                    csvContent += "\nDivision Summary\n"
+                    csvContent += "\nCluster Summary\n"
                     csvContent += "Total Applications,\(totals.applications)\n"
                     csvContent += "Total Users,\(totals.users)\n"
                     csvContent += "Average Package Progress,\(String(format: "%.1f", totals.packageProgress))%\n"
@@ -420,6 +431,6 @@ struct DivisionProgressView: View {
 }
 
 #Preview {
-    DivisionProgressView()
+    ClusterProgressView()
         .environmentObject(DatabaseManager.shared)
 } 
