@@ -13,6 +13,12 @@ struct DepartmentProgressView: View {
     @State private var selectedPlatforms: Set<String> = ["All"]  // Default to All selected
     @State private var isExporting = false
     @State private var exportError: String?
+    @State private var sortColumn: SortColumn = .name
+    @State private var sortAscending = true
+    
+    private enum SortColumn {
+        case name, users, departments, packageStatus, testResult
+    }
     
     private let environments = ["P", "A", "T"]
     private let platforms = ["All", "SAAS", "VDI", "Local"]
@@ -170,6 +176,8 @@ struct DepartmentProgressView: View {
                                     .frame(width: 80, alignment: .leading)
                                 Text("Users")
                                     .frame(width: 60, alignment: .center)
+                                Text("Depts")
+                                    .frame(width: 60, alignment: .center)
                                 VStack {
                                     Text("Average")
                                     Text("Package")
@@ -184,7 +192,10 @@ struct DepartmentProgressView: View {
                                 .frame(width: 120, alignment: .center)
                                 Text("Ready by")
                                     .frame(width: 80, alignment: .center)
-                                    Text("Application\nReadiness")
+                                Text("Test\nResult")
+                                    .frame(width: 80, alignment: .center)
+                                    .multilineTextAlignment(.center)
+                                Text("Application\nReadiness")
                                     .frame(width: 120, alignment: .center)
                                     .multilineTextAlignment(.center)
                             }
@@ -206,6 +217,8 @@ struct DepartmentProgressView: View {
                                     .frame(width: 80, alignment: .leading)
                                 Text("\(totalUniqueUsers)")
                                     .frame(width: 60, alignment: .center)
+                                Text("\(totalUniqueDepartments)")
+                                    .frame(width: 60, alignment: .center)
                                 AverageProgressCell(progress: Double(averagePackageProgress) ?? 0)
                                     .frame(width: 120)
                                 Text(latestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
@@ -226,8 +239,7 @@ struct DepartmentProgressView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 // Header
                                 HStack(spacing: 0) {
-                                    Text("Application")
-                                        .frame(width: 300, alignment: .leading)
+                                    SortableColumnHeader("Application", column: .name, width: 300)
                                         .padding(.leading, 8)
                                     Text("Will be")
                                         .frame(width: 100, alignment: .leading)
@@ -235,8 +247,8 @@ struct DepartmentProgressView: View {
                                         .frame(width: 80, alignment: .leading)
                                     Text("In/Out Scope")
                                         .frame(width: 80, alignment: .leading)
-                                    Text("Users")
-                                        .frame(width: 60, alignment: .center)
+                                    SortableColumnHeader("Users", column: .users, width: 60, alignment: .center)
+                                    SortableColumnHeader("Depts", column: .departments, width: 60, alignment: .center)
                                     VStack {
                                         Text("Average")
                                         Text("Package")
@@ -244,13 +256,8 @@ struct DepartmentProgressView: View {
                                     .frame(width: 120, alignment: .center)
                                     Text("Ready by")
                                         .frame(width: 80, alignment: .center)
-                                    VStack {
-                                        Text("Average")
-                                        Text("Testing")
-                                    }
-                                    .frame(width: 120, alignment: .center)
-                                    Text("Ready by")
-                                        .frame(width: 80, alignment: .center)
+                                    SortableColumnHeader("Test\nResult", column: .testResult, width: 80, alignment: .center)
+                                        .multilineTextAlignment(.center)
                                     Text("Application\nReadiness")
                                         .frame(width: 120, alignment: .center)
                                         .multilineTextAlignment(.center)
@@ -274,6 +281,8 @@ struct DepartmentProgressView: View {
                                             .frame(width: 80, alignment: .leading)
                                         Text("\(app.uniqueUsers)")
                                             .frame(width: 60, alignment: .center)
+                                        Text("\(app.uniqueDepartments)")
+                                            .frame(width: 60, alignment: .center)
                                         DepartmentProgressCell(status: app.packageStatus)
                                             .frame(width: 120)
                                         Text(app.packageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
@@ -281,9 +290,27 @@ struct DepartmentProgressView: View {
                                             .font(.system(size: 11))
                                         DepartmentProgressCell(status: app.testingStatus)
                                             .frame(width: 120)
-                                        Text(app.testReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
+                                        formatDateWithColor(app.testReadinessDate, packageDate: app.packageReadinessDate)
                                             .frame(width: 80, alignment: .center)
                                             .font(.system(size: 11))
+                                        Text(app.testResult)
+                                            .frame(width: 80, alignment: .center)
+                                            .foregroundColor({
+                                                switch app.testResult.lowercased() {
+                                                case "gat ok":
+                                                    return .green
+                                                case "fat ok":
+                                                    return Color(red: 0.4, green: 0.8, blue: 0.4) // light green
+                                                case "fat nok", "gat nok":
+                                                    return .orange
+                                                case "on hold", "reject":
+                                                    return .red
+                                                case "not started", "":
+                                                    return .gray
+                                                default:
+                                                    return .primary
+                                                }
+                                            }())
                                         Text(app.applicationReadiness)
                                             .frame(width: 120)
                                             .foregroundColor({
@@ -373,10 +400,12 @@ struct DepartmentProgressView: View {
         let platform: String
         let inOutScope: String
         let uniqueUsers: Int
+        let uniqueDepartments: Int
         let packageStatus: String
         let packageReadinessDate: Date?
         let testingStatus: String
         let testReadinessDate: Date?
+        let testResult: String
         var applicationReadiness: String {
             if !willBe.isEmpty && willBe != "N/A" {
                 return "Sunset"  // Say goodbye to an application
@@ -422,14 +451,23 @@ struct DepartmentProgressView: View {
     }
     
     private var departmentApplications: [ApplicationInfo] {
-        // First, filter AD records by division, department, and OTAP
+        // First, filter records by division and OTAP only (for department counting)
+        let divisionRecords = records.filter { record in
+            record.division == selectedDivision &&
+            selectedEnvironments.contains(record.otap)
+        }
+        
+        // Then filter for display based on selected department
         let filteredRecords = records.filter { record in
             record.division == selectedDivision &&
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
             selectedEnvironments.contains(record.otap)
         }
         
-        // Group by application name to count unique users
+        // Group all division records by application name for department counting
+        let divisionGroupedByApp = Dictionary(grouping: divisionRecords) { $0.applicationName }
+        
+        // Group filtered records by application name for display
         let groupedByApp = Dictionary(grouping: filteredRecords) { $0.applicationName }
         
         // Create a set of all "Will be" targets
@@ -437,9 +475,15 @@ struct DepartmentProgressView: View {
             .filter { !$0.isEmpty && $0 != "N/A" })
         
         // Convert to ApplicationInfo array
-        var applications = groupedByApp.map { appName, records in
-            let uniqueUsers = Set(records.map { $0.systemAccount }).count
-            let firstRecord = records.first
+        var applications = groupedByApp.map { appName, appRecords in
+            let uniqueUsers = Set(appRecords.map { $0.systemAccount }).count
+            
+            // Count unique departments from division records for this application
+            let uniqueDepartments = Set(divisionGroupedByApp[appName]?.compactMap { record in
+                record.departmentSimple
+            } ?? []).count
+            
+            let firstRecord = appRecords.first
             
             // If this app is a "Will be" target, use its platform info
             let platform: String
@@ -464,10 +508,12 @@ struct DepartmentProgressView: View {
                 platform: platform,
                 inOutScope: firstRecord?.inScopeOutScopeDivision ?? "N/A",
                 uniqueUsers: uniqueUsers,
+                uniqueDepartments: uniqueDepartments,
                 packageStatus: firstRecord?.applicationPackageStatus ?? "Not Started",
                 packageReadinessDate: firstRecord?.applicationPackageReadinessDate,
                 testingStatus: firstRecord?.applicationTestStatus ?? "Not Started",
-                testReadinessDate: firstRecord?.applicationTestReadinessDate
+                testReadinessDate: firstRecord?.applicationTestReadinessDate,
+                testResult: firstRecord?.testResult ?? ""
             )
         }
         
@@ -485,7 +531,8 @@ struct DepartmentProgressView: View {
             selectedPlatforms.contains("All") || selectedPlatforms.contains(app.platform)
         }
         
-        return applications.sorted { $0.name < $1.name }
+        // Apply sorting
+        return getSortedApplications(applications)
     }
     
     private var totalUniqueUsers: Int {
@@ -495,6 +542,15 @@ struct DepartmentProgressView: View {
             selectedEnvironments.contains(record.otap)
         }
         return Set(filteredRecords.map { $0.systemAccount }).count
+    }
+    
+    private var totalUniqueDepartments: Int {
+        let filteredRecords = records.filter { record in
+            record.division == selectedDivision &&
+            (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
+            selectedEnvironments.contains(record.otap)
+        }
+        return Set(filteredRecords.compactMap { $0.departmentSimple }).count
     }
     
     private var averagePackageProgress: String {
@@ -616,6 +672,7 @@ struct DepartmentProgressView: View {
                     // Add summary row
                     csvContent += "\nSummary\n"
                     csvContent += "Total Users,\(totalUniqueUsers)\n"
+                    csvContent += "Total Departments,\(totalUniqueDepartments)\n"
                     csvContent += "Average Package Progress,\(averagePackageProgress)%\n"
                     csvContent += "Average Testing Progress,\(averageTestingProgress)%\n"
                     
@@ -631,6 +688,52 @@ struct DepartmentProgressView: View {
                 isExporting = false
             }
         }
+    }
+    
+    private func formatDateWithColor(_ testDate: Date?, packageDate: Date?) -> Text {
+        let dateStr = testDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-"
+        return Text(dateStr)
+            .foregroundColor(testDate != nil && packageDate != nil && testDate! < packageDate! ? .red : .primary)
+    }
+    
+    private func getSortedApplications(_ apps: [ApplicationInfo]) -> [ApplicationInfo] {
+        apps.sorted { first, second in
+            let result: Bool
+            switch sortColumn {
+            case .name:
+                result = first.name.localizedCompare(second.name) == .orderedAscending
+            case .users:
+                result = first.uniqueUsers < second.uniqueUsers
+            case .departments:
+                result = first.uniqueDepartments < second.uniqueDepartments
+            case .packageStatus:
+                result = first.packageStatus.localizedCompare(second.packageStatus) == .orderedAscending
+            case .testResult:
+                result = first.testResult.localizedCompare(second.testResult) == .orderedAscending
+            }
+            return sortAscending ? result : !result
+        }
+    }
+    
+    private func SortableColumnHeader(_ title: String, column: SortColumn, width: CGFloat, alignment: Alignment = .leading) -> some View {
+        Button(action: {
+            if sortColumn == column {
+                sortAscending.toggle()
+            } else {
+                sortColumn = column
+                sortAscending = true
+            }
+        }) {
+            HStack(spacing: 4) {
+                Text(title)
+                if sortColumn == column {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10))
+                }
+            }
+            .frame(width: width, alignment: alignment)
+        }
+        .buttonStyle(.plain)
     }
 }
 
