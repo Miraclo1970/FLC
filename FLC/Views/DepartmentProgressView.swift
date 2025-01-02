@@ -6,26 +6,18 @@ struct DepartmentProgressView: View {
     @AppStorage("departmentView.selectedDivision") private var selectedDivision: String = ""
     @AppStorage("departmentView.selectedDepartment") private var selectedDepartment: String = ""
     @AppStorage("departmentView.excludeNonActive") private var excludeNonActive: Bool = false
-    @AppStorage("departmentView.showResults") private var showResults = false
+    @AppStorage("departmentView.showResults") private var showResults: Bool = false
     @AppStorage("departmentView.sortColumn") private var sortColumnRaw: String = "name"
-    @AppStorage("departmentView.sortAscending") private var sortAscending = true
-    @AppStorage("departmentView.selectedEnvironments") private var selectedEnvironmentsArray: [String] = ["P"]
-    @AppStorage("departmentView.selectedPlatforms") private var selectedPlatformsArray: [String] = ["All"]
+    @AppStorage("departmentView.sortAscending") private var sortAscending: Bool = true
+    
+    // Instead of using AppStorage for Sets (which isn't directly supported), we'll use State
+    @State private var selectedEnvironments: Set<String> = ["P"]
+    @State private var selectedPlatforms: Set<String> = ["All"]
     
     @State private var records: [CombinedRecord] = []
     @State private var isLoading = true
     @State private var isExporting = false
     @State private var exportError: String?
-    
-    private var selectedEnvironments: Set<String> {
-        get { Set(selectedEnvironmentsArray) }
-        set { selectedEnvironmentsArray = Array(newValue) }
-    }
-    
-    private var selectedPlatforms: Set<String> {
-        get { Set(selectedPlatformsArray) }
-        set { selectedPlatformsArray = Array(newValue) }
-    }
     
     private var sortColumn: SortColumn {
         get {
@@ -739,7 +731,7 @@ struct DepartmentProgressView: View {
     private func getSortedApplications(_ apps: [ApplicationInfo]) -> [ApplicationInfo] {
         apps.sorted { first, second in
             let result: Bool
-            switch sortColumn {
+            switch SortColumn(rawValue: sortColumnRaw) ?? .name {
             case .name:
                 result = first.name.localizedCompare(second.name) == .orderedAscending
             case .users:
@@ -757,16 +749,16 @@ struct DepartmentProgressView: View {
     
     private func SortableColumnHeader(_ title: String, column: SortColumn, width: CGFloat, alignment: Alignment = .leading) -> some View {
         Button(action: {
-            if sortColumn == column {
+            if sortColumnRaw == column.rawValue {
                 sortAscending.toggle()
             } else {
-                sortColumn = column
+                sortColumnRaw = column.rawValue
                 sortAscending = true
             }
         }) {
             HStack(spacing: 4) {
                 Text(title)
-                if sortColumn == column {
+                if sortColumnRaw == column.rawValue {
                     Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
                         .font(.system(size: 10))
                 }
