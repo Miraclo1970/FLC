@@ -3,20 +3,40 @@ import GRDB
 
 struct DepartmentProgressView: View {
     @EnvironmentObject private var databaseManager: DatabaseManager
-    @State private var selectedDivision: String = ""
-    @State private var selectedDepartment: String = ""
+    @AppStorage("departmentView.selectedDivision") private var selectedDivision: String = ""
+    @AppStorage("departmentView.selectedDepartment") private var selectedDepartment: String = ""
+    @AppStorage("departmentView.excludeNonActive") private var excludeNonActive: Bool = false
+    @AppStorage("departmentView.showResults") private var showResults = false
+    @AppStorage("departmentView.sortColumn") private var sortColumnRaw: String = "name"
+    @AppStorage("departmentView.sortAscending") private var sortAscending = true
+    @AppStorage("departmentView.selectedEnvironments") private var selectedEnvironmentsArray: [String] = ["P"]
+    @AppStorage("departmentView.selectedPlatforms") private var selectedPlatformsArray: [String] = ["All"]
+    
     @State private var records: [CombinedRecord] = []
     @State private var isLoading = true
-    @State private var showResults = false
-    @State private var selectedEnvironments: Set<String> = ["P"]  // Default to Production
-    @State private var excludeNonActive: Bool = false  // Default to show all
-    @State private var selectedPlatforms: Set<String> = ["All"]  // Default to All selected
     @State private var isExporting = false
     @State private var exportError: String?
-    @State private var sortColumn: SortColumn = .name
-    @State private var sortAscending = true
     
-    private enum SortColumn {
+    private var selectedEnvironments: Set<String> {
+        get { Set(selectedEnvironmentsArray) }
+        set { selectedEnvironmentsArray = Array(newValue) }
+    }
+    
+    private var selectedPlatforms: Set<String> {
+        get { Set(selectedPlatformsArray) }
+        set { selectedPlatformsArray = Array(newValue) }
+    }
+    
+    private var sortColumn: SortColumn {
+        get {
+            SortColumn(rawValue: sortColumnRaw) ?? .name
+        }
+        set {
+            sortColumnRaw = newValue.rawValue
+        }
+    }
+    
+    private enum SortColumn: String {
         case name, users, departments, packageStatus, testResult
     }
     
@@ -31,8 +51,10 @@ struct DepartmentProgressView: View {
     }
     
     private var departments: [String] {
-        Array(Set(records.filter { $0.division == selectedDivision }
-            .compactMap { $0.departmentSimple }))
+        Array(Set(records.filter { record in
+            selectedDivision == "All" || record.division == selectedDivision
+        }
+        .compactMap { $0.departmentSimple }))
             .filter { !$0.isEmpty }
             .sorted()
     }
@@ -54,6 +76,7 @@ struct DepartmentProgressView: View {
                                 .font(.subheadline)
                             Picker("", selection: $selectedDivision) {
                                 Text("Select Division").tag("")
+                                Text("All Divisions").tag("All")
                                 ForEach(divisions, id: \.self) { division in
                                     Text(division).tag(division)
                                 }
@@ -114,9 +137,7 @@ struct DepartmentProgressView: View {
                             HStack(spacing: 8) {
                                 ForEach(platforms, id: \.self) { platform in
                                     Toggle(platform, isOn: Binding(
-                                        get: { 
-                                            selectedPlatforms.contains(platform)
-                                        },
+                                        get: { selectedPlatforms.contains(platform) },
                                         set: { isSelected in
                                             if platform == "All" {
                                                 if isSelected {
@@ -139,6 +160,8 @@ struct DepartmentProgressView: View {
                             }
                         }
                         
+                        Spacer()
+                        
                         // Generate Button
                         Button(action: {
                             showResults = true
@@ -149,8 +172,8 @@ struct DepartmentProgressView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(selectedDivision.isEmpty || selectedDepartment.isEmpty)
                     }
-                    .frame(width: 1130)  // Match the total width of the table columns below
                 }
+                .frame(width: 1280)  // Broader width
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(10)
@@ -199,16 +222,20 @@ struct DepartmentProgressView: View {
                                     .frame(width: 120, alignment: .center)
                                     .multilineTextAlignment(.center)
                             }
-                            .frame(width: 1130)
-                            .padding(.vertical, 8)
+                            .frame(width: 1280)  // Broader width
+                            .padding(.vertical, 4)
                             .background(Color(NSColor.controlBackgroundColor))
-                            .cornerRadius(8)
                             
                             // Values row
                             HStack(spacing: 0) {
-                                Text("")
-                                    .frame(width: 300, alignment: .leading)
-                                    .padding(.leading, 8)
+                                VStack(alignment: .leading) {
+                                    Text("\(selectedDivision)")
+                                        .font(.headline)
+                                    Text("\(selectedDepartment)")
+                                        .font(.headline)
+                                }
+                                .frame(width: 300, alignment: .leading)
+                                .padding(.leading, 8)
                                 Text("")
                                     .frame(width: 100, alignment: .leading)
                                 Text("")
@@ -229,9 +256,13 @@ struct DepartmentProgressView: View {
                                 Text(latestTestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
                                     .frame(width: 80, alignment: .center)
                                     .font(.system(size: 11))
-                                AverageProgressCell(progress: Double(averageMigrationProgress) ?? 0)
-                                    .frame(width: 120)
+                                Text(getBestTestResult(from: departmentApplications))
+                                    .frame(width: 80, alignment: .center)
+                                    .foregroundColor(getTestResultColor(getBestTestResult(from: departmentApplications)))
+                                Text("\(Int(Double(averageMigrationProgress) ?? 0))%")
+                                    .frame(width: 120, alignment: .center)
                             }
+                            .frame(width: 1280)  // Broader width
                             .padding(.vertical, 4)
                             .background(Color(NSColor.controlBackgroundColor))
                             
@@ -252,6 +283,13 @@ struct DepartmentProgressView: View {
                                     VStack {
                                         Text("Average")
                                         Text("Package")
+                                    }
+                                    .frame(width: 120, alignment: .center)
+                                    Text("Ready by")
+                                        .frame(width: 80, alignment: .center)
+                                    VStack {
+                                        Text("Average")
+                                        Text("Testing")
                                     }
                                     .frame(width: 120, alignment: .center)
                                     Text("Ready by")
@@ -331,6 +369,8 @@ struct DepartmentProgressView: View {
                                     .padding(.vertical, 4)
                                 }
                             }
+                            .frame(width: 1280)  // Broader width
+                            .padding(.vertical, 4)
                             .background(Color(NSColor.controlBackgroundColor))
                             .cornerRadius(8)
                         }
@@ -453,13 +493,13 @@ struct DepartmentProgressView: View {
     private var departmentApplications: [ApplicationInfo] {
         // First, filter records by division and OTAP only (for department counting)
         let divisionRecords = records.filter { record in
-            record.division == selectedDivision &&
+            (selectedDivision == "All" || record.division == selectedDivision) &&
             selectedEnvironments.contains(record.otap)
         }
         
         // Then filter for display based on selected department
         let filteredRecords = records.filter { record in
-            record.division == selectedDivision &&
+            (selectedDivision == "All" || record.division == selectedDivision) &&
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
             selectedEnvironments.contains(record.otap)
         }
@@ -537,7 +577,7 @@ struct DepartmentProgressView: View {
     
     private var totalUniqueUsers: Int {
         let filteredRecords = records.filter { record in
-            record.division == selectedDivision &&
+            (selectedDivision == "All" || record.division == selectedDivision) &&
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
             selectedEnvironments.contains(record.otap)
         }
@@ -546,7 +586,7 @@ struct DepartmentProgressView: View {
     
     private var totalUniqueDepartments: Int {
         let filteredRecords = records.filter { record in
-            record.division == selectedDivision &&
+            (selectedDivision == "All" || record.division == selectedDivision) &&
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
             selectedEnvironments.contains(record.otap)
         }
@@ -734,6 +774,33 @@ struct DepartmentProgressView: View {
             .frame(width: width, alignment: alignment)
         }
         .buttonStyle(.plain)
+    }
+    
+    private func getBestTestResult(from apps: [ApplicationInfo]) -> String {
+        let testResults = apps.compactMap { $0.testResult }
+        if testResults.isEmpty {
+            return "-"
+        } else {
+            let bestResult = testResults.max { $0.localizedCompare($1) == .orderedAscending }
+            return bestResult ?? "-"
+        }
+    }
+    
+    private func getTestResultColor(_ testResult: String) -> Color {
+        switch testResult.lowercased() {
+        case "gat ok":
+            return .green
+        case "fat ok":
+            return Color(red: 0.4, green: 0.8, blue: 0.4) // light green
+        case "fat nok", "gat nok":
+            return .orange
+        case "on hold", "reject":
+            return .red
+        case "not started", "":
+            return .gray
+        default:
+            return .primary
+        }
     }
 }
 
