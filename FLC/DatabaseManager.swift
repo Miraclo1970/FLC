@@ -131,6 +131,11 @@ struct PackageRecord: Codable, FetchableRecord, PersistableRecord {
     }
 }
 
+enum DataSource {
+    case activeDirectory
+    case humanResources
+}
+
 class DatabaseManager: ObservableObject {
     public static let shared: DatabaseManager = DatabaseManager()
     @Published private var dbPool: DatabasePool?
@@ -647,208 +652,6 @@ class DatabaseManager: ObservableObject {
             
             print("Generated \(combinedCount) combined records")
             return combinedCount
-        }
-    }
-    
-    // Query execution methods
-    func executeQuery(dataType: ImportProgress.DataType, 
-                     field: String, 
-                     operator: String, 
-                     value: String) async throws -> [Any] {
-        // First get the database state
-        try await debugPrintRecords()
-        
-        return try await performDatabaseOperation("Execute Query", write: false) { db in
-            // Build the SQL query based on data type
-            let tableName: String
-            switch dataType {
-            case .ad:
-                tableName = "ad_records"
-            case .hr:
-                tableName = "hr_records"
-            case .combined:
-                tableName = "combined_records"
-            case .packageStatus:
-                tableName = "package_status_records"
-            case .testing:
-                tableName = "test_records"
-            case .migration:
-                tableName = "migration_records"
-            case .cluster:
-                tableName = "cluster_records"
-            }
-            
-            // Convert field name to database column name
-            let columnName = field.lowercased().replacingOccurrences(of: " ", with: "_")
-            
-            // Map display field names to actual database column names
-            let mappedColumnName: String
-            switch columnName {
-            case "job_role":
-                mappedColumnName = "jobrole"
-            case "system_account":
-                // Only map systemAccount for tables that have this column
-                switch dataType {
-                case .testing:
-                    mappedColumnName = columnName  // Keep original for test records
-                default:
-                    mappedColumnName = "systemaccount"
-                }
-            case "ad_group":
-                mappedColumnName = "adgroup"
-            case "application_name":
-                mappedColumnName = "applicationname"
-            case "application_suite":
-                mappedColumnName = "applicationsuite"
-            case "leave_date":
-                mappedColumnName = "leavedate"
-            case "package_status":
-                mappedColumnName = "packagestatus"
-            case "package_readiness_date":
-                mappedColumnName = "packagereadinessdate"
-            case "test_status":
-                mappedColumnName = "teststatus"
-            case "test_date":
-                mappedColumnName = "testdate"
-            case "test_result":
-                mappedColumnName = "testresult"
-            case "testing_plan_date":
-                mappedColumnName = "testingPlanDate"
-            default:
-                mappedColumnName = columnName
-            }
-            
-            // Build the WHERE clause based on operator
-            let whereClause: String
-            let arguments: StatementArguments
-            
-            switch `operator` {
-            case "equals":
-                whereClause = "\(mappedColumnName) = ?"
-                arguments = [value]
-            case "not equals":
-                whereClause = "\(mappedColumnName) != ?"
-                arguments = [value]
-            case "contains":
-                whereClause = "\(mappedColumnName) LIKE ?"
-                arguments = ["%\(value)%"]
-            case "not contains":
-                whereClause = "\(mappedColumnName) NOT LIKE ?"
-                arguments = ["%\(value)%"]
-            case "starts with":
-                whereClause = "\(mappedColumnName) LIKE ?"
-                arguments = ["\(value)%"]
-            case "ends with":
-                whereClause = "\(mappedColumnName) LIKE ?"
-                arguments = ["%\(value)"]
-            case "is empty":
-                whereClause = "(\(mappedColumnName) IS NULL OR \(mappedColumnName) = '')"
-                arguments = []
-            case "is not empty":
-                whereClause = "(\(mappedColumnName) IS NOT NULL AND \(mappedColumnName) != '')"
-                arguments = []
-            case "before":
-                // Parse date string to Date object
-                let dateFormatter = DateFormatter()
-                dateFormatter.dateStyle = .medium
-                dateFormatter.timeStyle = .none
-                if let date = dateFormatter.date(from: value) {
-                    whereClause = "\(mappedColumnName) < ?"
-                    arguments = [date]
-                } else {
-                    throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid date format"])
-                }
-            case "after":
-                // Parse date string to Date object
-                let dateFormatter = DateFormatter()
-                dateFormatter.dateStyle = .medium
-                dateFormatter.timeStyle = .none
-                if let date = dateFormatter.date(from: value) {
-                    whereClause = "\(mappedColumnName) > ?"
-                    arguments = [date]
-                } else {
-                    throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid date format"])
-                }
-            default:
-                throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid operator"])
-            }
-            
-            // Execute the query with proper type casting
-            let sql = """
-                SELECT * FROM \(tableName)
-                WHERE \(whereClause)
-                LIMIT 1000
-                """
-            
-            print("Executing SQL: \(sql) with arguments: \(arguments)")
-            
-            switch dataType {
-            case .ad:
-                let adResults = try ADRecord.fetchAll(db, sql: sql, arguments: arguments)
-                print("Found \(adResults.count) AD records")
-                return adResults as [Any]
-            case .hr:
-                let hrResults = try HRRecord.fetchAll(db, sql: sql, arguments: arguments)
-                print("Found \(hrResults.count) HR records")
-                return hrResults as [Any]
-            case .combined:
-                let combinedResults = try CombinedRecord.fetchAll(db, sql: sql, arguments: arguments)
-                print("Found \(combinedResults.count) combined records")
-                return combinedResults as [Any]
-            case .packageStatus:
-                let packageResults = try PackageRecord.fetchAll(db, sql: sql, arguments: arguments)
-                print("Found \(packageResults.count) package status records")
-                return packageResults as [Any]
-            case .testing:
-                let testResults = try TestRecord.fetchAll(db, sql: sql, arguments: arguments)
-                print("Found \(testResults.count) test records")
-                return testResults as [Any]
-            case .migration:
-                let migrationResults = try MigrationRecord.fetchAll(db, sql: sql, arguments: arguments)
-                print("Found \(migrationResults.count) migration records")
-                return migrationResults as [Any]
-            case .cluster:
-                let clusterResults = try ClusterRecord.fetchAll(db, sql: sql, arguments: arguments)
-                print("Found \(clusterResults.count) cluster records")
-                return clusterResults as [Any]
-            }
-        }
-    }
-    
-    // Debug function to check database contents
-    func debugPrintRecords() async throws {
-        _ = try await performDatabaseOperation("Debug Print Records", write: false) { db in
-            print("\n=== Database Contents ===")
-            
-            // Check AD records
-            let adCount = try ADRecord.fetchCount(db)
-            let adSample = try ADRecord.limit(5).fetchAll(db)
-            print("AD Records count: \(adCount)")
-            print("Sample AD records:")
-            for record in adSample {
-                print("System Account: \(record.systemAccount)")
-            }
-            
-            // Check HR records
-            let hrCount = try HRRecord.fetchCount(db)
-            let hrSample = try HRRecord.limit(5).fetchAll(db)
-            print("\nHR Records count: \(hrCount)")
-            print("Sample HR records:")
-            for record in hrSample {
-                print("System Account: \(record.systemAccount)")
-            }
-            
-            // Check Combined records
-            let combinedCount = try CombinedRecord.fetchCount(db)
-            let combinedSample = try CombinedRecord.limit(5).fetchAll(db)
-            print("\nCombined Records count: \(combinedCount)")
-            print("Sample Combined records:")
-            for record in combinedSample {
-                print("System Account: \(record.systemAccount), AD Group: \(record.adGroup)")
-            }
-            
-            print("=====================\n")
-            return true  // Return a value even though we're discarding it
         }
     }
     
@@ -1456,6 +1259,33 @@ class DatabaseManager: ObservableObject {
         } catch {
             print("Error checking AD application: \(error)")
             return false
+        }
+    }
+    
+    func getLastImportDate(for source: DataSource) async throws -> Date? {
+        let query: String
+        switch source {
+        case .activeDirectory:
+            query = "SELECT MAX(importDate) as lastImport FROM ad_records"
+        case .humanResources:
+            query = "SELECT MAX(importDate) as lastImport FROM hr_records"
+        }
+        
+        return try await performDatabaseOperation("Get Last Import Date", write: false) { db in
+            let row = try Row.fetchOne(db, sql: query)
+            return row?["lastImport"]
+        }
+    }
+    
+    func getLatestImportDate(from table: String) async throws -> Date? {
+        return try await performDatabaseOperation("Get Latest Import Date", write: false) { db in
+            let row = try Row.fetchOne(db, sql: """
+                SELECT importSet, importDate 
+                FROM \(table) 
+                ORDER BY importDate DESC 
+                LIMIT 1
+                """)
+            return row?["importDate"]
         }
     }
 } 

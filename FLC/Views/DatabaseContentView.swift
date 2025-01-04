@@ -63,7 +63,10 @@ struct DatabaseContentView: View {
                 .cornerRadius(8)
                 .onChange(of: selectedDataType, initial: false) { oldValue, newValue in
                     Task {
-                        await loadData(resetData: true)
+                        // Only reload if we're not switching to combined view or if combined records are empty
+                        if newValue != .combined || combinedRecords.isEmpty {
+                            await loadData(resetData: true)
+                        }
                     }
                 }
             }
@@ -196,11 +199,14 @@ struct DatabaseContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
         .task {
-            // Cancel any existing loading task
-            loadingTask?.cancel()
-            // Create new loading task
-            loadingTask = Task {
-                await loadData(resetData: true)
+            // Only load data if we don't have any records yet
+            if combinedRecords.isEmpty && selectedDataType == .combined {
+                // Cancel any existing loading task
+                loadingTask?.cancel()
+                // Create new loading task
+                loadingTask = Task {
+                    await loadData(resetData: true)
+                }
             }
         }
         .onDisappear {
@@ -359,8 +365,8 @@ struct DatabaseContentView: View {
                 }
             case .combined:
                 print("Loading combined records...")
-                // First, ensure combined records are generated
-                if resetData {
+                // Only regenerate if resetData is true AND we don't have any combined records yet
+                if resetData && combinedRecords.isEmpty {
                     let count = try await DatabaseManager.shared.generateCombinedRecords()
                     if !Task.isCancelled {  // Check after generation
                         print("Generated \(count) combined records")

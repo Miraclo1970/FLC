@@ -208,26 +208,30 @@ struct ValidationView: View {
                 // Save Button and Download Button
                 VStack(spacing: 10) {
                     if hasValidRecords {
-                        VStack(spacing: 5) {
-                            Button(action: saveToDatabase) {
-                                if isSaving {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                        .scaleEffect(0.7)
-                                } else {
-                                    Text("Save Valid Records to Database")
-                                }
+                        Button(action: saveToDatabase) {
+                            HStack {
+                                Text(isSaving ? "Saving..." : "Save Valid Records to Database")
                             }
-                            .disabled(isSaving)
-                            .buttonStyle(.borderedProminent)
-                            
-                            if isSaving {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Saving...")
-                                        .foregroundColor(.secondary)
-                                    ProgressView()
+                            .frame(minWidth: 200)
+                        }
+                        .disabled(isSaving)
+                        .buttonStyle(.borderedProminent)
+                        
+                        if isSaving {
+                            // Custom progress bar
+                            GeometryReader { geometry in
+                                ZStack(alignment: .leading) {
+                                    Rectangle()
+                                        .foregroundColor(Color(.windowBackgroundColor))
+                                        .frame(width: geometry.size.width, height: 4)
+                                    
+                                    Rectangle()
+                                        .foregroundColor(.blue)
+                                        .frame(width: max(0, geometry.size.width * CGFloat(saveProgress)), height: 4)
                                 }
+                                .clipShape(Capsule())
                             }
+                            .frame(width: 200, height: 4)
                         }
                     }
                     
@@ -661,6 +665,10 @@ extension ValidationView {
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
                     
+                    // Regenerate combined records after saving AD records
+                    let combinedCount = try await DatabaseManager.shared.generateCombinedRecords()
+                    print("Generated \(combinedCount) combined records after saving AD data")
+                    
                 case .hr:
                     let records = progress.validHRRecords
                     var totalSaved = 0
@@ -686,6 +694,11 @@ extension ValidationView {
                         saveProgress = 1.0
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
+                    
+                    // Regenerate combined records after saving HR records
+                    let combinedCount = try await DatabaseManager.shared.generateCombinedRecords()
+                    print("Generated \(combinedCount) combined records after saving HR data")
+                    
                 case .packageStatus:
                     let records = progress.validPackageRecords
                     var totalSaved = 0
@@ -711,6 +724,7 @@ extension ValidationView {
                         saveProgress = 1.0
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
+                    
                 case .testing:
                     let records = progress.validTestRecords
                     var totalSaved = 0
@@ -736,6 +750,7 @@ extension ValidationView {
                         saveProgress = 1.0
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
+                    
                 case .migration:
                     let records = progress.validMigrationRecords
                     var totalSaved = 0
@@ -761,6 +776,7 @@ extension ValidationView {
                         saveProgress = 1.0
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
+                    
                 case .cluster:
                     let records = progress.validClusterRecords
                     var totalSaved = 0
@@ -786,9 +802,19 @@ extension ValidationView {
                         saveProgress = 1.0
                         saveResult = "Successfully saved \(totalSaved) records to database. \(totalSkipped) records skipped (duplicates)."
                     }
+                    
+                    // Regenerate combined records after saving cluster records
+                    let combinedCount = try await DatabaseManager.shared.generateCombinedRecords()
+                    print("Generated \(combinedCount) combined records after saving cluster data")
+                    
                 case .combined:
                     break  // Combined view doesn't have its own records to save
                 }
+                
+                // After saving any type of records, regenerate combined records
+                let combinedCount = try await DatabaseManager.shared.generateCombinedRecords()
+                print("Generated \(combinedCount) combined records after saving data")
+                
             } catch {
                 await MainActor.run {
                     saveProgress = 0.0
