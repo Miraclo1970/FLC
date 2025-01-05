@@ -195,14 +195,15 @@ struct ImportView: View {
                     .frame(height: 8)
                     .padding(.horizontal)
                     
-                    // Progress percentage
-                    Text("\(Int(progress.progressValue * 100))%")
-                        .font(.headline)
-                    
-                    // Current operation
-                    Text(progress.currentOperation)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    // Progress percentage and operation in a single row
+                    HStack(spacing: 8) {
+                        Text("\(Int(progress.progressValue * 100))%")
+                            .font(.headline)
+                            .frame(width: 50)
+                        Text(progress.currentOperation)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .frame(width: 300)
                 .padding()

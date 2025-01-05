@@ -20,11 +20,16 @@ struct AdminDashboardView: View {
                     Label("Database", systemImage: "cylinder")
                 }
                 
-                NavigationLink(value: "query") {
-                    Label("Query", systemImage: "magnifyingglass")
-                }
-                
                 Section("Organisation Analysis") {
+                    NavigationLink(value: "baseline-accounts") {
+                        Label("Baseline Accounts", systemImage: "person.2.circle")
+                    }
+                    NavigationLink(value: "baseline-applications") {
+                        Label("Baseline Applications", systemImage: "app.badge.checkmark")
+                    }
+                    NavigationLink(value: "baseline-applications-usage") {
+                        Label("Baseline Applications Usage", systemImage: "chart.bar.xaxis")
+                    }
                     NavigationLink(value: "department-progress") {
                         Label("Department Progress", systemImage: "building.2.fill")
                     }
@@ -37,10 +42,6 @@ struct AdminDashboardView: View {
                     NavigationLink(value: "organisation-progress") {
                         Label("Organisation Progress", systemImage: "building.2.fill")
                     }
-                }
-                
-                NavigationLink(value: "reports") {
-                    Label("Reports", systemImage: "chart.bar.doc.horizontal")
                 }
                 
                 Divider()
@@ -76,8 +77,12 @@ struct AdminDashboardView: View {
                     ValidationView(progress: progress)
                 case "content":
                     DatabaseContentView()
-                case "query":
-                    QueryView()
+                case "baseline-accounts":
+                    BaselineAccountsView()
+                case "baseline-applications":
+                    BaselineApplicationsView()
+                case "baseline-applications-usage":
+                    BaselineApplicationsUsageView()
                 case "department-progress":
                     DepartmentProgressView()
                 case "division-progress":
@@ -86,8 +91,6 @@ struct AdminDashboardView: View {
                     ClusterProgressView()
                 case "organisation-progress":
                     OrganisationProgressView()
-                case "reports":
-                    ReportsView()
                 case "export":
                     ExportView()
                 case "admin":
