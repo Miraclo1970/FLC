@@ -17,6 +17,7 @@ struct BaselineApplicationsUsageView: View {
     @State private var totalApplicationCount: Int = 0
     @State private var mostUsedApplications: [(name: String, userCount: Int)] = []
     @State private var totalUsers: Int = 0
+    @State private var maxUserApplicationCount = 0
     
     // OTAP filter states
     @State private var selectedOTAP: Set<String> = ["P"]
@@ -147,7 +148,7 @@ struct BaselineApplicationsUsageView: View {
                         .frame(width: 200, height: 200)
                         
                         // Legend
-                        VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 15) {
                             ForEach(Array(divisionCounts.enumerated()), id: \.element.division) { index, item in
                                 HStack(spacing: 5) {
                                     Circle()
@@ -175,20 +176,23 @@ struct BaselineApplicationsUsageView: View {
                             .foregroundColor(.secondary)
                             .padding(.bottom, 5)
                         
-                        VStack(alignment: .leading, spacing: 5) {
-                            ForEach(mostUsedApplications, id: \.name) { app in
-                                HStack {
-                                    Text(app.name)
-                                        .font(.system(size: 12))
-                                        .lineLimit(1)
-                                    Spacer()
-                                    Text("\(app.userCount) users (\(Int((Double(app.userCount) / Double(totalUsers)) * 100))%)")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.secondary)
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 5) {
+                                ForEach(mostUsedApplications, id: \.name) { app in
+                                    HStack {
+                                        Text(app.name)
+                                            .font(.system(size: 12))
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text("\(app.userCount) users (\(Int((Double(app.userCount) / Double(totalUsers)) * 100))%)")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                             }
+                            .frame(width: 300)
                         }
-                        .frame(width: 300)
+                        .frame(height: 300)  // Fixed height for scrollable area
                     }
                     .padding()
                     .background(RoundedRectangle(cornerRadius: 10)
@@ -269,6 +273,24 @@ struct BaselineApplicationsUsageView: View {
                 Spacer()
             }
             .padding()
+            
+            // Button for user with most applications
+            Button(action: {}) {
+                VStack {
+                    Text("Most Applications per User")
+                        .font(.headline)
+                    Text("\(maxUserApplicationCount) applications")
+                        .font(.title)
+                }
+                .frame(width: 300, height: 100)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.blue, lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
             
             // Download buttons
             VStack(spacing: 10) {
@@ -515,6 +537,14 @@ struct BaselineApplicationsUsageView: View {
                     usersWithFewApps.insert(user)
                 }
             }
+
+            // Calculate user with most applications
+            let userApplicationCounts = Dictionary(grouping: combinedRecords.filter { record in
+                selectedOTAP.contains(record.otap) && 
+                (selectedDivision == "All" || record.division == selectedDivision)
+            }, by: { $0.systemAccount })
+                .mapValues { $0.count }
+            maxUserApplicationCount = userApplicationCounts.values.max() ?? 0
 
             await MainActor.run {
                 lastADImportDate = adImportDate

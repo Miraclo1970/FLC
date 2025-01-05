@@ -8,7 +8,8 @@ struct BaselineApplicationsView: View {
     @State private var totalApplications = 0
     @State private var totalWithPackageStatus = 0
     @State private var totalWithTestStatus = 0
-    @State private var totalADGroups = 0
+    @State private var totalADGroups = 0  // For total unique AD groups
+    @State private var totalProblematicLines = 0  // For lines with no HR or past leave date
     @State private var applicationsWithoutStatus: Set<String> = []
     @State private var applicationsWithoutName: Set<String> = []
     @State private var showingSavePanel = false
@@ -109,13 +110,8 @@ struct BaselineApplicationsView: View {
                                 
                                 // Applications without name (yellow)
                                 PieSlice(startAngle: 360 * Double(totalApplications) / Double(totalCount + totalWithTestStatus),
-                                        endAngle: 360 * Double(totalApplications + totalWithTestStatus) / Double(totalCount + totalWithTestStatus))
-                                    .fill(Color.yellow.opacity(0.1))
-                                
-                                // Applications without status (red)
-                                PieSlice(startAngle: 360 * Double(totalApplications + totalWithTestStatus) / Double(totalCount + totalWithTestStatus),
                                         endAngle: 360)
-                                    .fill(Color.red.opacity(0.1))
+                                    .fill(Color.yellow.opacity(0.1))
                             } else {
                                 Circle()
                                     .stroke(Color.gray.opacity(0.2), lineWidth: 1)
@@ -128,7 +124,6 @@ struct BaselineApplicationsView: View {
                             if totalCount > 0 {
                                 legendItem(color: .green, label: "All Applications", percentage: Double(totalApplications) / Double(totalCount + totalWithTestStatus))
                                 legendItem(color: .yellow, label: "Applications without Name", percentage: Double(totalWithTestStatus) / Double(totalCount + totalWithTestStatus))
-                                legendItem(color: .red, label: "No HR or Past Leave", percentage: Double(applicationsWithoutStatus.count) / Double(totalCount + totalWithTestStatus))
                             } else {
                                 Text("No applications to display")
                                     .font(.caption)
@@ -202,7 +197,7 @@ struct BaselineApplicationsView: View {
                     Text("AD Groups without HR or Past Leave")
                         .font(.headline)
                         .foregroundColor(.secondary)
-                    Text("\(applicationsWithoutStatus.count)")
+                    Text("\(totalProblematicLines)")
                         .font(.system(size: 36, weight: .bold))
                 }
                 .padding()
@@ -311,63 +306,72 @@ struct BaselineApplicationsView: View {
             
             // Get combined records
             let combinedRecords = try await DatabaseManager.shared.fetchCombinedRecords()
+            print("Total records in database: \(combinedRecords.count)")
             
             // Get last import dates from AD and HR records
             let adImportDate = try await DatabaseManager.shared.getLatestImportDate(from: "ad_records")
             let hrImportDate = try await DatabaseManager.shared.getLatestImportDate(from: "hr_records")
             
-            // Get unique applications and their statuses
+            // For application tracking
             var applications = Set<String>()
             var withPackage = Set<String>()
             var withoutName = Set<String>()
-            var noHROrPastLeave = Set<String>()
-            var allADGroups = Set<String>()
+            var noHROrPastLeave = Set<String>()  // Keep this for export functionality
+            var allADGroups = Set<String>()  // Track unique AD groups
             
-            // Track users per application
-            var usersPerApplication: [String: Set<String>] = [:]
-            var applicationsWithFewUsers = Set<String>()
+            // Count raw lines for problematic records
+            var noHRMatchLines = 0
+            var pastLeaveDateLines = 0
             
+            // First pass: Count lines with no HR match and track unique AD groups
             for record in combinedRecords {
-                // Only process records that match the selected OTAP values
                 guard selectedOTAP.contains(record.otap) else { continue }
                 
                 // Track all unique AD groups
                 allADGroups.insert(record.adGroup)
                 
-                // Get unique application-adGroup combinations
-                let appKey = "\(record.applicationName)|\(record.adGroup)"
+                // Count raw lines for no HR match
+                if record.department == nil || record.department?.isEmpty == true {
+                    noHRMatchLines += 1
+                    noHROrPastLeave.insert("\(record.applicationName)|\(record.adGroup)")  // Keep for export
+                }
+            }
+            
+            // Second pass: Count lines with past leave date
+            for record in combinedRecords {
+                guard selectedOTAP.contains(record.otap) else { continue }
                 
-                if record.applicationName.isEmpty || record.applicationName == "#N/A" {
-                    withoutName.insert(record.adGroup)
-                } else {
-                    applications.insert(appKey)
-                    
-                    // Track users for this application
-                    if !record.applicationName.isEmpty {
-                        if usersPerApplication[record.applicationName] == nil {
-                            usersPerApplication[record.applicationName] = []
-                        }
-                        usersPerApplication[record.applicationName]?.insert(record.systemAccount)
-                    }
-                    
-                    if let packageStatus = record.applicationPackageStatus, !packageStatus.isEmpty {
-                        withPackage.insert(appKey)
-                    }
-                    
-                    // Check for no HR data or past leave date
-                    if record.department == nil || record.department?.isEmpty == true || 
-                       (record.leaveDate != nil && record.leaveDate! < Date()) {
-                        noHROrPastLeave.insert(record.adGroup)
+                // Only check records WITH HR match for leave date
+                if record.department != nil && !record.department!.isEmpty {
+                    if record.leaveDate != nil && record.leaveDate! < Date() {
+                        pastLeaveDateLines += 1
+                        noHROrPastLeave.insert("\(record.applicationName)|\(record.adGroup)")  // Keep for export
                     }
                 }
             }
             
-            // Find applications with less than 5 users
-            for (appName, users) in usersPerApplication {
-                if users.count < 5 {
-                    applicationsWithFewUsers.insert(appName)
+            // Third pass: Process application status counts
+            for record in combinedRecords {
+                guard selectedOTAP.contains(record.otap) else { continue }
+                
+                let appKey = "\(record.applicationName)|\(record.adGroup)"
+                
+                if record.applicationName.isEmpty || record.applicationName == "#N/A" {
+                    withoutName.insert(appKey)
+                } else {
+                    applications.insert(appKey)
+                    if let packageStatus = record.applicationPackageStatus, !packageStatus.isEmpty {
+                        withPackage.insert(appKey)
+                    }
                 }
             }
+            
+            print("Debug counts:")
+            print("Selected OTAP values: \(selectedOTAP)")
+            print("Total unique AD groups: \(allADGroups.count)")
+            print("Lines with no HR match: \(noHRMatchLines)")
+            print("Lines with past leave date: \(pastLeaveDateLines)")
+            print("Total problematic lines: \(noHRMatchLines + pastLeaveDateLines)")
             
             await MainActor.run {
                 lastADImportDate = adImportDate
@@ -375,9 +379,10 @@ struct BaselineApplicationsView: View {
                 totalApplications = applications.count
                 totalWithPackageStatus = withPackage.count
                 totalWithTestStatus = withoutName.count
-                totalADGroups = allADGroups.count
+                totalADGroups = allADGroups.count  // Total unique AD groups
+                totalProblematicLines = noHRMatchLines + pastLeaveDateLines  // Total problematic lines
                 applicationsWithoutName = withoutName
-                applicationsWithoutStatus = noHROrPastLeave
+                applicationsWithoutStatus = noHROrPastLeave  // Keep for export functionality
                 isLoading = false
             }
         } catch {

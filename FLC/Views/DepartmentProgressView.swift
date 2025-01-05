@@ -11,7 +11,7 @@ struct DepartmentProgressView: View {
     @AppStorage("departmentView.sortAscending") private var sortAscending: Bool = true
     
     // Instead of using AppStorage for Sets (which isn't directly supported), we'll use State
-    @State private var selectedEnvironments: Set<String> = ["P"]
+    @State private var selectedEnvironments: Set<String> = ["P", "A", "OT"]
     @State private var selectedPlatforms: Set<String> = ["All"]
     
     @State private var records: [CombinedRecord] = []
@@ -32,7 +32,7 @@ struct DepartmentProgressView: View {
         case name, users, departments, packageStatus, testResult
     }
     
-    private let environments = ["P", "A", "T"]
+    private let environments = ["All", "P", "A", "OT"]
     private let platforms = ["All", "SAAS", "VDI", "Local"]
     
     // Available divisions and departments
@@ -100,12 +100,27 @@ struct DepartmentProgressView: View {
                             HStack(spacing: 8) {
                                 ForEach(environments, id: \.self) { env in
                                     Toggle(env, isOn: Binding(
-                                        get: { selectedEnvironments.contains(env) },
+                                        get: { 
+                                            if env == "All" {
+                                                return selectedEnvironments.count == environments.count - 1  // -1 for "All" itself
+                                            }
+                                            return selectedEnvironments.contains(env)
+                                        },
                                         set: { isSelected in
-                                            if isSelected {
-                                                selectedEnvironments.insert(env)
-                                            } else if selectedEnvironments.count > 1 {  // Prevent deselecting all
-                                                selectedEnvironments.remove(env)
+                                            if env == "All" {
+                                                if isSelected {
+                                                    // Select all environments except "All" itself
+                                                    selectedEnvironments = Set(environments.filter { $0 != "All" })
+                                                } else {
+                                                    // When deselecting "All", keep current selection
+                                                    selectedEnvironments = selectedEnvironments
+                                                }
+                                            } else {
+                                                if isSelected {
+                                                    selectedEnvironments.insert(env)
+                                                } else if selectedEnvironments.count > 1 {  // Prevent deselecting all
+                                                    selectedEnvironments.remove(env)
+                                                }
                                             }
                                         }
                                     ))
@@ -486,14 +501,14 @@ struct DepartmentProgressView: View {
         // First, filter records by division and OTAP only (for department counting)
         let divisionRecords = records.filter { record in
             (selectedDivision == "All" || record.division == selectedDivision) &&
-            selectedEnvironments.contains(record.otap)
+            (selectedEnvironments.contains("All") || selectedEnvironments.contains(record.otap))
         }
         
         // Then filter for display based on selected department
         let filteredRecords = records.filter { record in
             (selectedDivision == "All" || record.division == selectedDivision) &&
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
-            selectedEnvironments.contains(record.otap)
+            (selectedEnvironments.contains("All") || selectedEnvironments.contains(record.otap))
         }
         
         // Group all division records by application name for department counting
