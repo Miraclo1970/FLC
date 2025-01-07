@@ -42,6 +42,9 @@ struct AdminDashboardView: View {
                     NavigationLink(value: "organisation-progress") {
                         Label("Organisation Progress", systemImage: "building.2.fill")
                     }
+                    NavigationLink(value: "checklist-app-user") {
+                        Label("Checklist App User", systemImage: "checklist")
+                    }
                 }
                 
                 Divider()
@@ -91,6 +94,8 @@ struct AdminDashboardView: View {
                     ClusterProgressView()
                 case "organisation-progress":
                     OrganisationProgressView()
+                case "checklist-app-user":
+                    ChecklistAppUserView()
                 case "export":
                     ExportView()
                 case "admin":
