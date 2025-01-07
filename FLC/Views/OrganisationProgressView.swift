@@ -70,8 +70,6 @@ struct OrganisationProgressView: View {
                             Text("Division")
                                 .frame(width: 350, alignment: .leading)
                                 .padding(.leading, 8)
-                            Text("Migration Cluster")
-                                .frame(width: 120, alignment: .leading)
                             Text("Apps")
                                 .frame(width: 60, alignment: .center)
                             Text("Users")
@@ -93,7 +91,7 @@ struct OrganisationProgressView: View {
                             Text("Progress")
                                 .frame(width: 120, alignment: .center)
                         }
-                        .frame(width: 1090)
+                        .frame(width: 970)
                         .padding(.vertical, 4)
                         .background(Color(NSColor.controlBackgroundColor))
                         .cornerRadius(8)
@@ -111,8 +109,6 @@ struct OrganisationProgressView: View {
                                 .bold()
                                 .frame(width: 350, alignment: .leading)
                                 .padding(.leading, 8)
-                            Text("")  // Empty Migration Cluster for total
-                                .frame(width: 120, alignment: .leading)
                             Text("\(totals.applications)")
                                 .bold()
                                 .frame(width: 60, alignment: .center)
@@ -134,7 +130,7 @@ struct OrganisationProgressView: View {
                             OverallProgressCell(progress: totals.overallProgress)
                                 .frame(width: 120)
                         }
-                        .frame(width: 1090)
+                        .frame(width: 970)
                         .padding(.vertical, 2)
                         .background(Color(NSColor.controlBackgroundColor))
                         
@@ -142,13 +138,10 @@ struct OrganisationProgressView: View {
                         ForEach(divisions, id: \.self) { division in
                             let divisionRecords = records.filter { $0.division == division }
                             let stats = calculateStats(for: divisionRecords)
-                            let migrationCluster = divisionRecords.first?.migrationCluster ?? ""
                             HStack(spacing: 0) {
                                 Text(division)
                                     .frame(width: 350, alignment: .leading)
                                     .padding(.leading, 8)
-                                Text(migrationCluster)
-                                    .frame(width: 120, alignment: .leading)
                                 Text("\(stats.applications)")
                                     .frame(width: 60, alignment: .center)
                                 Text("\(stats.users)")
@@ -166,7 +159,7 @@ struct OrganisationProgressView: View {
                                 OverallProgressCell(progress: stats.combinedProgress)
                                     .frame(width: 120)
                             }
-                            .frame(width: 1090)
+                            .frame(width: 970)
                             .padding(.vertical, 2)
                             .background(Color(NSColor.controlBackgroundColor))
                         }
@@ -322,17 +315,15 @@ struct OrganisationProgressView: View {
                 
                 if response == .OK, let url = panel.url {
                     // Create CSV content
-                    var csvContent = "Division,Migration Cluster,Applications,Users,Package Progress,Package Ready By,Testing Progress,Test Ready By,Overall Progress\n"
+                    var csvContent = "Division,Applications,Users,Package Progress,Package Ready By,Testing Progress,Test Ready By,Overall Progress\n"
                     
                     // Add division rows
                     for division in divisions {
                         let divisionRecords = records.filter { $0.division == division }
                         let stats = calculateStats(for: divisionRecords)
-                        let migrationCluster = divisionRecords.first?.migrationCluster ?? ""
                         
                         let fields = [
                             division,
-                            migrationCluster,
                             String(stats.applications),
                             String(stats.users),
                             String(format: "%.1f", stats.packageProgress),
