@@ -15,8 +15,14 @@ struct DivisionSummary {
 
 struct DivisionProgressView: View {
     @EnvironmentObject private var databaseManager: DatabaseManager
+    @AppStorage("divisionView.selectedDivision") private var selectedDivision: String = ""
+    @AppStorage("divisionView.excludeNonActive") private var excludeNonActive: Bool = false
+    @AppStorage("divisionView.excludeNoHRMatch") private var excludeNoHRMatch: Bool = false
+    @AppStorage("divisionView.excludeLeftUsers") private var excludeLeftUsers: Bool = false
+    @AppStorage("divisionView.showResults") private var showResults: Bool = false
+    @AppStorage("divisionView.sortColumn") private var sortColumnRaw: String = "name"
+    @AppStorage("divisionView.sortAscending") private var sortAscending: Bool = true
     @State private var records: [CombinedRecord] = []
-    @State private var selectedDivision: String = ""
     @State private var selectedCluster: String = "All"
     @State private var isLoading = true
     @State private var isExporting = false
@@ -93,6 +99,18 @@ struct DivisionProgressView: View {
                             }
                         }
                         .frame(width: 200)
+                    }
+                    
+                    // Status Filters
+                    VStack(alignment: .leading) {
+                        Text("Status:")
+                            .font(.subheadline)
+                        Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
+                            .toggleStyle(.checkbox)
+                        Toggle("Exclude users without HR match", isOn: $excludeNoHRMatch)
+                            .toggleStyle(.checkbox)
+                        Toggle("Exclude users who have left", isOn: $excludeLeftUsers)
+                            .toggleStyle(.checkbox)
                     }
                 }
                 .padding(.bottom, 8)
@@ -265,61 +283,50 @@ struct DivisionProgressView: View {
     }
     
     private func calculateStats(for records: [CombinedRecord]) -> DivisionSummary {
-        let uniqueApps = Set(records.map { $0.applicationName }).count
-        let uniqueUsers = Set(records.compactMap { $0.systemAccount }).count
-        
-        // First, filter out applications that are out of scope or have a "will be" value
-        let activeRecords = records.filter { record in
-            let willBe = record.willBe ?? ""
-            let inOutScope = record.inScopeOutScopeDivision?.lowercased() ?? ""
-            return (willBe.isEmpty || willBe == "N/A") && inOutScope != "out"
+        // Apply HR match and leave date filters
+        let filteredRecords = records.filter { record in
+            // HR match filter - check both nil and empty string cases
+            let hrFilter = !excludeNoHRMatch || (record.department != nil && !record.department!.isEmpty)
+            
+            // Leave date filter - only include users who haven't left
+            let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
+            
+            return hrFilter && leaveFilter
         }
+
+        // Group by application
+        let groupedByApp = Dictionary(grouping: filteredRecords) { $0.applicationName }
         
-        // Group by application name
-        let groupedByApp = Dictionary(grouping: activeRecords) { $0.applicationName }
+        // Calculate totals
+        let totalApplications = groupedByApp.count
+        let uniqueUsers = Set(filteredRecords.map { $0.systemAccount }).count
         
         // Calculate package progress
-        var totalPackagePoints = 0.0
-        var totalTestPoints = 0.0
-        let totalApps = Double(groupedByApp.count)
+        let packageProgress = calculatePackageProgress(from: groupedByApp)
         
-        for (_, appRecords) in groupedByApp {
-            guard let firstRecord = appRecords.first else { continue }
-            
-            // Package progress
-            let packageStatus = firstRecord.applicationPackageStatus?.lowercased() ?? ""
-            if packageStatus == "ready" || packageStatus == "ready for testing" || packageStatus == "completed" || packageStatus == "passed" {
-                totalPackagePoints += 100.0
-            } else if packageStatus == "in progress" {
-                totalPackagePoints += 50.0
-            }
-            
-            // Test progress
-            let testStatus = firstRecord.applicationTestStatus?.lowercased() ?? ""
-            if testStatus == "ready" || testStatus == "completed" || testStatus == "passed" {
-                totalTestPoints += 100.0
-            } else if testStatus == "in progress" {
-                totalTestPoints += 50.0
-            }
-        }
+        // Calculate test progress
+        let testProgress = calculateTestProgress(from: groupedByApp)
         
-        let packageProgress = totalApps > 0 ? totalPackagePoints / totalApps : 0.0
-        let testProgress = totalApps > 0 ? totalTestPoints / totalApps : 0.0
+        // Get latest dates
+        let packageReadyDate = filteredRecords.compactMap { $0.applicationPackageReadinessDate }.max()
+        let testReadyDate = filteredRecords.compactMap { $0.applicationTestReadinessDate }.max()
+        
+        // Calculate combined progress
         let combinedProgress = (packageProgress + testProgress) / 2.0
         
-        let packageReadyDate = records.compactMap { $0.applicationPackageReadinessDate }.max()
-        let testReadyDate = records.compactMap { $0.applicationTestReadinessDate }.max()
+        // Determine status
+        let status = determineStatus(progress: combinedProgress)
         
         return DivisionSummary(
-            division: selectedDivision,
-            applications: uniqueApps,
+            division: filteredRecords.first?.division ?? "",
+            applications: totalApplications,
             users: uniqueUsers,
             packageProgress: packageProgress,
             testProgress: testProgress,
             packageReadyDate: packageReadyDate,
             testReadyDate: testReadyDate,
             combinedProgress: combinedProgress,
-            status: determineStatus(progress: combinedProgress)
+            status: status
         )
     }
     
@@ -416,6 +423,42 @@ struct DivisionProgressView: View {
                 isExporting = false
             }
         }
+    }
+    
+    private func calculatePackageProgress(from groupedByApp: [String: [CombinedRecord]]) -> Double {
+        var totalPoints = 0.0
+        let totalApps = Double(groupedByApp.count)
+        
+        for (_, appRecords) in groupedByApp {
+            guard let firstRecord = appRecords.first else { continue }
+            
+            let packageStatus = firstRecord.applicationPackageStatus?.lowercased() ?? ""
+            if packageStatus == "ready" || packageStatus == "ready for testing" || packageStatus == "completed" || packageStatus == "passed" {
+                totalPoints += 100.0
+            } else if packageStatus == "in progress" {
+                totalPoints += 50.0
+            }
+        }
+        
+        return totalApps > 0 ? totalPoints / totalApps : 0.0
+    }
+    
+    private func calculateTestProgress(from groupedByApp: [String: [CombinedRecord]]) -> Double {
+        var totalPoints = 0.0
+        let totalApps = Double(groupedByApp.count)
+        
+        for (_, appRecords) in groupedByApp {
+            guard let firstRecord = appRecords.first else { continue }
+            
+            let testStatus = firstRecord.applicationTestStatus?.lowercased() ?? ""
+            if testStatus == "ready" || testStatus == "completed" || testStatus == "passed" {
+                totalPoints += 100.0
+            } else if testStatus == "in progress" {
+                totalPoints += 50.0
+            }
+        }
+        
+        return totalApps > 0 ? totalPoints / totalApps : 0.0
     }
 }
 
