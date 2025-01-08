@@ -6,12 +6,14 @@ struct DepartmentProgressView: View {
     @AppStorage("departmentView.selectedDivision") private var selectedDivision: String = ""
     @AppStorage("departmentView.selectedDepartment") private var selectedDepartment: String = ""
     @AppStorage("departmentView.excludeNonActive") private var excludeNonActive: Bool = false
+    @AppStorage("departmentView.excludeNoHRMatch") private var excludeNoHRMatch: Bool = false
+    @AppStorage("departmentView.excludeLeftUsers") private var excludeLeftUsers: Bool = false
     @AppStorage("departmentView.showResults") private var showResults: Bool = false
     @AppStorage("departmentView.sortColumn") private var sortColumnRaw: String = "name"
     @AppStorage("departmentView.sortAscending") private var sortAscending: Bool = true
     
     // Instead of using AppStorage for Sets (which isn't directly supported), we'll use State
-    @State private var selectedEnvironments: Set<String> = ["P", "A", "OT"]
+    @State private var selectedEnvironments: Set<String> = ["P"]
     @State private var selectedPlatforms: Set<String> = ["All"]
     
     @State private var records: [CombinedRecord] = []
@@ -134,6 +136,10 @@ struct DepartmentProgressView: View {
                             Text("Status:")
                                 .font(.subheadline)
                             Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
+                                .toggleStyle(.checkbox)
+                            Toggle("Exclude users without HR match", isOn: $excludeNoHRMatch)
+                                .toggleStyle(.checkbox)
+                            Toggle("Exclude users who have left", isOn: $excludeLeftUsers)
                                 .toggleStyle(.checkbox)
                         }
                         
@@ -504,11 +510,24 @@ struct DepartmentProgressView: View {
             (selectedEnvironments.contains("All") || selectedEnvironments.contains(record.otap))
         }
         
-        // Then filter for display based on selected department
+        // Then filter for display based on selected department and user filters
         let filteredRecords = records.filter { record in
-            (selectedDivision == "All" || record.division == selectedDivision) &&
+            // Basic filters
+            let basicFilter = (selectedDivision == "All" || record.division == selectedDivision) &&
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
             (selectedEnvironments.contains("All") || selectedEnvironments.contains(record.otap))
+            
+            // HR match filter - check both nil and empty string cases
+            let hrFilter = !excludeNoHRMatch || (record.department != nil && !record.department!.isEmpty)
+            
+            // Leave date filter - only include users who haven't left
+            let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
+            
+            // Out of scope filter
+            let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
+            let isOutOfScope = excludeNonActive && (inOutScope == "out" || inOutScope.hasPrefix("out "))
+            
+            return basicFilter && hrFilter && leaveFilter && !isOutOfScope
         }
         
         // Group all division records by application name for department counting
@@ -564,15 +583,6 @@ struct DepartmentProgressView: View {
             )
         }
         
-        // Apply status filter if enabled
-        if excludeNonActive {
-            applications = applications.filter { app in
-                let willBe = app.willBe
-                let inOutScope = app.inOutScope.lowercased()
-                return (willBe.isEmpty || willBe == "N/A") && inOutScope != "out"
-            }
-        }
-        
         // Apply platform filter
         applications = applications.filter { app in
             selectedPlatforms.contains("All") || selectedPlatforms.contains(app.platform)
@@ -584,18 +594,38 @@ struct DepartmentProgressView: View {
     
     private var totalUniqueUsers: Int {
         let filteredRecords = records.filter { record in
-            (selectedDivision == "All" || record.division == selectedDivision) &&
+            // Basic filters
+            let basicFilter = (selectedDivision == "All" || record.division == selectedDivision) &&
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
-            selectedEnvironments.contains(record.otap)
+            (selectedEnvironments.contains("All") || selectedEnvironments.contains(record.otap))
+            
+            // HR match filter - check both nil and empty string cases
+            let hrFilter = !excludeNoHRMatch || (record.department != nil && !record.department!.isEmpty)
+            
+            // Leave date filter - only include users who haven't left
+            let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
+            
+            // Out of scope filter
+            let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
+            let isOutOfScope = excludeNonActive && (inOutScope == "out" || inOutScope.hasPrefix("out "))
+            
+            return basicFilter && hrFilter && leaveFilter && !isOutOfScope
         }
         return Set(filteredRecords.map { $0.systemAccount }).count
     }
     
     private var totalUniqueDepartments: Int {
         let filteredRecords = records.filter { record in
-            (selectedDivision == "All" || record.division == selectedDivision) &&
+            // Basic filters
+            let basicFilter = (selectedDivision == "All" || record.division == selectedDivision) &&
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
-            selectedEnvironments.contains(record.otap)
+            (selectedEnvironments.contains("All") || selectedEnvironments.contains(record.otap))
+            
+            // Out of scope filter
+            let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
+            let isOutOfScope = excludeNonActive && (inOutScope == "out" || inOutScope.hasPrefix("out "))
+            
+            return basicFilter && !isOutOfScope
         }
         return Set(filteredRecords.compactMap { $0.departmentSimple }).count
     }

@@ -171,7 +171,7 @@ struct BaselineApplicationsUsageView: View {
                             .foregroundColor(.secondary)
                             .padding(.bottom, 2)
                         
-                        Text("(Accounting for 80% of users)")
+                        Text("(Accounting for 95% of users)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .padding(.bottom, 5)
@@ -464,14 +464,14 @@ struct BaselineApplicationsUsageView: View {
                 // Calculate total users in division
                 totalUsersCount = divisionApps.reduce(0) { $0 + $1.userCount }
                 
-                // Find applications accounting for 80% of users
-                var runningSum = 0
-                let threshold = Double(totalUsersCount) * 0.8
+                // Find applications accounting for 95% of users
+                var runningTotal = 0
+                let threshold = Double(totalUsersCount) * 0.95
                 
                 for app in divisionApps {
-                    runningSum += app.userCount
+                    runningTotal += app.userCount
                     mostUsedApps.append(app)
-                    if Double(runningSum) >= threshold {
+                    if Double(runningTotal) >= threshold {
                         break
                     }
                 }
