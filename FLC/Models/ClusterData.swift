@@ -71,6 +71,26 @@ struct ClusterData: Identifiable, Codable {
             errors.append("Department is required")
         }
         
+        // Validate Migration Cluster Readiness if provided
+        if let readiness = migrationClusterReadiness, !readiness.isEmpty, readiness != "N/A" {
+            let validStatuses = [
+                "orderlist to dep",
+                "orderlist confirmed",
+                "waiting for apps",
+                "on hold",
+                "ready to start",
+                "planned",
+                "executed",
+                "aftercare ok",
+                "decharge"
+            ]
+            
+            let normalizedReadiness = readiness.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            if !validStatuses.contains(normalizedReadiness) {
+                errors.append("Invalid Migration Cluster Readiness status: '\(readiness)'. Valid values are: \(validStatuses.joined(separator: ", "))")
+            }
+        }
+        
         return errors
     }
     

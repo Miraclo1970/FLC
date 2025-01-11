@@ -1961,6 +1961,8 @@ struct ImportView: View {
                             standardHeader = "Domain"
                         case "migration cluster", "migrationcluster", "migration_cluster":
                             standardHeader = "Migration Cluster"
+                        case "migration cluster readiness", "migrationclusterreadiness", "migration_cluster_readiness":
+                            standardHeader = "Migration Cluster Readiness"
                         default:
                             continue
                         }
@@ -2043,6 +2045,14 @@ struct ImportView: View {
             let domain = columnMap["Domain"].map { fullRowContent[$0] } ?? ""
             let migrationCluster = columnMap["Migration Cluster"].map { fullRowContent[$0] } ?? ""
             let migrationClusterReadiness = columnMap["Migration Cluster Readiness"].map { fullRowContent[$0] } ?? ""
+            
+            // Debug logging
+            print("Row \(index + 1) data:")
+            print("Department: \(department)")
+            print("Department Simple: \(departmentSimple)")
+            print("Domain: \(domain)")
+            print("Migration Cluster: \(migrationCluster)")
+            print("Migration Cluster Readiness: \(migrationClusterReadiness)")
             
             // Skip empty rows
             if department.isEmpty || department == "N/A" {

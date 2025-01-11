@@ -451,10 +451,19 @@ struct DivisionProgressView: View {
             guard let firstRecord = appRecords.first else { continue }
             
             let testStatus = firstRecord.applicationTestStatus?.lowercased() ?? ""
-            if testStatus == "ready" || testStatus == "completed" || testStatus == "passed" {
+            switch testStatus {
+            case "pat ok":
                 totalPoints += 100.0
-            } else if testStatus == "in progress" {
+            case "pat on hold":
+                totalPoints += 75.0
+            case "pat planned":
+                totalPoints += 60.0
+            case "gat ok":
                 totalPoints += 50.0
+            case "in progress":
+                totalPoints += 30.0
+            default:
+                break
             }
         }
         
