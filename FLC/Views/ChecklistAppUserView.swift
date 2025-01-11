@@ -134,6 +134,12 @@ struct ChecklistAppUserView: View {
                                     .frame(width: 300, alignment: .leading)
                                     .padding(.leading, 4)
                                     .font(.system(size: 12, weight: .bold))
+                                Text("Will be")
+                                    .frame(width: 100, alignment: .leading)
+                                    .font(.system(size: 12, weight: .bold))
+                                Text("Out of Scope")
+                                    .frame(width: 100, alignment: .leading)
+                                    .font(.system(size: 12, weight: .bold))
                                 
                                 ForEach(users, id: \.self) { user in
                                     VStack {
@@ -155,6 +161,14 @@ struct ChecklistAppUserView: View {
                                     Text(app)
                                         .frame(width: 300, alignment: .leading)
                                         .padding(.leading, 4)
+                                        .font(.system(size: 11))
+                                        .lineLimit(1)
+                                    Text(getWillBeValue(for: app))
+                                        .frame(width: 100, alignment: .leading)
+                                        .font(.system(size: 11))
+                                        .lineLimit(1)
+                                    Text(getOutOfScopeValue(for: app))
+                                        .frame(width: 100, alignment: .leading)
                                         .font(.system(size: 11))
                                         .lineLimit(1)
                                     
@@ -317,11 +331,11 @@ struct ChecklistAppUserView: View {
                     csvContent += "OTAP Environments: \(Array(selectedOTAP).sorted().joined(separator: ", "))\n\n"
                     
                     // Add header row with usernames
-                    csvContent += "Application," + users.joined(separator: ",") + "\n"
+                    csvContent += "Application,Will be,Out of Scope," + users.joined(separator: ",") + "\n"
                     
                     // Add application rows
                     for app in applications {
-                        let row = [app] + users.map { user in
+                        let row = [app, getWillBeValue(for: app), getOutOfScopeValue(for: app)] + users.map { user in
                             usageMatrix[app]?.contains(user) == true ? "X" : ""
                         }
                         csvContent += row.joined(separator: ",") + "\n"
@@ -339,6 +353,28 @@ struct ChecklistAppUserView: View {
                 isExporting = false
             }
         }
+    }
+    
+    private func getWillBeValue(for app: String) -> String {
+        // Find the first record for this application that has a willBe value
+        let appRecords = records.filter { record in
+            record.applicationName == app &&
+            record.division == selectedDivision &&
+            record.departmentSimple == selectedDepartment &&
+            selectedOTAP.contains(record.otap)
+        }
+        return appRecords.first?.willBe ?? "N/A"
+    }
+    
+    private func getOutOfScopeValue(for app: String) -> String {
+        // Find the first record for this application that has an out of scope value
+        let appRecords = records.filter { record in
+            record.applicationName == app &&
+            record.division == selectedDivision &&
+            record.departmentSimple == selectedDepartment &&
+            selectedOTAP.contains(record.otap)
+        }
+        return appRecords.first?.inScopeOutScopeDivision ?? "N/A"
     }
 }
 

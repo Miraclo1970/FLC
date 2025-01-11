@@ -250,10 +250,22 @@ struct OrganisationProgressView: View {
             
             // Test progress
             let testStatus = firstRecord.applicationTestStatus?.lowercased() ?? ""
-            if testStatus == "ready" || testStatus == "completed" || testStatus == "passed" {
+            switch testStatus {
+            case "pat ok":
                 totalTestPoints += 100.0
-            } else if testStatus == "in progress" {
+            case "pat on hold":
+                totalTestPoints += 75.0
+            case "pat planned":
+                totalTestPoints += 60.0
+            case "gat ok":
                 totalTestPoints += 50.0
+            case "in progress":
+                totalTestPoints += 30.0
+            case "", "not started":
+                totalTestPoints += 0.0
+            default:
+                print("Unknown testing status: \(testStatus)")
+                totalTestPoints += 0.0
             }
         }
         

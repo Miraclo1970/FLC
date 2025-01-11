@@ -334,12 +334,12 @@ struct DepartmentProgressView: View {
                                             .frame(width: 60, alignment: .center)
                                         Text("\(app.uniqueDepartments)")
                                             .frame(width: 60, alignment: .center)
-                                        DepartmentProgressCell(status: app.packageStatus)
+                                        DepartmentProgressCell(status: app.packageStatus, isTestStatus: false)
                                             .frame(width: 120)
                                         Text(app.packageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
                                             .frame(width: 80, alignment: .center)
                                             .font(.system(size: 11))
-                                        DepartmentProgressCell(status: app.testingStatus)
+                                        DepartmentProgressCell(status: app.testingStatus, isTestStatus: true)
                                             .frame(width: 120)
                                         formatDateWithColor(app.testReadinessDate, packageDate: app.packageReadinessDate)
                                             .frame(width: 80, alignment: .center)
@@ -446,6 +446,27 @@ struct DepartmentProgressView: View {
         }
     }
     
+    private func getProgressBarColor(for status: String, isTestStatus: Bool = false) -> Color {
+        if isTestStatus {
+            switch status.lowercased() {
+            case "pat ok":
+                return .green
+            case "pat on hold":
+                return .red
+            case "pat planned":
+                return .green.opacity(0.6)  // Light green
+            case "gat ok":
+                return .blue  // Middle blue
+            case "in progress":
+                return .blue.opacity(0.6)  // Light blue
+            default:
+                return .gray
+            }
+        }
+        // For non-test status, use default blue
+        return .blue
+    }
+    
     private struct ApplicationInfo: Identifiable {
         let id = UUID()
         let name: String
@@ -481,11 +502,20 @@ struct DepartmentProgressView: View {
             
             let testingPoints = {
                 switch testingStatus.lowercased() {
-                case "ready", "completed", "passed":
+                case "pat ok":
                     return 100.0
-                case "in progress":
+                case "pat on hold":
+                    return 75.0
+                case "pat planned":
+                    return 60.0
+                case "gat ok":
                     return 50.0
+                case "in progress":
+                    return 30.0
+                case "", "not started":
+                    return 0.0
                 default:
+                    print("Unknown testing status: \(testingStatus)")
                     return 0.0
                 }
             }()
@@ -668,10 +698,16 @@ struct DepartmentProgressView: View {
             let status = app.testingStatus.lowercased()
             let points = {
                 switch status {
-                case "ready", "completed", "passed":
+                case "pat ok":
                     return 100.0
-                case "in progress":
+                case "pat on hold":
+                    return 75.0
+                case "pat planned":
+                    return 60.0
+                case "gat ok":
                     return 50.0
+                case "in progress":
+                    return 30.0
                 case "not started", "":
                     return 0.0
                 default:
