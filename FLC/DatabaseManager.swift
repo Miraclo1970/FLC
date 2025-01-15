@@ -863,58 +863,134 @@ class DatabaseManager: ObservableObject {
         }
     }
     
+    // Save package status records
+    func savePackageStatusRecords(_ records: [PackageStatusData]) async throws -> (saved: Int, skipped: Int) {
+        try await performDatabaseOperation("Save Package Status Records", write: true) { db in
+            var counts = (saved: 0, skipped: 0)
+            
+            // Get all valid AD application names
+            let adApplicationNames = try ADRecord
+                .select(Column("applicationName"))
+                .asRequest(of: String.self)
+                .fetchSet(db)
+            
+            for data in records {
+                // Only process if application exists in AD records
+                if adApplicationNames.contains(data.applicationName) {
+                    let record = PackageRecord(from: data)
+                    
+                    // Try to find existing record by applicationName
+                    if let existingRecord = try PackageRecord
+                        .filter(Column("applicationName") == data.applicationName)
+                        .fetchOne(db) {
+                        // Always update the package record
+                        var updatedRecord = record
+                        updatedRecord.id = existingRecord.id
+                        try updatedRecord.update(db)
+                        
+                        // Only update combined records table if we have non-empty values
+                        var updateFields: [(String, (any DatabaseValueConvertible)?)] = []
+                        
+                        if !data.packageStatus.isEmpty && data.packageStatus != "N/A" {
+                            updateFields.append(("applicationPackageStatus", data.packageStatus))
+                        }
+                        if data.packageReadinessDate != nil {
+                            updateFields.append(("applicationPackageReadinessDate", data.packageReadinessDate))
+                        }
+                        
+                        if !updateFields.isEmpty {
+                            // Build dynamic SQL update statement
+                            let setClause = updateFields.map { "\($0.0) = ?" }.joined(separator: ", ")
+                            let sql = """
+                                UPDATE combined_records
+                                SET \(setClause)
+                                WHERE applicationName = ?
+                                """
+                            
+                            // Create arguments array and convert to StatementArguments
+                            let arguments: [(any DatabaseValueConvertible)?] = updateFields.map { $0.1 } + [data.applicationName]
+                            try db.execute(sql: sql, arguments: StatementArguments(arguments))
+                        }
+                        counts.saved += 1
+                    } else {
+                        // Always insert new record
+                        try record.insert(db)
+                        counts.saved += 1
+                    }
+                } else {
+                    counts.skipped += 1
+                }
+            }
+            return counts
+        }
+    }
+    
     // Save test records to database with upsert behavior
     func saveTestRecords(_ records: [TestingData]) async throws -> (saved: Int, skipped: Int) {
         try await performDatabaseOperation("Save Test Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
+            // Get all valid AD application names
+            let adApplicationNames = try ADRecord
+                .select(Column("applicationName"))
+                .asRequest(of: String.self)
+                .fetchSet(db)
+            
             for record in records {
-                let dbRecord = TestRecord(from: record)
-                print("Processing test record for application: \(dbRecord.applicationName)")
-                print("Test plan date: \(String(describing: record.testingPlanDate))")
-                
-                // Try to find existing record by applicationName only
-                if let existingRecord = try TestRecord
-                    .filter(Column("applicationName") == record.applicationName)
-                    .fetchOne(db) {
-                    print("Found existing record for \(dbRecord.applicationName), updating...")
-                    // Update existing record with new data, preserving id
-                    var updatedRecord = dbRecord
-                    updatedRecord.id = existingRecord.id
-                    try updatedRecord.update(db)
-                    counts.saved += 1
+                // Only process if application exists in AD records
+                if adApplicationNames.contains(record.applicationName) {
+                    let dbRecord = TestRecord(from: record)
+                    print("Processing test record for application: \(dbRecord.applicationName)")
+                    
+                    // Try to find existing record by applicationName only
+                    if let existingRecord = try TestRecord
+                        .filter(Column("applicationName") == record.applicationName)
+                        .fetchOne(db) {
+                        print("Found existing record for \(dbRecord.applicationName), updating...")
+                        
+                        // Always update the test record
+                        var updatedRecord = dbRecord
+                        updatedRecord.id = existingRecord.id
+                        try updatedRecord.update(db)
+                        
+                        // Only update combined records table if we have non-empty values
+                        var updateFields: [(String, (any DatabaseValueConvertible)?)] = []
+                        
+                        if !record.testStatus.isEmpty && record.testStatus != "N/A" {
+                            updateFields.append(("applicationTestStatus", record.testStatus))
+                        }
+                        if !record.testResult.isEmpty && record.testResult != "N/A" {
+                            updateFields.append(("testResult", record.testResult))
+                        }
+                        if record.testDate != nil {
+                            updateFields.append(("applicationTestReadinessDate", record.testDate))
+                        }
+                        if record.testingPlanDate != nil {
+                            updateFields.append(("testingPlanDate", record.testingPlanDate))
+                        }
+                        
+                        if !updateFields.isEmpty {
+                            // Build dynamic SQL update statement
+                            let setClause = updateFields.map { "\($0.0) = ?" }.joined(separator: ", ")
+                            let sql = """
+                                UPDATE combined_records
+                                SET \(setClause)
+                                WHERE applicationName = ?
+                                """
+                            
+                            // Create arguments array and convert to StatementArguments
+                            let arguments: [(any DatabaseValueConvertible)?] = updateFields.map { $0.1 } + [record.applicationName]
+                            try db.execute(sql: sql, arguments: StatementArguments(arguments))
+                        }
+                        counts.saved += 1
+                    } else {
+                        print("No existing record for \(dbRecord.applicationName), inserting new record...")
+                        // Always insert new record
+                        try dbRecord.insert(db)
+                        counts.saved += 1
+                    }
                 } else {
-                    print("No existing record for \(dbRecord.applicationName), inserting new record...")
-                    // Insert new record
-                    try dbRecord.insert(db)
-                    counts.saved += 1
-                }
-                
-                // Update ALL matching records in combined_records table
-                // This ensures consistency across all instances of the same application
-                try db.execute(
-                    sql: """
-                        UPDATE combined_records
-                        SET applicationTestStatus = ?,
-                            applicationTestReadinessDate = ?,
-                            testingPlanDate = ?
-                        WHERE applicationName = ?
-                        """,
-                    arguments: [
-                        record.testStatus,
-                        record.testDate,
-                        record.testingPlanDate,
-                        record.applicationName
-                    ]
-                )
-                
-                // Verify the update
-                if let updatedRecord = try CombinedRecord
-                    .filter(Column("applicationName") == record.applicationName)
-                    .fetchOne(db) {
-                    print("Updated combined record - Application: \(updatedRecord.applicationName)")
-                    print("Test Status: \(updatedRecord.applicationTestStatus ?? "nil")")
-                    print("Test Plan Date: \(String(describing: updatedRecord.testingPlanDate))")
+                    counts.skipped += 1
                 }
             }
             
@@ -1286,6 +1362,22 @@ class DatabaseManager: ObservableObject {
                 LIMIT 1
                 """)
             return row?["importDate"]
+        }
+    }
+    
+    // Check if a migration application name already exists
+    func isDuplicateMigrationApplication(_ applicationName: String) -> Bool {
+        guard let dbPool = dbPool else { return false }
+        
+        do {
+            return try dbPool.read { db in
+                try MigrationRecord
+                    .filter(Column("applicationName").lowercased == applicationName.lowercased())
+                    .fetchCount(db) > 0
+            }
+        } catch {
+            print("Error checking for duplicate migration application: \(error)")
+            return false
         }
     }
 } 

@@ -1610,22 +1610,34 @@ struct ImportView: View {
         var validRecords: [MigrationData] = []
         var invalidRecords: [String] = []
         var duplicateRecords: [String] = []
-        var seenApplicationNames = Set<String>()
         
         await MainActor.run {
-            progress.update(operation: "Phase 1/5: Reading worksheet data...", progress: 0.1)
+            progress.update(operation: "Phase 1/5: Initializing...", progress: 0.05)
         }
         
-        // Get the first worksheet
         let worksheetPaths = try xlsx.parseWorksheetPaths()
-        guard let worksheetPath = worksheetPaths.first else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheet found in the file"])
+        guard let path = worksheetPaths.first else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No worksheets found"])
         }
         
-        let worksheet = try xlsx.parseWorksheet(at: worksheetPath)
+        let worksheet = try xlsx.parseWorksheet(at: path)
         let sharedStrings = try xlsx.parseSharedStrings()
-        // Note: totalRows is kept for GRDB compatibility, even though unused
-        let totalRows = worksheet.data?.rows.count ?? 0
+        
+        // Get headers for validation
+        if let firstRow = worksheet.data?.rows.first {
+            let headers = firstRow.cells.map { cell -> String in
+                if let sharedStrings = sharedStrings,
+                   case .sharedString = cell.type,
+                   let value = cell.value,
+                   let stringIndex = Int(value),
+                   stringIndex < sharedStrings.items.count {
+                    return sharedStrings.items[stringIndex].text ?? ""
+                }
+                return cell.value ?? ""
+            }
+            
+            try validateDataType(headers, expected: .migration)
+        }
         
         // Find the start marker and header row
         var headerRowIndex = -1
@@ -1680,7 +1692,7 @@ struct ImportView: View {
                 }
             } else if headerRowIndex == -1 {
                 // Check for header row
-                let headerVariations = ["Application Name", "ApplicationName", "Application-Name", "Application_Name", "App Name", "ID"]
+                let headerVariations = ["Application Name", "ApplicationName", "Application-Name", "Application_Name", "App Name"]
                 let foundHeader = fullRowContent.contains { content in
                     let normalizedContent = content.lowercased().trimmingCharacters(in: .whitespaces)
                     return headerVariations.contains { variation in
@@ -1695,7 +1707,7 @@ struct ImportView: View {
                         let normalizedHeader = header.trimmingCharacters(in: .whitespaces)
                         let standardHeader: String
                         switch normalizedHeader.lowercased() {
-                        case "application name", "applicationname", "app name", "id":
+                        case "application name", "applicationname":
                             standardHeader = "Application Name"
                         case "application new", "applicationnew":
                             standardHeader = "Application New"
@@ -1703,11 +1715,11 @@ struct ImportView: View {
                             standardHeader = "Application Suite New"
                         case "will be", "willbe":
                             standardHeader = "Will Be"
-                        case "in/out scope division", "inscope/outscope", "in scope out scope division", "in scope/out scope division":
+                        case "in/out scope division", "inscope/outscope", "in scope out scope division":
                             standardHeader = "In/Out Scope Division"
                         case "migration platform", "migrationplatform":
                             standardHeader = "Migration Platform"
-                        case "application readiness", "applicationreadiness", "migration application readiness":
+                        case "migration application readiness", "migrationapplicationreadiness":
                             standardHeader = "Migration Application Readiness"
                         default:
                             continue
@@ -1732,10 +1744,10 @@ struct ImportView: View {
         
         // Process only the rows after the header
         let dataRows = (worksheet.data?.rows ?? []).dropFirst(headerRowIndex + 1)
-        let totalDataRows = dataRows.count
+        let totalRows = dataRows.count
         
         await MainActor.run {
-            progress.update(operation: "Phase 4/5: Found \(totalDataRows) rows to process...", progress: 0.72)
+            progress.update(operation: "Phase 4/5: Found \(totalRows) rows to process...", progress: 0.72)
         }
         
         var processedValidRows = 0
@@ -1744,10 +1756,10 @@ struct ImportView: View {
         
         for (index, row) in dataRows.enumerated() {
             if index % 50 == 0 {
-                let progressValue = 0.72 + (0.18 * Double(index) / Double(max(1, totalDataRows)))
+                let progressValue = 0.72 + (0.18 * Double(index) / Double(max(1, totalRows)))
                 let stats = """
                 Phase 4/5: Processing rows...
-                Row: \(index) of \(totalDataRows)
+                Row: \(index) of \(totalRows)
                 Valid: \(processedValidRows)
                 Invalid: \(processedInvalidRows)
                 Duplicates: \(processedDuplicateRows)
@@ -1775,16 +1787,7 @@ struct ImportView: View {
                 return (index: columnIndex, value: cellValue)
             }
             
-            // Calculate the maximum column index needed
-            let maxColumnIndex = max(
-                columnMap.values.max() ?? 0,
-                rowContent.map { $0.index }.max() ?? 0
-            )
-            
-            // Create array with sufficient size
-            var fullRowContent: [String] = Array(repeating: "N/A", count: maxColumnIndex + 1)
-            
-            // Safely populate the array
+            var fullRowContent: [String] = Array(repeating: "N/A", count: 20)
             for cell in rowContent {
                 if cell.index < fullRowContent.count {
                     fullRowContent[cell.index] = cell.value
@@ -1797,53 +1800,34 @@ struct ImportView: View {
             }
             
             let applicationName = fullRowContent[safe: columnMap["Application Name"] ?? -1] ?? "N/A"
-            let applicationNew = fullRowContent[safe: columnMap["Application New"] ?? -1] ?? ""
-            let applicationSuiteNew = fullRowContent[safe: columnMap["Application Suite New"] ?? -1] ?? ""
-            let willBe = fullRowContent[safe: columnMap["Will Be"] ?? -1] ?? ""
-            let inScopeOutScopeDivision = fullRowContent[safe: columnMap["In/Out Scope Division"] ?? -1] ?? ""
-            let migrationPlatform = fullRowContent[safe: columnMap["Migration Platform"] ?? -1] ?? ""
-            let migrationApplicationReadiness = fullRowContent[safe: columnMap["Migration Application Readiness"] ?? -1] ?? ""
-            
-            print("Processing row - Application: \(applicationName), In/Out Scope: '\(inScopeOutScopeDivision)'")
-            
-            // Normalize In/Out Scope Division value
-            let normalizedInOutScope = inScopeOutScopeDivision.trimmingCharacters(in: .whitespacesAndNewlines)
+            let applicationNew = fullRowContent[safe: columnMap["Application New"] ?? -1] ?? "N/A"
+            let applicationSuiteNew = fullRowContent[safe: columnMap["Application Suite New"] ?? -1] ?? "N/A"
+            let willBe = fullRowContent[safe: columnMap["Will Be"] ?? -1] ?? "N/A"
+            let inScopeOutScopeDivision = fullRowContent[safe: columnMap["In/Out Scope Division"] ?? -1] ?? "N/A"
+            let migrationPlatform = fullRowContent[safe: columnMap["Migration Platform"] ?? -1] ?? "N/A"
+            let migrationApplicationReadiness = fullRowContent[safe: columnMap["Migration Application Readiness"] ?? -1] ?? "N/A"
             
             let record = MigrationData(
                 applicationName: applicationName,
                 applicationNew: applicationNew,
                 applicationSuiteNew: applicationSuiteNew,
                 willBe: willBe,
-                inScopeOutScopeDivision: normalizedInOutScope,
+                inScopeOutScopeDivision: inScopeOutScopeDivision,
                 migrationPlatform: migrationPlatform,
                 migrationApplicationReadiness: migrationApplicationReadiness
             )
             
             if record.isValid {
-                let normalizedName = record.normalizedApplicationName
-                if seenApplicationNames.contains(normalizedName) {
-                    duplicateRecords.append("Row \(index + 1): Duplicate Application Name '\(applicationName)'")
+                if DatabaseManager.shared.isDuplicateMigrationApplication(applicationName) {
+                    duplicateRecords.append("Row \(index + 1): Application Name '\(applicationName)' already exists in database")
                     processedDuplicateRows += 1
                 } else {
-                    seenApplicationNames.insert(normalizedName)
                     validRecords.append(record)
                     processedValidRows += 1
                 }
             } else {
                 invalidRecords.append("Row \(index + 1): \(record.validationErrors.joined(separator: ", "))")
                 processedInvalidRows += 1
-            }
-            
-            // Log progress for every 10000 records
-            if index % 10000 == 0 {
-                print("""
-                Processing progress:
-                Row: \(index)
-                Valid: \(processedValidRows)
-                Invalid: \(processedInvalidRows)
-                Duplicates: \(processedDuplicateRows)
-                Total processed: \(processedValidRows + processedInvalidRows + processedDuplicateRows)
-                """)
             }
         }
         
@@ -1961,6 +1945,8 @@ struct ImportView: View {
                             standardHeader = "Domain"
                         case "migration cluster", "migrationcluster", "migration_cluster":
                             standardHeader = "Migration Cluster"
+                        case "migration cluster readiness", "migrationclusterreadiness", "migration_cluster_readiness":
+                            standardHeader = "Migration Cluster Readiness"
                         default:
                             continue
                         }
@@ -2043,6 +2029,14 @@ struct ImportView: View {
             let domain = columnMap["Domain"].map { fullRowContent[$0] } ?? ""
             let migrationCluster = columnMap["Migration Cluster"].map { fullRowContent[$0] } ?? ""
             let migrationClusterReadiness = columnMap["Migration Cluster Readiness"].map { fullRowContent[$0] } ?? ""
+            
+            // Debug logging
+            print("Row \(index + 1) data:")
+            print("Department: \(department)")
+            print("Department Simple: \(departmentSimple)")
+            print("Domain: \(domain)")
+            print("Migration Cluster: \(migrationCluster)")
+            print("Migration Cluster Readiness: \(migrationClusterReadiness)")
             
             // Skip empty rows
             if department.isEmpty || department == "N/A" {
