@@ -69,16 +69,10 @@ struct TestingData: Identifiable, Codable {
     var validationErrors: [String] {
         var errors: [String] = []
         
-        if applicationName.isEmpty {
+        if applicationName.isEmpty || applicationName == "N/A" || applicationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             errors.append("Application Name is required")
-        }
-        
-        if testStatus.isEmpty {
-            errors.append("Test Status is required")
-        }
-        
-        if testResult.isEmpty {
-            errors.append("Test Result is required")
+        } else if !DatabaseManager.shared.hasADApplication(applicationName) {
+            errors.append("Application Name must exist in AD records")
         }
         
         return errors

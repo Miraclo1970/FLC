@@ -72,7 +72,7 @@ struct ClusterData: Identifiable, Codable {
         }
         
         // Validate Migration Cluster Readiness if provided
-        if let readiness = migrationClusterReadiness, !readiness.isEmpty, readiness != "N/A" {
+        if let readiness = migrationClusterReadiness {
             let validStatuses = [
                 "orderlist to dep",
                 "orderlist confirmed",
@@ -85,9 +85,14 @@ struct ClusterData: Identifiable, Codable {
                 "decharge"
             ]
             
-            let normalizedReadiness = readiness.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-            if !validStatuses.contains(normalizedReadiness) {
-                errors.append("Invalid Migration Cluster Readiness status: '\(readiness)'. Valid values are: \(validStatuses.joined(separator: ", "))")
+            // If readiness is empty or N/A, that's fine - it's optional
+            if readiness.isEmpty || readiness == "N/A" {
+                // Do nothing, empty value is allowed
+            } else {
+                let normalizedReadiness = readiness.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                if !validStatuses.contains(normalizedReadiness) {
+                    errors.append("Invalid Migration Cluster Readiness status: '\(readiness)'. Must be empty, 'N/A', or one of: \(validStatuses.joined(separator: ", "))")
+                }
             }
         }
         

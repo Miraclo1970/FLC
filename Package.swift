@@ -11,7 +11,7 @@ let package = Package(
         .package(url: "https://github.com/CoreOffice/CoreXLSX.git", from: "0.14.0")
     ],
     targets: [
-        .executableTarget(
+        .target(
             name: "FLC",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
@@ -26,8 +26,7 @@ let package = Package(
                 .process("Templates/PackageStatus_template.xlsx"),
                 .process("Templates/MigrationStatus_template.xlsx"),
                 .process("Templates/AD_template.xlsx"),
-                .process("Templates/Cluster_template.xlsx"),
-                .process("FLC.entitlements")
+                .process("Templates/Cluster_template.xlsx")
             ]
         ),
         .testTarget(

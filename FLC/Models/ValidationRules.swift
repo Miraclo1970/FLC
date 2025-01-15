@@ -58,7 +58,7 @@ class ValidationConfigStore: ObservableObject {
             ValidationConfig(
                 title: "Package Status",
                 rules: ValidationConfig.createRules([
-                    "Application Name is required and must be unique",
+                    "Application Name is required and must exist in AD records",
                     "Package Status is required"
                 ]),
                 requiredFields: ["Application Name", "Package Status"],
@@ -67,7 +67,7 @@ class ValidationConfigStore: ObservableObject {
             ValidationConfig(
                 title: "Test Status",
                 rules: ValidationConfig.createRules([
-                    "Application Name is required",
+                    "Application Name is required and must exist in AD records",
                     "Test Status is required",
                     "Test Date is required",
                     "Test Result is required"

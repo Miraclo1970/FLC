@@ -27,6 +27,11 @@ struct MigrationData: Identifiable, Codable {
             return errors
         }
         
+        // Check for duplicates
+        if DatabaseManager.shared.isDuplicateMigrationApplication(normalizedApplicationName) {
+            errors.append("Duplicate Application Name '\(applicationName)'")
+        }
+        
         // Only validate "Will be" if it's filled in and not N/A
         if !willBe.isEmpty && willBe != "N/A" {
             // Don't validate against AD records for now

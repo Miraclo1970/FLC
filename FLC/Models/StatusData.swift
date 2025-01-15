@@ -20,9 +20,9 @@ struct PackageStatusData: Identifiable, Codable, FetchableRecord, PersistableRec
         
         if applicationName.isEmpty || applicationName == "N/A" || applicationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             errors.append("Application Name is required")
+        } else if !DatabaseManager.shared.hasADApplication(applicationName) {
+            errors.append("Application Name must exist in AD records")
         }
-        
-        // Package Status is now optional, so we don't validate it
         
         return errors
     }
