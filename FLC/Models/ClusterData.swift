@@ -71,7 +71,7 @@ struct ClusterData: Identifiable, Codable {
             errors.append("Department is required")
         }
         
-        // Validate Migration Cluster Readiness
+        // Validate Migration Cluster Readiness if provided
         if let readiness = migrationClusterReadiness {
             let validStatuses = [
                 "orderlist to dep",
