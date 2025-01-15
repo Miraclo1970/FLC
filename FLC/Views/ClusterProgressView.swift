@@ -11,6 +11,7 @@ struct ClusterSummary {
     let testReadyDate: Date?
     let combinedProgress: Double
     let status: String
+    let migrationClusterReadiness: String?
 }
 
 struct ClusterProgressView: View {
@@ -35,9 +36,13 @@ struct ClusterProgressView: View {
     }
     
     private var filteredRecords: [CombinedRecord] {
-        records.filter { record in
-            (selectedCluster.isEmpty || selectedCluster == "All" || record.migrationCluster == selectedCluster) &&
-            (selectedDivision.isEmpty || record.division == selectedDivision)
+        return records.filter { record in
+            let clusterFilter = selectedCluster.isEmpty || 
+                              selectedCluster == "All" || 
+                              record.migrationCluster == selectedCluster
+            let divisionFilter = selectedDivision.isEmpty || 
+                               record.division == selectedDivision
+            return clusterFilter && divisionFilter
         }
     }
     
@@ -118,32 +123,36 @@ struct ClusterProgressView: View {
                             // Header
                             HStack(spacing: 0) {
                                 Text("Migration Cluster")
-                                    .frame(width: 350, alignment: .leading)
+                                    .frame(width: 200, alignment: .leading)
                                     .padding(.leading, 8)
                                 Text("Department")
-                                    .frame(width: 120, alignment: .leading)
+                                    .frame(width: 150, alignment: .leading)
                                 Text("Apps")
-                                    .frame(width: 60, alignment: .center)
+                                    .frame(width: 50, alignment: .center)
                                 Text("Users")
-                                    .frame(width: 60, alignment: .center)
+                                    .frame(width: 50, alignment: .center)
                                 VStack(spacing: 0) {
                                     Text("Average")
                                     Text("Package")
                                 }
-                                .frame(width: 120, alignment: .center)
+                                .frame(width: 100, alignment: .center)
                                 Text("Ready by")
                                     .frame(width: 70, alignment: .center)
                                 VStack(spacing: 0) {
                                     Text("Average")
                                     Text("Testing")
                                 }
-                                .frame(width: 120, alignment: .center)
+                                .frame(width: 100, alignment: .center)
                                 Text("Ready by")
                                     .frame(width: 70, alignment: .center)
-                                Text("Progress")
-                                    .frame(width: 120, alignment: .center)
+                                Text("Application")
+                                    .frame(width: 100, alignment: .center)
+                                Text("Cluster")
+                                    .frame(width: 100, alignment: .center)
+                                Text("Migration")
+                                    .frame(width: 150, alignment: .center)
                             }
-                            .frame(width: 1090)
+                            .frame(width: 1140)
                             .padding(.vertical, 4)
                             .background(Color(NSColor.controlBackgroundColor))
                             .cornerRadius(8)
@@ -159,32 +168,32 @@ struct ClusterProgressView: View {
                             HStack(spacing: 0) {
                                 Text(selectedCluster == "All" ? "Total All Clusters" : "Total \(selectedCluster)")
                                     .bold()
-                                    .frame(width: 350, alignment: .leading)
+                                    .frame(width: 200, alignment: .leading)
                                     .padding(.leading, 8)
                                 Text("")  // Empty Department for total
-                                    .frame(width: 120, alignment: .leading)
+                                    .frame(width: 150, alignment: .leading)
                                 Text("\(totals.applications)")
                                     .bold()
-                                    .frame(width: 60, alignment: .center)
+                                    .frame(width: 50, alignment: .center)
                                 Text("\(totals.users)")
                                     .bold()
-                                    .frame(width: 60, alignment: .center)
+                                    .frame(width: 50, alignment: .center)
                                 AverageProgressCell(progress: totals.packageProgress)
-                                    .frame(width: 120)
+                                    .frame(width: 100)
                                 Text(formatDate(totals.packageReadyDate))
                                     .bold()
                                     .frame(width: 70, alignment: .center)
                                     .font(.system(size: 11))
                                 AverageProgressCell(progress: totals.testProgress)
-                                    .frame(width: 120)
+                                    .frame(width: 100)
                                 Text(formatDate(totals.testReadyDate))
                                     .bold()
                                     .frame(width: 70, alignment: .center)
                                     .font(.system(size: 11))
                                 OverallProgressCell(progress: totals.overallProgress)
-                                    .frame(width: 120)
+                                    .frame(width: 100)
                             }
-                            .frame(width: 1090)
+                            .frame(width: 890)
                             .padding(.vertical, 2)
                             .background(Color(NSColor.controlBackgroundColor))
                             
@@ -195,30 +204,60 @@ struct ClusterProgressView: View {
                                 let clusterName = selectedCluster == "All" ? (departmentRecords.first?.migrationCluster ?? "") : selectedCluster
                                 HStack(spacing: 0) {
                                     Text(clusterName)
-                                        .frame(width: 350, alignment: .leading)
+                                        .frame(width: 200, alignment: .leading)
                                         .padding(.leading, 8)
                                     Text(department)
-                                        .frame(width: 120, alignment: .leading)
+                                        .frame(width: 150, alignment: .leading)
                                     Text("\(stats.applications)")
-                                        .frame(width: 60, alignment: .center)
+                                        .frame(width: 50, alignment: .center)
                                     Text("\(stats.users)")
-                                        .frame(width: 60, alignment: .center)
+                                        .frame(width: 50, alignment: .center)
                                     AverageProgressCell(progress: stats.packageProgress)
-                                        .frame(width: 120)
+                                        .frame(width: 100)
                                     Text(formatDate(stats.packageReadyDate))
                                         .frame(width: 70, alignment: .center)
                                         .font(.system(size: 11))
                                     AverageProgressCell(progress: stats.testProgress)
-                                        .frame(width: 120)
+                                        .frame(width: 100)
                                     Text(formatDate(stats.testReadyDate))
                                         .frame(width: 70, alignment: .center)
                                         .font(.system(size: 11))
                                     OverallProgressCell(progress: stats.combinedProgress)
-                                        .frame(width: 120)
+                                        .frame(width: 100)
+                                    AverageProgressCell(progress: getMigrationClusterReadinessProgress(stats.migrationClusterReadiness), color: getMigrationClusterReadinessColor(stats.migrationClusterReadiness))
+                                        .frame(width: 100)
+                                    Text(stats.migrationClusterReadiness ?? "-")
+                                        .frame(width: 150, alignment: .center)
+                                        .foregroundColor({
+                                            guard let status = stats.migrationClusterReadiness?.lowercased() else { return .clear }
+                                            switch status {
+                                            case "orderlist to dep":
+                                                return .blue
+                                            case "orderlist confirmed":
+                                                return .blue
+                                            case "waiting for apps":
+                                                return .orange
+                                            case "on hold":
+                                                return .orange
+                                            case "ready to start":
+                                                return .blue
+                                            case "planned":
+                                                return .green
+                                            case "executed":
+                                                return .green
+                                            case "aftercare ok":
+                                                return .orange
+                                            case "decharge":
+                                                return .green
+                                            default:
+                                                return .primary
+                                            }
+                                        }())
                                 }
-                                .frame(width: 1090)
-                                .padding(.vertical, 2)
+                                .frame(width: 1140)
+                                .padding(.vertical, 4)
                                 .background(Color(NSColor.controlBackgroundColor))
+                                .cornerRadius(8)
                             }
                         }
                     }
@@ -290,6 +329,9 @@ struct ClusterProgressView: View {
             return (willBe.isEmpty || willBe == "N/A") && inOutScope != "out"
         }
         
+        // Get migration cluster readiness from the first record (should be same for all records in the group)
+        let migrationClusterReadiness = records.first?.migrationClusterReadiness
+
         // Group by application name
         let groupedByApp = Dictionary(grouping: activeRecords) { $0.applicationName }
         
@@ -311,10 +353,22 @@ struct ClusterProgressView: View {
             
             // Test progress
             let testStatus = firstRecord.applicationTestStatus?.lowercased() ?? ""
-            if testStatus == "ready" || testStatus == "completed" || testStatus == "passed" {
+            switch testStatus {
+            case "pat ok":
                 totalTestPoints += 100.0
-            } else if testStatus == "in progress" {
+            case "pat on hold":
+                totalTestPoints += 75.0
+            case "pat planned":
+                totalTestPoints += 60.0
+            case "gat ok":
                 totalTestPoints += 50.0
+            case "in progress":
+                totalTestPoints += 30.0
+            case "", "not started":
+                totalTestPoints += 0.0
+            default:
+                print("Unknown testing status: \(testStatus)")
+                totalTestPoints += 0.0
             }
         }
         
@@ -334,7 +388,8 @@ struct ClusterProgressView: View {
             packageReadyDate: packageReadyDate,
             testReadyDate: testReadyDate,
             combinedProgress: combinedProgress,
-            status: determineStatus(progress: combinedProgress)
+            status: determineStatus(progress: combinedProgress),
+            migrationClusterReadiness: migrationClusterReadiness
         )
     }
     
@@ -365,7 +420,6 @@ struct ClusterProgressView: View {
         
         Task {
             do {
-                // Get save location from user
                 let panel = NSSavePanel()
                 panel.allowedContentTypes = [.commaSeparatedText]
                 panel.nameFieldStringValue = selectedCluster == "All" ? "all_clusters_progress.csv" : "cluster_progress_\(selectedCluster).csv"
@@ -374,12 +428,14 @@ struct ClusterProgressView: View {
                 
                 if response == .OK, let url = panel.url {
                     // Create CSV content
-                    var csvContent = "Migration Cluster,Department,Applications,Users,Package Progress,Package Ready By,Testing Progress,Test Ready By,Overall Progress\n"
+                    var csvContent = "Migration Cluster,Department,Applications,Users,Package Progress,Package Ready By,Testing Progress,Test Ready By,Application Progress,Migration Cluster Readiness,Migration Cluster Readiness Progress\n"
                     
                     // Add department rows
                     for department in departments {
                         let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
                         let stats = calculateStats(for: departmentRecords)
+                        
+                        let readinessProgress = getMigrationClusterReadinessProgress(stats.migrationClusterReadiness)
                         
                         let fields = [
                             selectedCluster,
@@ -390,7 +446,9 @@ struct ClusterProgressView: View {
                             stats.packageReadyDate.map { formatDate($0) } ?? "",
                             String(format: "%.1f", stats.testProgress),
                             stats.testReadyDate.map { formatDate($0) } ?? "",
-                            String(format: "%.1f", stats.combinedProgress)
+                            String(format: "%.1f", stats.combinedProgress),
+                            stats.migrationClusterReadiness ?? "",
+                            String(format: "%.1f", readinessProgress)
                         ].map { field in
                             // Escape fields that contain commas or quotes
                             let escaped = field.replacingOccurrences(of: "\"", with: "\"\"")
@@ -426,6 +484,119 @@ struct ClusterProgressView: View {
             await MainActor.run {
                 isExporting = false
             }
+        }
+    }
+    
+    private func getMigrationClusterReadinessProgress(_ status: String?) -> Double {
+        guard let status = status?.lowercased() else { return 0.0 }
+        
+        switch status {
+        case "orderlist to dep":
+            return 10.0
+        case "orderlist confirmed":
+            return 20.0
+        case "waiting for apps":
+            return 25.0
+        case "on hold":
+            return 30.0
+        case "ready to start":
+            return 50.0
+        case "planned":
+            return 60.0
+        case "executed":
+            return 90.0
+        case "aftercare ok":
+            return 98.0
+        case "decharge":
+            return 100.0
+        default:
+            return 0.0
+        }
+    }
+    
+    private func getMigrationClusterReadinessColor(_ status: String?, forText: Bool = false) -> Color {
+        guard let status = status?.lowercased() else { return .clear }
+        
+        switch status {
+        case "orderlist to dep":
+            return .blue.opacity(0.1)
+        case "orderlist confirmed":
+            return .blue.opacity(0.2)
+        case "waiting for apps":
+            return .orange.opacity(0.25)
+        case "on hold":
+            return .orange.opacity(0.3)
+        case "ready to start":
+            return .blue.opacity(0.5)
+        case "planned":
+            return .green.opacity(0.6)
+        case "executed":
+            return .green.opacity(0.9)
+        case "aftercare ok":
+            return .orange.opacity(0.88)
+        case "decharge":
+            return .green
+        default:
+            return .clear
+        }
+    }
+    
+    private func progressCell(for stats: ClusterSummary, column: String) -> some View {
+        let progress: Double
+        let color: Color
+        let showFinishFlag: Bool
+        
+        switch column {
+        case "Package Progress":
+            progress = stats.packageProgress
+            color = .blue
+            showFinishFlag = false
+        case "Testing Progress":
+            progress = stats.testProgress
+            color = .blue
+            showFinishFlag = false
+        case "Migration Cluster Readiness":
+            progress = getMigrationClusterReadinessProgress(stats.migrationClusterReadiness)
+            color = getMigrationClusterReadinessColor(stats.migrationClusterReadiness)
+            showFinishFlag = stats.migrationClusterReadiness?.lowercased() == "decharge"
+        default:
+            progress = stats.combinedProgress
+            color = .blue
+            showFinishFlag = false
+        }
+        
+        return HStack {
+            ProgressBar(progress: progress, color: color)
+                .frame(width: 100)
+            if showFinishFlag {
+                Image(systemName: "flag.fill")
+                    .foregroundColor(.green)
+            }
+            Text(String(format: "%.1f%%", progress))
+                .frame(width: 50, alignment: .trailing)
+            if column == "Migration Cluster Readiness" {
+                Text(stats.migrationClusterReadiness ?? "")
+                    .frame(width: 120, alignment: .leading)
+            }
+        }
+    }
+}
+
+struct ProgressBar: View {
+    let progress: Double
+    let color: Color
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .foregroundColor(.gray.opacity(0.3))
+                
+                Rectangle()
+                    .foregroundColor(color)
+                    .frame(width: geometry.size.width * CGFloat(min(max(progress, 0), 100)) / 100)
+            }
+            .cornerRadius(4)
         }
     }
 }
