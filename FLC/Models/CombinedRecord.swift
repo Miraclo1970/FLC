@@ -41,7 +41,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
     var domain: String?
     var migrationCluster: String?
     var migrationClusterReadiness: String?
-    var migrationReadiness: String?
     
     // Metadata
     let importDate: Date
@@ -84,7 +83,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         case domain
         case migrationCluster
         case migrationClusterReadiness
-        case migrationReadiness
         // Metadata
         case importDate
         case importSet
@@ -125,7 +123,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         static let domain = Column("domain")
         static let migrationCluster = Column("migrationCluster")
         static let migrationClusterReadiness = Column("migrationClusterReadiness")
-        static let migrationReadiness = Column("migrationReadiness")
         // Metadata
         static let importDate = Column("importDate")
         static let importSet = Column("importSet")
@@ -166,7 +163,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         container[Columns.domain] = domain
         container[Columns.migrationCluster] = migrationCluster
         container[Columns.migrationClusterReadiness] = migrationClusterReadiness
-        container[Columns.migrationReadiness] = migrationReadiness
         // Metadata
         container[Columns.importDate] = importDate
         container[Columns.importSet] = importSet
@@ -194,7 +190,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         case CodingKeys.domain: return "domain"
         case CodingKeys.migrationCluster: return "migrationCluster"
         case CodingKeys.migrationClusterReadiness: return "migrationClusterReadiness"
-        case CodingKeys.migrationReadiness: return "migrationReadiness"
         case CodingKeys.importDate: return "importDate"
         case CodingKeys.importSet: return "importSet"
         default: return key.stringValue
@@ -226,7 +221,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
          domain: String?,
          migrationCluster: String?,
          migrationClusterReadiness: String?,
-         migrationReadiness: String?,
          importDate: Date,
          importSet: String) {
         self.id = id
@@ -254,7 +248,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.domain = domain
         self.migrationCluster = migrationCluster
         self.migrationClusterReadiness = migrationClusterReadiness
-        self.migrationReadiness = migrationReadiness
         self.importDate = importDate
         self.importSet = importSet
     }
@@ -300,7 +293,6 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.domain = clusterRecord?.domain
         self.migrationCluster = clusterRecord?.migrationCluster
         self.migrationClusterReadiness = clusterRecord?.migrationClusterReadiness
-        self.migrationReadiness = nil
         
         // Metadata
         self.importDate = importDate

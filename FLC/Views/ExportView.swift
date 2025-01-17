@@ -151,7 +151,7 @@ struct ExportView: View {
             "New Application", "New Application Suite", "Will Be",
             "In/Out Scope Division", "Migration Platform", "Migration Application Readiness",
             // Department and Migration fields
-            "Department Simple", "Domain", "Migration Cluster", "Migration Readiness",
+            "Department Simple", "Domain", "Migration Cluster", "Migration Cluster Readiness",
             // Metadata
             "Import Date", "Import Set"
         ]
@@ -199,7 +199,7 @@ struct ExportView: View {
                 record.departmentSimple ?? "",
                 record.domain ?? "",
                 record.migrationCluster ?? "",
-                record.migrationReadiness ?? ""
+                record.migrationClusterReadiness ?? ""
             ]
             
             let metadataFields = [

@@ -1,6 +1,17 @@
 import SwiftUI
 import GRDB
 
+extension NSColor {
+    static let lightBlue = NSColor(red: 0.7, green: 0.85, blue: 1.0, alpha: 1.0)
+    static let mediumBlue = NSColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 1.0)
+    static let darkBlue = NSColor(red: 0.0, green: 0.0, blue: 0.5, alpha: 1.0)
+    static let lightOrange = NSColor(red: 1.0, green: 0.8, blue: 0.6, alpha: 1.0)
+    static let orange = NSColor(red: 1.0, green: 0.65, blue: 0.0, alpha: 1.0)
+    static let lightGreen = NSColor(red: 0.6, green: 0.9, blue: 0.6, alpha: 1.0)
+    static let green = NSColor(red: 0.0, green: 0.8, blue: 0.0, alpha: 1.0)
+    static let darkGreen = NSColor(red: 0.0, green: 0.5, blue: 0.0, alpha: 1.0)
+}
+
 struct ClusterSummary {
     let cluster: String
     let applications: Int
@@ -12,6 +23,44 @@ struct ClusterSummary {
     let combinedProgress: Double
     let status: String
     let migrationClusterReadiness: String?
+}
+
+struct MigrationReadinessCell: View {
+    let readiness: String?
+    
+    private var backgroundColor: Color {
+        guard let value = readiness, !value.isEmpty else {
+            return .clear  // No color for empty value
+        }
+        
+        switch value {
+        case "Orderlist to Dep":
+            return Color(.lightBlue)
+        case "Orderlist Confirmed":
+            return Color(.mediumBlue)
+        case "Waiting for Apps":
+            return Color(.lightOrange)
+        case "On Hold":
+            return Color(.orange)
+        case "Ready to start":
+            return Color(.darkBlue)
+        case "Planned":
+            return Color(.lightGreen)
+        case "Executed":
+            return Color(.green)
+        case "Aftercare OK":
+            return Color(.darkGreen)
+        default:
+            return .clear
+        }
+    }
+    
+    var body: some View {
+        Text(readiness ?? "")
+            .frame(width: 150, alignment: .center)
+            .background(backgroundColor.opacity(0.3))
+            .cornerRadius(4)
+    }
 }
 
 struct ClusterProgressView: View {
@@ -52,7 +101,7 @@ struct ClusterProgressView: View {
             .sorted()
     }
     
-    private func calculateClusterTotals(from departmentStats: [ClusterSummary]) -> (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?) {
+    private func calculateClusterTotals(from departmentStats: [ClusterSummary]) -> (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?, migrationClusterReadiness: String?) {
         // Simple sum for applications and users
         let totalApplications = departmentStats.reduce(0) { $0 + $1.applications }
         let totalUsers = departmentStats.reduce(0) { $0 + $1.users }
@@ -71,12 +120,21 @@ struct ClusterProgressView: View {
         
         let avgPackageProgress = totalWeight > 0 ? totalWeightedPackageProgress / Double(totalWeight) : 0.0
         let avgTestProgress = totalWeight > 0 ? totalWeightedTestProgress / Double(totalWeight) : 0.0
-        let overallProgress = (avgPackageProgress + avgTestProgress) / 2.0
+        
+        // Calculate combined progress (only package and test)
+        let combinedProgress = (avgPackageProgress + avgTestProgress) / 2.0
         
         let latestPackageDate = departmentStats.compactMap { $0.packageReadyDate }.max()
         let latestTestDate = departmentStats.compactMap { $0.testReadyDate }.max()
         
-        return (totalApplications, totalUsers, avgPackageProgress, avgTestProgress, overallProgress, latestPackageDate, latestTestDate)
+        // Get the most common readiness value for the total
+        let readinessValues = departmentStats.compactMap { $0.migrationClusterReadiness }
+        let mostCommonReadiness = readinessValues
+            .reduce(into: [:]) { counts, value in counts[value, default: 0] += 1 }
+            .max(by: { $0.value < $1.value })?
+            .key
+        
+        return (totalApplications, totalUsers, avgPackageProgress, avgTestProgress, combinedProgress, latestPackageDate, latestTestDate, mostCommonReadiness)
     }
     
     var body: some View {
@@ -145,14 +203,12 @@ struct ClusterProgressView: View {
                                 .frame(width: 100, alignment: .center)
                                 Text("Ready by")
                                     .frame(width: 70, alignment: .center)
-                                Text("Application")
-                                    .frame(width: 100, alignment: .center)
-                                Text("Cluster")
-                                    .frame(width: 100, alignment: .center)
-                                Text("Migration")
+                                Text("Progress")
+                                    .frame(width: 120, alignment: .center)
+                                Text("Migration Readiness")
                                     .frame(width: 150, alignment: .center)
                             }
-                            .frame(width: 1140)
+                            .frame(width: 1240)
                             .padding(.vertical, 4)
                             .background(Color(NSColor.controlBackgroundColor))
                             .cornerRadius(8)
@@ -374,6 +430,8 @@ struct ClusterProgressView: View {
         
         let packageProgress = totalApps > 0 ? totalPackagePoints / totalApps : 0.0
         let testProgress = totalApps > 0 ? totalTestPoints / totalApps : 0.0
+        
+        // Calculate combined progress (only package and test)
         let combinedProgress = (packageProgress + testProgress) / 2.0
         
         let packageReadyDate = records.compactMap { $0.applicationPackageReadinessDate }.max()
