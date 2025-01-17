@@ -28,6 +28,13 @@ struct ClusterSummary {
 struct MigrationReadinessCell: View {
     let readiness: String?
     
+    private var displayText: String {
+        guard let value = readiness, !value.isEmpty else {
+            return ""
+        }
+        return value == "Decharge" ? "Decharge 🏁" : value
+    }
+    
     private var backgroundColor: Color {
         guard let value = readiness, !value.isEmpty else {
             return .clear  // No color for empty value
@@ -50,13 +57,15 @@ struct MigrationReadinessCell: View {
             return Color(.green)
         case "Aftercare OK":
             return Color(.darkGreen)
+        case "Decharge":
+            return Color(.darkGreen)
         default:
             return .clear
         }
     }
     
     var body: some View {
-        Text(readiness ?? "")
+        Text(displayText)
             .frame(width: 150, alignment: .center)
             .background(backgroundColor.opacity(0.3))
             .cornerRadius(4)
@@ -98,11 +107,9 @@ struct ClusterProgressView: View {
     }
     
     private func calculateClusterTotals(from departmentStats: [ClusterSummary]) -> (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?, migrationClusterReadiness: String?) {
-        // Simple sum for applications and users
         let totalApplications = departmentStats.reduce(0) { $0 + $1.applications }
         let totalUsers = departmentStats.reduce(0) { $0 + $1.users }
         
-        // Calculate weighted averages based on number of applications
         var totalWeightedPackageProgress = 0.0
         var totalWeightedTestProgress = 0.0
         var totalWeight = 0
@@ -114,16 +121,14 @@ struct ClusterProgressView: View {
             totalWeight += weight
         }
         
-        let avgPackageProgress = totalWeight > 0 ? totalWeightedPackageProgress / Double(totalWeight) : 0.0
-        let avgTestProgress = totalWeight > 0 ? totalWeightedTestProgress / Double(totalWeight) : 0.0
-        
-        // Calculate combined progress (only package and test)
-        let combinedProgress = (avgPackageProgress + avgTestProgress) / 2.0
+        // Round all progress values to whole numbers
+        let avgPackageProgress = totalWeight > 0 ? round(totalWeightedPackageProgress / Double(totalWeight)) : 0.0
+        let avgTestProgress = totalWeight > 0 ? round(totalWeightedTestProgress / Double(totalWeight)) : 0.0
+        let combinedProgress = round((avgPackageProgress + avgTestProgress) / 2.0)
         
         let latestPackageDate = departmentStats.compactMap { $0.packageReadyDate }.max()
         let latestTestDate = departmentStats.compactMap { $0.testReadyDate }.max()
         
-        // Get the most common readiness value for the total
         let readinessValues = departmentStats.compactMap { $0.migrationClusterReadiness }
         let mostCommonReadiness = readinessValues
             .reduce(into: [:]) { counts, value in counts[value, default: 0] += 1 }
@@ -201,7 +206,7 @@ struct ClusterProgressView: View {
                                     .frame(width: 70, alignment: .center)
                                 Text("Progress")
                                     .frame(width: 120, alignment: .center)
-                                Text("Migration Readiness")
+                                Text("Cluster Migration Readiness")
                                     .frame(width: 150, alignment: .center)
                             }
                             .frame(width: 1240)
@@ -383,11 +388,12 @@ struct ClusterProgressView: View {
             }
         }
         
-        let packageProgress = totalApps > 0 ? totalPackagePoints / totalApps : 0.0
-        let testProgress = totalApps > 0 ? totalTestPoints / totalApps : 0.0
+        // Round all progress values to whole numbers
+        let packageProgress = totalApps > 0 ? round(totalPackagePoints / totalApps) : 0.0
+        let testProgress = totalApps > 0 ? round(totalTestPoints / totalApps) : 0.0
         
         // Calculate combined progress (only package and test)
-        let combinedProgress = (packageProgress + testProgress) / 2.0
+        let combinedProgress = round((packageProgress + testProgress) / 2.0)
         
         let packageReadyDate = records.compactMap { $0.applicationPackageReadinessDate }.max()
         let testReadyDate = records.compactMap { $0.applicationTestReadinessDate }.max()
@@ -400,7 +406,7 @@ struct ClusterProgressView: View {
             testProgress: testProgress,
             packageReadyDate: packageReadyDate,
             testReadyDate: testReadyDate,
-            combinedProgress: combinedProgress,  // This is just package + test
+            combinedProgress: combinedProgress,
             status: determineStatus(progress: combinedProgress),
             migrationClusterReadiness: records.first?.migrationClusterReadiness
         )

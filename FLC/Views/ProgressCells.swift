@@ -109,11 +109,11 @@ struct OverallProgressCell: View {
     
     // Stabilize the progress value
     private var stableProgress: Double {
-        max(0, min(100, progress))
+        round(max(0, min(100, progress)))
     }
     
     private var statusColor: Color {
-        switch stableProgress {
+        switch Int(round(stableProgress)) {
         case 0:
             return Color.gray
         case 1...20:
@@ -130,7 +130,7 @@ struct OverallProgressCell: View {
     }
     
     private var statusText: String {
-        switch stableProgress {
+        switch Int(round(stableProgress)) {
         case 0:
             return "Not started"
         case 1...20:

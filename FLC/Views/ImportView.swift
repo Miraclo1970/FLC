@@ -1975,7 +1975,7 @@ struct ImportView: View {
                             standardHeader = "Domain"
                         case "migrationcluster":
                             standardHeader = "Migration Cluster"
-                        case "migrationclusterreadiness":
+                        case "migration cluster readiness", "migrationclusterreadiness", "migration_cluster_readiness":
                             standardHeader = "Migration Cluster Readiness"
                             print("Found Migration Cluster Readiness header at column \(colIndex)")
                         default:
