@@ -109,39 +109,46 @@ struct OverallProgressCell: View {
     
     // Stabilize the progress value
     private var stableProgress: Double {
-        max(0, min(100, progress))
+        print("OverallProgressCell - Raw Progress: \(progress)")
+        let stable = max(0, min(100, progress))
+        print("OverallProgressCell - Stabilized Progress: \(stable)")
+        return stable
     }
     
     private var statusColor: Color {
-        switch stableProgress {
+        let roundedProgress = round(stableProgress * 100) / 100  // Round to 2 decimal places
+        switch roundedProgress {
         case 0:
             return Color.gray
-        case 1...20:
+        case 0.01...20.00:
             return Color.blue.opacity(0.3)
-        case 21...80:
+        case 20.01...80.00:
             return Color.blue.opacity(0.6)
-        case 81...99:
+        case 80.01...99.99:
             return Color.blue.opacity(0.9)
         case 100:
             return Color.green
         default:
+            print("OverallProgressCell - Unexpected progress value: \(roundedProgress)")
             return Color.gray
         }
     }
     
     private var statusText: String {
-        switch stableProgress {
+        let roundedProgress = round(stableProgress * 100) / 100  // Round to 2 decimal places
+        switch roundedProgress {
         case 0:
             return "Not started"
-        case 1...20:
+        case 0.01...20.00:
             return "Started"
-        case 21...80:
+        case 20.01...80.00:
             return "In progress"
-        case 81...99:
+        case 80.01...99.99:
             return "Finishing"
         case 100:
             return "Migration Ready"
         default:
+            print("OverallProgressCell - Status Unknown for progress: \(roundedProgress)")
             return "Unknown"
         }
     }

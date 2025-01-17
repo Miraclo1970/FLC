@@ -28,6 +28,13 @@ struct ClusterSummary {
 struct MigrationReadinessCell: View {
     let readiness: String?
     
+    private var displayText: String {
+        guard let value = readiness, !value.isEmpty else {
+            return ""
+        }
+        return value == "Decharge" ? "Decharge 🏁" : value
+    }
+    
     private var backgroundColor: Color {
         guard let value = readiness, !value.isEmpty else {
             return .clear  // No color for empty value
@@ -50,13 +57,15 @@ struct MigrationReadinessCell: View {
             return Color(.green)
         case "Aftercare OK":
             return Color(.darkGreen)
+        case "Decharge":
+            return Color(.darkGreen)
         default:
             return .clear
         }
     }
     
     var body: some View {
-        Text(readiness ?? "")
+        Text(displayText)
             .frame(width: 150, alignment: .center)
             .background(backgroundColor.opacity(0.3))
             .cornerRadius(4)
@@ -201,7 +210,7 @@ struct ClusterProgressView: View {
                                     .frame(width: 70, alignment: .center)
                                 Text("Progress")
                                     .frame(width: 120, alignment: .center)
-                                Text("Migration Readiness")
+                                Text("Cluster Migration Readiness")
                                     .frame(width: 150, alignment: .center)
                             }
                             .frame(width: 1240)

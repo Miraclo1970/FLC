@@ -156,14 +156,17 @@ class DatabaseManager: ObservableObject {
     private init() {
         do {
             let fileManager = FileManager.default
-            let appSupportURL = try fileManager.url(for: .applicationSupportDirectory,
-                                                  in: .userDomainMask,
-                                                  appropriateFor: nil,
-                                                  create: true)
-            let dbFolderURL = appSupportURL.appendingPathComponent("FLC", isDirectory: true)
+            
+            // Get the app's container directory
+            guard let containerURL = fileManager.containerURL(forSecurityApplicationGroupIdentifier: "nl.jillten.FLC") else {
+                print("Error: Could not get container URL")
+                return
+            }
+            
+            let dbFolderURL = containerURL.appendingPathComponent("Library/Application Support/FLC", isDirectory: true)
             try fileManager.createDirectory(at: dbFolderURL, withIntermediateDirectories: true)
             
-            let dbURL = dbFolderURL.appendingPathComponent("database.sqlite")
+            let dbURL = dbFolderURL.appendingPathComponent("flc.db")
             print("Database path: \(dbURL.path)")
             
             // Check if we need to delete the existing database due to version mismatch
@@ -359,7 +362,15 @@ class DatabaseManager: ObservableObject {
         try await performDatabaseOperation("Save HR Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
+            print("\nSaving HR Records:")
+            print("Total records to save: \(records.count)")
+            
             for record in records {
+                print("\nProcessing HR Record:")
+                print("- System Account: '\(record.systemAccount)'")
+                print("- Department: '\(record.department ?? "nil")'")
+                print("- Department Simple: '\(record.departmentSimple ?? "nil")'")
+                
                 let dbRecord = HRRecord(from: record)
                 
                 // Try to find existing record by systemAccount
@@ -369,12 +380,18 @@ class DatabaseManager: ObservableObject {
                     updatedRecord.id = existingRecord.id
                     try updatedRecord.update(db)
                     counts.saved += 1
+                    print("- Updated existing record")
                 } else {
                     // Insert new record
                     try dbRecord.insert(db)
                     counts.saved += 1
+                    print("- Inserted new record")
                 }
             }
+            
+            print("\nHR Records Save Summary:")
+            print("- Total saved: \(counts.saved)")
+            print("- Total skipped: \(counts.skipped)")
             
             return counts
         }
@@ -600,6 +617,12 @@ class DatabaseManager: ObservableObject {
             let hrRecords = try HRRecord.fetchAll(db)
             print("Found \(hrRecords.count) HR records for matching")
             
+            // Print out some HR departments for debugging
+            print("\nSample HR departments:")
+            for record in hrRecords.prefix(5) {
+                print("HR Department: '\(record.department ?? "nil")'")
+            }
+            
             // Create dictionaries for faster lookups
             let hrLookup = Dictionary(uniqueKeysWithValues: hrRecords.map { ($0.systemAccount, $0) })
             let packageRecords = try PackageRecord.fetchAll(db)
@@ -609,24 +632,15 @@ class DatabaseManager: ObservableObject {
             let migrationRecords = try MigrationRecord.fetchAll(db)
             let migrationLookup = Dictionary(uniqueKeysWithValues: migrationRecords.map { ($0.applicationName, $0) })
             
-            // Get all cluster records and create a lookup by department
-            let clusterRecords = try ClusterRecord.fetchAll(db)
-            let clusterLookup = Dictionary(uniqueKeysWithValues: clusterRecords.map { ($0.department, $0) })
-            print("Found \(clusterRecords.count) cluster records for matching")
-            
             var combinedCount = 0
             
-            // Process each AD record
+            // First pass: Create combined records from AD and HR data
             for adRecord in adRecords {
+                // Get HR record if it exists
                 let hrRecord = hrLookup[adRecord.systemAccount]
                 let packageRecord = packageLookup[adRecord.applicationName]
                 let testRecord = testLookup[adRecord.applicationName]
                 let migrationRecord = migrationLookup[adRecord.applicationName]
-                
-                // Get cluster record based on HR department if available
-                let clusterRecord = hrRecord.flatMap { hr in
-                    clusterLookup[hr.department ?? ""]
-                }
                 
                 // Create combined record with optional fields
                 let combinedRecord = CombinedRecord(
@@ -635,21 +649,100 @@ class DatabaseManager: ObservableObject {
                     packageRecord: packageRecord,
                     testRecord: testRecord,
                     migrationRecord: migrationRecord,
-                    clusterRecord: clusterRecord,
+                    clusterRecord: nil,  // Will be updated in second pass
                     importDate: Date(),
                     importSet: "Combined_\(DateFormatter.hrDateFormatter.string(from: Date()))"
                 )
                 
-                // Insert new record
                 try combinedRecord.insert(db)
                 combinedCount += 1
                 
-                if combinedCount % 1000 == 0 {
-                    print("Processed \(combinedCount) combined records...")
+                if combinedCount % 100 == 0 {
+                    print("Created \(combinedCount) combined records...")
                 }
             }
             
-            print("Generated \(combinedCount) combined records")
+            // Second pass: Update all records with cluster data based on department
+            let clusterRecords = try ClusterRecord.fetchAll(db)
+            print("\nFound \(clusterRecords.count) cluster records for matching")
+            
+            // Print all unique readiness values in cluster records
+            let uniqueReadinessValues = Set(clusterRecords.compactMap { $0.migrationClusterReadiness })
+            print("\nUnique readiness values in cluster records:")
+            for value in uniqueReadinessValues.sorted() {
+                print("- '\(value)'")
+            }
+            
+            for clusterRecord in clusterRecords {
+                // Count how many records match this department
+                let matchCount = try Int.fetchOne(db, sql: """
+                    SELECT COUNT(*) FROM combined_records 
+                    WHERE department = ?
+                    """, arguments: [clusterRecord.department]) ?? 0
+                
+                print("\nProcessing cluster record:")
+                print("- Department: '\(clusterRecord.department)'")
+                print("- Matches found: \(matchCount)")
+                print("- Cluster: '\(clusterRecord.migrationCluster ?? "nil")'")
+                print("- Readiness: '\(clusterRecord.migrationClusterReadiness ?? "nil")'")
+                
+                // Skip if no matches found
+                if matchCount == 0 {
+                    print("- WARNING: No matching combined records found for department")
+                    continue
+                }
+                
+                // Update all combined records that have a matching department
+                try db.execute(
+                    sql: """
+                        UPDATE combined_records
+                        SET departmentSimple = ?,
+                            domain = ?,
+                            migrationCluster = ?,
+                            migrationClusterReadiness = ?
+                        WHERE department = ?
+                        """,
+                    arguments: [
+                        clusterRecord.departmentSimple,
+                        clusterRecord.domain,
+                        clusterRecord.migrationCluster,
+                        clusterRecord.migrationClusterReadiness,
+                        clusterRecord.department
+                    ]
+                )
+                
+                // Verify the update by checking the actual values in the database
+                let updatedValues = try Row.fetchAll(db, sql: """
+                    SELECT migrationClusterReadiness 
+                    FROM combined_records 
+                    WHERE department = ?
+                    """,
+                    arguments: [clusterRecord.department]
+                )
+                
+                print("Updated values in combined_records:")
+                for row in updatedValues {
+                    if let readiness = row[0] as? String {
+                        print("- Readiness after update: '\(readiness)'")
+                    }
+                }
+            }
+            
+            // Final verification of all readiness values
+            print("\nFinal verification of readiness values in combined_records:")
+            let allReadinessValues = try String.fetchAll(db, sql: """
+                SELECT DISTINCT migrationClusterReadiness 
+                FROM combined_records 
+                WHERE migrationClusterReadiness IS NOT NULL 
+                AND migrationClusterReadiness != ''
+                """)
+            
+            print("All distinct readiness values in combined_records:")
+            for value in allReadinessValues.sorted() {
+                print("- '\(value)'")
+            }
+            
+            print("Generated \(combinedCount) combined records and updated with cluster data")
             return combinedCount
         }
     }
@@ -1106,6 +1199,9 @@ class DatabaseManager: ObservableObject {
         try await performDatabaseOperation("Save Cluster Records", write: true) { db in
             var counts = (saved: 0, skipped: 0)
             
+            print("\nSaving Cluster Records:")
+            print("Total records to save: \(records.count)")
+            
             // Get all HR departments for validation
             let hrDepartments = try HRRecord
                 .select(Column("department"))
@@ -1113,13 +1209,30 @@ class DatabaseManager: ObservableObject {
                 .asRequest(of: String.self)
                 .fetchSet(db)
             
+            print("\nFound \(hrDepartments.count) HR departments for validation")
+            print("Sample HR departments:")
+            for dept in hrDepartments.prefix(5) {
+                print("- '\(dept)'")
+            }
+            
             for record in records {
-                // Validate department exists in HR records
+                print("\nProcessing Cluster Record:")
+                print("- Department: '\(record.department)'")
+                print("- Migration Cluster: '\(record.migrationCluster ?? "nil")'")
+                print("- Migration Cluster Readiness: '\(record.migrationClusterReadiness ?? "nil")'")
+                
+                // Validate department exists in HR records with exact match
                 if !hrDepartments.contains(record.department) {
-                    print("Skipping cluster record for department \(record.department) - not found in HR records")
+                    print("- WARNING: Department not found in HR records")
+                    print("- Available HR departments that start with same prefix:")
+                    for dept in hrDepartments.filter({ $0.hasPrefix(String(record.department.prefix(8))) }) {
+                        print("  - '\(dept)'")
+                    }
                     counts.skipped += 1
                     continue
                 }
+                
+                print("- Found matching HR department")
                 
                 let dbRecord = ClusterRecord(from: record)
                 
@@ -1129,13 +1242,20 @@ class DatabaseManager: ObservableObject {
                     var updatedRecord = dbRecord
                     updatedRecord.id = existingRecord.id
                     try updatedRecord.update(db)
-                    counts.saved += 1
+                    print("- Updated existing record")
                 } else {
-                    // Insert new cluster record since department exists in HR
+                    // Insert new record
                     try dbRecord.insert(db)
-                    counts.saved += 1
+                    print("- Inserted new record")
                 }
+                
+                counts.saved += 1
             }
+            
+            print("\nCluster Records Summary:")
+            print("- Total processed: \(records.count)")
+            print("- Saved: \(counts.saved)")
+            print("- Skipped: \(counts.skipped)")
             
             return counts
         }
@@ -1153,9 +1273,10 @@ class DatabaseManager: ObservableObject {
     
     // Clear cluster records
     func clearClusterRecords() async throws {
-        try await performDatabaseOperation("Clear Cluster Records", write: true) { db in
+        _ = try await performDatabaseOperation("Clear Cluster Records", write: true) { db in
             try db.execute(sql: "DELETE FROM cluster_records")
-            return
+            try db.execute(sql: "DELETE FROM sqlite_sequence WHERE name='cluster_records'")
+            return true
         }
     }
     
@@ -1187,14 +1308,17 @@ class DatabaseManager: ObservableObject {
         
         do {
             let fileManager = FileManager.default
-            let appSupportURL = try fileManager.url(for: .applicationSupportDirectory,
-                                                  in: .userDomainMask,
-                                                  appropriateFor: nil,
-                                                  create: true)
-            let dbFolderURL = appSupportURL.appendingPathComponent("FLC", isDirectory: true)
+            
+            // Get the app's container directory
+            guard let containerURL = fileManager.containerURL(forSecurityApplicationGroupIdentifier: "nl.jillten.FLC") else {
+                print("Error: Could not get container URL")
+                return
+            }
+            
+            let dbFolderURL = containerURL.appendingPathComponent("Library/Application Support/FLC", isDirectory: true)
             try fileManager.createDirectory(at: dbFolderURL, withIntermediateDirectories: true)
             
-            let dbURL = dbFolderURL.appendingPathComponent("database.sqlite")
+            let dbURL = dbFolderURL.appendingPathComponent("flc.db")
             print("Database path: \(dbURL.path)")
             
             // Force recreation by removing the old database
