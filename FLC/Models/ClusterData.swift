@@ -41,10 +41,10 @@ struct ClusterRecord: Codable, FetchableRecord, PersistableRecord {
     init(from data: ClusterData) {
         self.id = nil
         self.department = data.department
-        self.departmentSimple = data.departmentSimple == "N/A" ? "" : data.departmentSimple
-        self.domain = data.domain == "N/A" ? "" : data.domain
-        self.migrationCluster = data.migrationCluster == "N/A" ? "" : data.migrationCluster
-        self.migrationClusterReadiness = data.migrationClusterReadiness == "N/A" ? "" : data.migrationClusterReadiness
+        self.departmentSimple = data.departmentSimple
+        self.domain = data.domain
+        self.migrationCluster = data.migrationCluster
+        self.migrationClusterReadiness = data.migrationClusterReadiness
         self.importDate = Date()
         
         // Create a descriptive import set identifier
@@ -63,46 +63,19 @@ struct ClusterData: Identifiable, Codable {
     let migrationCluster: String?
     let migrationClusterReadiness: String?
     
-    // Define allowed migration readiness values and their progress percentages
-    private static let readinessMapping: [(value: String, progress: Double)] = [
-        ("", 0.0),
-        ("Orderlist to Dep", 10.0),
-        ("Orderlist Confirmed", 20.0),
-        ("Waiting for Apps", 25.0),
-        ("On Hold", 30.0),
-        ("Ready to start", 50.0),
-        ("Planned", 60.0),
-        ("Executed", 90.0),
-        ("Aftercare OK", 98.0),
-        ("Decharge", 100.0)
+    // Define allowed migration readiness values
+    static let allowedMigrationReadinessValues: Set<String> = [
+        "",
+        "Orderlist to Dep",
+        "Orderlist Confirmed",
+        "Waiting for Apps",
+        "On Hold",
+        "Ready to Start",
+        "Planned",
+        "Executed",
+        "Aftercare OK",
+        "Decharge"
     ]
-    
-    static var allowedMigrationReadinessValues: Set<String> {
-        Set(readinessMapping.map { $0.value })
-    }
-    
-    static func progressForReadiness(_ readiness: String?) -> Double {
-        guard let readiness = readiness else { return 0.0 }
-        return readinessMapping.first { $0.value == readiness }?.progress ?? 0.0
-    }
-    
-    // Helper function to normalize readiness values
-    private static func normalizeReadinessValue(_ value: String) -> String? {
-        let normalized = value.trimmingCharacters(in: .whitespaces)
-        print("Normalizing readiness value: '\(value)' -> '\(normalized)'")
-        print("Allowed values: \(allowedMigrationReadinessValues.sorted())")
-        
-        // Try to find a match ignoring case and whitespace
-        let matchingValue = readinessMapping.first { mapping in
-            let normalizedMapping = mapping.value.trimmingCharacters(in: .whitespaces)
-            let isMatch = normalizedMapping.lowercased() == normalized.lowercased()
-            print("Comparing '\(normalized.lowercased())' with '\(normalizedMapping.lowercased())': \(isMatch)")
-            return isMatch
-        }?.value
-        
-        print("Final normalized value: \(matchingValue ?? "nil")")
-        return matchingValue
-    }
     
     // Basic validation to ensure required fields are not empty
     var validationErrors: [String] {
@@ -111,16 +84,13 @@ struct ClusterData: Identifiable, Codable {
         if department.isEmpty {
             errors.append("Department is required")
         }
-        if domain?.isEmpty ?? true {
-            errors.append("Domain is required")
-        }
         if migrationCluster?.isEmpty ?? true {
             errors.append("Migration Cluster is required")
         }
         if let readiness = migrationClusterReadiness,
            !readiness.isEmpty,
            !ClusterData.allowedMigrationReadinessValues.contains(readiness) {
-            errors.append("Invalid Migration Cluster Readiness value: '\(readiness)'. Allowed values are: \(ClusterData.allowedMigrationReadinessValues.joined(separator: ", "))")
+            errors.append("Invalid Migration Cluster Readiness value: '\(readiness)'. Allowed values are: \(ClusterData.allowedMigrationReadinessValues.sorted().joined(separator: ", "))")
         }
         
         // Validate Migration Cluster Readiness if provided
@@ -157,17 +127,25 @@ struct ClusterData: Identifiable, Codable {
     
     init(department: String, departmentSimple: String? = nil, domain: String? = nil, migrationCluster: String? = nil, migrationClusterReadiness: String? = nil) {
         self.id = UUID()
-        self.department = department
+        print("\nCreating ClusterData:")
+        print("- Raw department: '\(department)'")
+        print("- Raw departmentSimple: '\(departmentSimple ?? "nil")'")
+        print("- Raw domain: '\(domain ?? "nil")'")
+        print("- Raw migrationCluster: '\(migrationCluster ?? "nil")'")
+        print("- Raw migrationClusterReadiness: '\(migrationClusterReadiness ?? "nil")'")
+        
+        // Store values, replacing "N/A" with empty string
+        self.department = department == "N/A" ? "" : department
         self.departmentSimple = departmentSimple == "N/A" ? "" : departmentSimple
         self.domain = domain == "N/A" ? "" : domain
         self.migrationCluster = migrationCluster == "N/A" ? "" : migrationCluster
+        self.migrationClusterReadiness = migrationClusterReadiness == "N/A" ? "" : migrationClusterReadiness?.trimmingCharacters(in: .whitespaces)
         
-        // Temporarily accept any readiness value
-        if let readiness = migrationClusterReadiness, readiness != "N/A" {
-            print("DEBUG: Setting readiness value: '\(readiness)'")
-            self.migrationClusterReadiness = readiness
-        } else {
-            self.migrationClusterReadiness = ""
-        }
+        print("Final values:")
+        print("- Department: '\(self.department)'")
+        print("- Department Simple: '\(self.departmentSimple ?? "nil")'")
+        print("- Domain: '\(self.domain ?? "nil")'")
+        print("- Migration Cluster: '\(self.migrationCluster ?? "nil")'")
+        print("- Migration Cluster Readiness: '\(self.migrationClusterReadiness ?? "nil")'")
     }
 } 

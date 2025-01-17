@@ -252,18 +252,25 @@ struct CombinedRecord: Codable, FetchableRecord, PersistableRecord {
         self.importSet = importSet
     }
     
-    init(adRecord: ADRecord, hrRecord: HRRecord?, packageRecord: PackageRecord?, testRecord: TestRecord?, migrationRecord: MigrationRecord?, clusterRecord: ClusterRecord?, importDate: Date, importSet: String) {
-        self.id = nil
-        
-        // AD fields
+    init(
+        adRecord: ADRecord,
+        hrRecord: HRRecord?,
+        packageRecord: PackageRecord?,
+        testRecord: TestRecord?,
+        migrationRecord: MigrationRecord?,
+        clusterRecord: ClusterRecord?,
+        importDate: Date,
+        importSet: String
+    ) {
+        // AD Data fields
         self.adGroup = adRecord.adGroup
-        self.systemAccount = adRecord.systemAccount
         self.applicationName = adRecord.applicationName
         self.applicationSuite = adRecord.applicationSuite
         self.otap = adRecord.otap
         self.critical = adRecord.critical
         
-        // HR fields (use nil if no HR record found)
+        // HR Data fields - use empty/nil values if no HR record
+        self.systemAccount = adRecord.systemAccount  // Use AD's systemAccount if no HR record
         self.department = hrRecord?.department
         self.jobRole = hrRecord?.jobRole
         self.division = hrRecord?.division
