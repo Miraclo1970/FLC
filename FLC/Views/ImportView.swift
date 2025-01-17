@@ -1118,10 +1118,14 @@ struct ImportView: View {
                         headerRowIndex = index
                         // Map column headers
                         for (colIndex, header) in fullRowContent.enumerated() {
-                            let normalizedHeader = header.trimmingCharacters(in: .whitespaces)
-                            print("Processing header: '\(normalizedHeader)'")
+                            // Normalize by removing all spaces and converting to lowercase
+                            let normalizedContent = header
+                                .lowercased()
+                                .trimmingCharacters(in: .whitespaces)
+                                .replacingOccurrences(of: " ", with: "")
+                            print("Processing header: '\(header)' (normalized: '\(normalizedContent)')")
                             let standardHeader: String
-                            switch normalizedHeader.lowercased() {
+                            switch normalizedContent {
                             case "application name", "applicationname":
                                 standardHeader = "Application Name"
                             case "package status", "packagestatus":
@@ -1129,11 +1133,11 @@ struct ImportView: View {
                             case "package readiness date", "packagereadinessdate":
                                 standardHeader = "Readiness Date"
                             default:
-                                standardHeader = normalizedHeader
-                                print("Unmatched header: '\(normalizedHeader)' -> '\(standardHeader)'")
+                                standardHeader = normalizedContent
+                                print("Unmatched header: '\(normalizedContent)' -> '\(standardHeader)'")
                             }
                             columnMap[standardHeader] = colIndex
-                            print("Mapped '\(normalizedHeader)' to '\(standardHeader)' at index \(colIndex)")
+                            print("Mapped '\(normalizedContent)' to '\(standardHeader)' at index \(colIndex)")
                         }
                         
                         print("Final Column Map:")
@@ -1940,31 +1944,54 @@ struct ImportView: View {
                 }
             } else if headerRowIndex == -1 {
                 // Check for header row
-                let headerVariations = ["Department", "Department Simple", "Domain", "Migration Cluster"]
+                let headerVariations = ["Department", "Department Simple", "Domain", "Migration Cluster", "Migration Cluster Readiness"]
                 let foundHeader = fullRowContent.contains { content in
                     let normalizedContent = content.lowercased().trimmingCharacters(in: .whitespaces)
-                    return headerVariations.map { $0.lowercased() }.contains(normalizedContent)
+                    print("Checking header content: '\(content)' (normalized: '\(normalizedContent)')")
+                    let isHeader = headerVariations.map { $0.lowercased() }.contains(normalizedContent)
+                    if isHeader {
+                        print("Found header row with content: '\(content)'")
+                    }
+                    return isHeader
                 }
                 
                 if foundHeader {
                     headerRowIndex = index
                     // Map column indices to standardized header names
                     for (colIndex, content) in fullRowContent.enumerated() {
-                        let normalizedContent = content.lowercased().trimmingCharacters(in: .whitespaces)
+                        // Normalize by removing all spaces and converting to lowercase
+                        let normalizedContent = content
+                            .lowercased()
+                            .trimmingCharacters(in: .whitespaces)
+                            .replacingOccurrences(of: " ", with: "")
+                        print("Processing header: '\(content)' (normalized: '\(normalizedContent)')")
                         let standardHeader: String
                         switch normalizedContent {
                         case "department":
                             standardHeader = "Department"
-                        case "department simple", "departmentsimple", "department_simple":
+                        case "departmentsimple":
                             standardHeader = "Department Simple"
                         case "domain":
                             standardHeader = "Domain"
-                        case "migration cluster", "migrationcluster", "migration_cluster":
+                        case "migrationcluster":
                             standardHeader = "Migration Cluster"
+                        case "migrationclusterreadiness":
+                            standardHeader = "Migration Cluster Readiness"
+                            print("Found Migration Cluster Readiness header at column \(colIndex)")
                         default:
+                            // Debug print the exact characters in the content
+                            let chars = content.unicodeScalars.map { "'\($0)' (\($0.value))" }.joined(separator: ", ")
+                            print("Unmatched header: '\(content)' with characters: \(chars)")
                             continue
                         }
                         columnMap[standardHeader] = colIndex
+                        print("Mapped '\(content)' to '\(standardHeader)' at index \(colIndex)")
+                    }
+                    
+                    // Debug print final column map
+                    print("\nFinal Column Map:")
+                    for (header, index) in columnMap {
+                        print("\(header): \(index)")
                     }
                 }
             }
@@ -2044,8 +2071,15 @@ struct ImportView: View {
             let migrationCluster = columnMap["Migration Cluster"].map { fullRowContent[$0] } ?? ""
             let migrationClusterReadiness = columnMap["Migration Cluster Readiness"].map { fullRowContent[$0] } ?? ""
             
+            print("\nProcessing row \(index + 1):")
+            print("- Department: '\(department)'")
+            print("- Migration Cluster: '\(migrationCluster)'")
+            print("- Migration Cluster Readiness (raw): '\(migrationClusterReadiness)'")
+            print("- Column indices: \(columnMap)")
+            
             // Skip empty rows
             if department.isEmpty || department == "N/A" {
+                print("Skipping empty row")
                 continue
             }
             
@@ -2058,14 +2092,14 @@ struct ImportView: View {
                 migrationClusterReadiness: migrationClusterReadiness
             )
             
+            print("- Migration Cluster Readiness (normalized): '\(record.migrationClusterReadiness ?? "")'")
+            
             if record.isValid {
-                // Only validate that the department exists in HR records
-                let normalizedDepartment = department.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !normalizedDepartment.isEmpty {
-                    validRecords.append(record)
-                    processedValidRows += 1
-                }
+                print("Record is valid")
+                validRecords.append(record)
+                processedValidRows += 1
             } else {
+                print("Record is invalid: \(record.validationErrors)")
                 invalidRecords.append("Row \(index + 1): \(record.validationErrors.joined(separator: ", "))")
                 processedInvalidRows += 1
             }

@@ -1064,7 +1064,8 @@ struct ValidClusterRecordsView: View {
             record.department.localizedCaseInsensitiveContains(searchText) ||
             (record.departmentSimple ?? "").localizedCaseInsensitiveContains(searchText) ||
             (record.domain ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.migrationCluster ?? "").localizedCaseInsensitiveContains(searchText)
+            (record.migrationCluster ?? "").localizedCaseInsensitiveContains(searchText) ||
+            (record.migrationClusterReadiness ?? "").localizedCaseInsensitiveContains(searchText)
         }
     }
     
@@ -1079,6 +1080,8 @@ struct ValidClusterRecordsView: View {
                 Text("Domain")
                     .frame(width: 150, alignment: .leading)
                 Text("Migration Cluster")
+                    .frame(width: 200, alignment: .leading)
+                Text("Migration Cluster Readiness")
                     .frame(width: 200, alignment: .leading)
             }
             .padding(.vertical, 4)
@@ -1097,6 +1100,8 @@ struct ValidClusterRecordsView: View {
                             Text(record.domain ?? "")
                                 .frame(width: 150, alignment: .leading)
                             Text(record.migrationCluster ?? "")
+                                .frame(width: 200, alignment: .leading)
+                            Text(record.migrationClusterReadiness ?? "")
                                 .frame(width: 200, alignment: .leading)
                         }
                         .frame(height: 18)

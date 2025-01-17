@@ -841,7 +841,7 @@ struct DatabaseCombinedRecordsView: View {
                     .frame(width: 150, alignment: .leading)
                 Text("Migration Cluster")
                     .frame(width: 150, alignment: .leading)
-                Text("Migration Readiness")
+                Text("Migration Cluster Readiness")
                     .frame(width: 150, alignment: .leading)
             }
             .background(Color.indigo.opacity(0.05))
@@ -981,7 +981,7 @@ struct DataRowView: View {
                     .frame(width: 150, alignment: .leading)
                 Text(record.migrationCluster ?? "")
                     .frame(width: 150, alignment: .leading)
-                Text(record.migrationReadiness ?? "")
+                Text(record.migrationClusterReadiness ?? "")
                     .frame(width: 150, alignment: .leading)
             }
             .font(.system(size: 11))
@@ -1236,6 +1236,8 @@ struct DatabaseClusterRecordsView: View {
                 Text("Domain")
                     .frame(width: 150, alignment: .leading)
                 Text("Migration Cluster")
+                    .frame(width: 200, alignment: .leading)
+                Text("Migration Cluster Readiness")
                     .frame(width: 200, alignment: .leading)
                 Text("Import Date")
                     .frame(width: 200, alignment: .leading)

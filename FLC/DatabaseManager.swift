@@ -260,7 +260,6 @@ class DatabaseManager: ObservableObject {
                 t.column("domain", .text)
                 t.column("migrationCluster", .text)
                 t.column("migrationClusterReadiness", .text)
-                t.column("migrationReadiness", .text)
                 // Metadata
                 t.column("importDate", .datetime).notNull()
                 t.column("importSet", .text).notNull()
@@ -739,20 +738,6 @@ class DatabaseManager: ObservableObject {
                     WHERE systemAccount = ? AND adGroup = ?
                     """,
                 arguments: [cluster, forSystemAccount, adGroup]
-            )
-            return true
-        }
-    }
-    
-    func updateMigrationReadiness(forSystemAccount: String, adGroup: String, readiness: String) async throws {
-        _ = try await performDatabaseOperation("Update Migration Readiness", write: true) { db in
-            try db.execute(
-                sql: """
-                    UPDATE combined_records
-                    SET migrationReadiness = ?
-                    WHERE systemAccount = ? AND adGroup = ?
-                    """,
-                arguments: [readiness, forSystemAccount, adGroup]
             )
             return true
         }
