@@ -58,26 +58,41 @@ struct DivisionProgressView: View {
         let totalApplications = departmentStats.reduce(0) { $0 + $1.applications }
         let totalUsers = departmentStats.reduce(0) { $0 + $1.users }
         
+        print("\nDivision Totals Calculation:")
+        print("Total Applications: \(totalApplications)")
+        print("Total Users: \(totalUsers)")
+        
         // Calculate weighted averages based on number of applications
         var totalWeightedPackageProgress = 0.0
         var totalWeightedTestProgress = 0.0
         var totalWeight = 0
         
         for stats in departmentStats {
+            print("\nDepartment: \(stats.division)")
+            print("Apps: \(stats.applications), Package Progress: \(stats.packageProgress)%, Test Progress: \(stats.testProgress)%")
+            
             let weight = stats.applications
             totalWeightedPackageProgress += stats.packageProgress * Double(weight)
             totalWeightedTestProgress += stats.testProgress * Double(weight)
             totalWeight += weight
+            
+            print("Weighted Package Progress: \(stats.packageProgress * Double(weight))")
+            print("Weighted Test Progress: \(stats.testProgress * Double(weight))")
         }
         
         let avgPackageProgress = totalWeight > 0 ? totalWeightedPackageProgress / Double(totalWeight) : 0.0
         let avgTestProgress = totalWeight > 0 ? totalWeightedTestProgress / Double(totalWeight) : 0.0
         let overallProgress = (avgPackageProgress + avgTestProgress) / 2.0
         
-        let latestPackageDate = departmentStats.compactMap { $0.packageReadyDate }.max()
-        let latestTestDate = departmentStats.compactMap { $0.testReadyDate }.max()
+        print("\nFinal Calculations:")
+        print("Average Package Progress: \(avgPackageProgress)%")
+        print("Average Test Progress: \(avgTestProgress)%")
+        print("Overall Progress: \(overallProgress)%")
         
-        return (totalApplications, totalUsers, avgPackageProgress, avgTestProgress, overallProgress, latestPackageDate, latestTestDate)
+        let latestPackageDate = departmentStats.compactMap { $0.packageReadyDate }.max()
+        let testReadyDate = departmentStats.compactMap { $0.testReadyDate }.max()
+        
+        return (totalApplications, totalUsers, avgPackageProgress, avgTestProgress, overallProgress, latestPackageDate, testReadyDate)
     }
     
     var body: some View {
@@ -143,7 +158,7 @@ struct DivisionProgressView: View {
                                 .frame(width: 120, alignment: .center)
                                 Text("Ready by")
                                     .frame(width: 70, alignment: .center)
-                                Text("Progress")
+                                Text("Department Progress")
                                     .frame(width: 120, alignment: .center)
                             }
                             .frame(width: 1090)
@@ -301,11 +316,15 @@ struct DivisionProgressView: View {
         let totalApplications = groupedByApp.count
         let uniqueUsers = Set(filteredRecords.map { $0.systemAccount }).count
         
+        print("Division Stats - Applications: \(totalApplications), Users: \(uniqueUsers)")
+        
         // Calculate package progress
         let packageProgress = calculatePackageProgress(from: groupedByApp)
         
         // Calculate test progress
         let testProgress = calculateTestProgress(from: groupedByApp)
+        
+        print("Division Stats - Package Progress: \(packageProgress)%, Test Progress: \(testProgress)%")
         
         // Get latest dates
         let packageReadyDate = filteredRecords.compactMap { $0.applicationPackageReadinessDate }.max()
@@ -313,6 +332,8 @@ struct DivisionProgressView: View {
         
         // Calculate combined progress
         let combinedProgress = (packageProgress + testProgress) / 2.0
+        
+        print("Division Stats - Combined Progress: \(combinedProgress)%")
         
         // Determine status
         let status = determineStatus(progress: combinedProgress)
@@ -429,10 +450,14 @@ struct DivisionProgressView: View {
         var totalPoints = 0.0
         let totalApps = Double(groupedByApp.count)
         
-        for (_, appRecords) in groupedByApp {
+        print("Package Progress - Total Apps: \(totalApps)")
+        
+        for (appName, appRecords) in groupedByApp {
             guard let firstRecord = appRecords.first else { continue }
             
             let packageStatus = firstRecord.applicationPackageStatus?.lowercased() ?? ""
+            print("Package Progress - App: \(appName), Status: \(packageStatus)")
+            
             if packageStatus == "ready" || packageStatus == "ready for testing" || packageStatus == "completed" || packageStatus == "passed" {
                 totalPoints += 100.0
             } else if packageStatus == "in progress" {
@@ -440,34 +465,33 @@ struct DivisionProgressView: View {
             }
         }
         
-        return totalApps > 0 ? totalPoints / totalApps : 0.0
+        let progress = totalApps > 0 ? totalPoints / totalApps : 0.0
+        print("Package Progress - Total Points: \(totalPoints), Final Progress: \(progress)%")
+        return progress
     }
     
     private func calculateTestProgress(from groupedByApp: [String: [CombinedRecord]]) -> Double {
         var totalPoints = 0.0
         let totalApps = Double(groupedByApp.count)
         
-        for (_, appRecords) in groupedByApp {
+        print("Test Progress - Total Apps: \(totalApps)")
+        
+        for (appName, appRecords) in groupedByApp {
             guard let firstRecord = appRecords.first else { continue }
             
             let testStatus = firstRecord.applicationTestStatus?.lowercased() ?? ""
-            switch testStatus {
-            case "pat ok":
+            print("Test Progress - App: \(appName), Status: \(testStatus)")
+            
+            if testStatus == "ready" || testStatus == "completed" || testStatus == "passed" {
                 totalPoints += 100.0
-            case "pat on hold":
-                totalPoints += 75.0
-            case "pat planned":
-                totalPoints += 60.0
-            case "gat ok":
+            } else if testStatus == "in progress" {
                 totalPoints += 50.0
-            case "in progress":
-                totalPoints += 30.0
-            default:
-                break
             }
         }
         
-        return totalApps > 0 ? totalPoints / totalApps : 0.0
+        let progress = totalApps > 0 ? totalPoints / totalApps : 0.0
+        print("Test Progress - Total Points: \(totalPoints), Final Progress: \(progress)%")
+        return progress
     }
 }
 
