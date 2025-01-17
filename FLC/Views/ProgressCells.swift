@@ -5,11 +5,11 @@ struct AverageProgressCell: View {
     
     // Stabilize the progress value
     private var stableProgress: Double {
-        max(0, min(100, progress))
+        round(max(0, min(100, progress)))
     }
     
     private var statusColor: Color {
-        switch stableProgress {
+        switch Int(round(stableProgress)) {
         case 0:
             return Color.gray
         case 1...20:
@@ -78,7 +78,7 @@ struct DepartmentProgressCell: View {
     private var stableProgress: Double {
         // Clamp progress between 0 and 100, then round to nearest 5
         let clampedProgress = max(0, min(100, progress))
-        return (clampedProgress / 5.0).rounded() * 5.0
+        return round(clampedProgress)
     }
     
     var body: some View {
@@ -109,46 +109,39 @@ struct OverallProgressCell: View {
     
     // Stabilize the progress value
     private var stableProgress: Double {
-        print("OverallProgressCell - Raw Progress: \(progress)")
-        let stable = max(0, min(100, progress))
-        print("OverallProgressCell - Stabilized Progress: \(stable)")
-        return stable
+        round(max(0, min(100, progress)))
     }
     
     private var statusColor: Color {
-        let roundedProgress = round(stableProgress * 100) / 100  // Round to 2 decimal places
-        switch roundedProgress {
+        switch Int(round(stableProgress)) {
         case 0:
             return Color.gray
-        case 0.01...20.00:
+        case 1...20:
             return Color.blue.opacity(0.3)
-        case 20.01...80.00:
+        case 21...80:
             return Color.blue.opacity(0.6)
-        case 80.01...99.99:
+        case 81...99:
             return Color.blue.opacity(0.9)
         case 100:
             return Color.green
         default:
-            print("OverallProgressCell - Unexpected progress value: \(roundedProgress)")
             return Color.gray
         }
     }
     
     private var statusText: String {
-        let roundedProgress = round(stableProgress * 100) / 100  // Round to 2 decimal places
-        switch roundedProgress {
+        switch Int(round(stableProgress)) {
         case 0:
             return "Not started"
-        case 0.01...20.00:
+        case 1...20:
             return "Started"
-        case 20.01...80.00:
+        case 21...80:
             return "In progress"
-        case 80.01...99.99:
+        case 81...99:
             return "Finishing"
         case 100:
             return "Migration Ready"
         default:
-            print("OverallProgressCell - Status Unknown for progress: \(roundedProgress)")
             return "Unknown"
         }
     }
