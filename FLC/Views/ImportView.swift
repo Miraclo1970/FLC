@@ -8,6 +8,10 @@ struct ImportView: View {
     @State private var importType: ImportType?
     @EnvironmentObject private var progress: ImportProgress
     @Environment(\.dismiss) var dismiss
+    @State private var selectedRows: Set<Int> = []
+    @State private var selectedRowsCount: Int = 0
+    @State private var selectedRowsText: String = ""
+    @State private var selectedRowsTextColor: SwiftUI.Color = .primary
     
     enum ImportType {
         case hr
@@ -1628,8 +1632,8 @@ struct ImportView: View {
         
         let worksheet = try xlsx.parseWorksheet(at: worksheetPath)
         let sharedStrings = try xlsx.parseSharedStrings()
-        // Note: totalRows is kept for GRDB compatibility, even though unused
-        let totalRows = worksheet.data?.rows.count ?? 0
+        // Note: Row count is kept for GRDB compatibility
+        let _ = worksheet.data?.rows.count ?? 0
         
         // Find the start marker and header row
         var headerRowIndex = -1

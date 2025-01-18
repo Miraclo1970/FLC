@@ -63,18 +63,17 @@ struct ClusterData: Identifiable, Codable {
     let migrationCluster: String?
     let migrationClusterReadiness: String?
     
-    // Define allowed migration readiness values
-    static let allowedMigrationReadinessValues: Set<String> = [
-        "",
-        "Orderlist to Dep",
-        "Orderlist Confirmed",
-        "Waiting for Apps",
-        "On Hold",
-        "Ready to Start",
-        "Planned",
-        "Executed",
-        "Aftercare OK",
-        "Decharge"
+    // Define allowed migration readiness values with their canonical forms
+    private static let migrationReadinessNormalizations: [String: String] = [
+        "ready to start": "Ready to start",
+        "planned": "Planned",
+        "orderlist to dep": "Orderlist to dep",
+        "orderlist confirmed": "Orderlist confirmed",
+        "waiting for apps": "Waiting for apps",
+        "on hold": "On hold",
+        "executed": "Executed",
+        "aftercare ok": "Aftercare ok",
+        "decharge": "Decharge"
     ]
     
     // Basic validation to ensure required fields are not empty
@@ -84,37 +83,12 @@ struct ClusterData: Identifiable, Codable {
         if department.isEmpty {
             errors.append("Department is required")
         }
-        if migrationCluster?.isEmpty ?? true {
-            errors.append("Migration Cluster is required")
-        }
-        if let readiness = migrationClusterReadiness,
-           !readiness.isEmpty,
-           !ClusterData.allowedMigrationReadinessValues.contains(readiness) {
-            errors.append("Invalid Migration Cluster Readiness value: '\(readiness)'. Allowed values are: \(ClusterData.allowedMigrationReadinessValues.sorted().joined(separator: ", "))")
-        }
         
         // Validate Migration Cluster Readiness if provided
         if let readiness = migrationClusterReadiness {
-            let validStatuses = [
-                "orderlist to dep",
-                "orderlist confirmed",
-                "waiting for apps",
-                "on hold",
-                "ready to start",
-                "planned",
-                "executed",
-                "aftercare ok",
-                "decharge"
-            ]
-            
-            // If readiness is empty or N/A, that's fine - it's optional
-            if readiness.isEmpty || readiness == "N/A" {
-                // Do nothing, empty value is allowed
-            } else {
-                let normalizedReadiness = readiness.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-                if !validStatuses.contains(normalizedReadiness) {
-                    errors.append("Invalid Migration Cluster Readiness status: '\(readiness)'. Must be empty, 'N/A', or one of: \(validStatuses.joined(separator: ", "))")
-                }
+            let normalizedReadiness = readiness.trimmingCharacters(in: .whitespaces).lowercased()
+            if !normalizedReadiness.isEmpty && !ClusterData.migrationReadinessNormalizations.keys.contains(normalizedReadiness) {
+                errors.append("Invalid Migration Cluster Readiness value")
             }
         }
         
@@ -134,12 +108,22 @@ struct ClusterData: Identifiable, Codable {
         print("- Raw migrationCluster: '\(migrationCluster ?? "nil")'")
         print("- Raw migrationClusterReadiness: '\(migrationClusterReadiness ?? "nil")'")
         
-        // Store values, replacing "N/A" with empty string
+        // Store values, replacing "N/A" and empty strings with nil
         self.department = department == "N/A" ? "" : department
-        self.departmentSimple = departmentSimple == "N/A" ? "" : departmentSimple
-        self.domain = domain == "N/A" ? "" : domain
-        self.migrationCluster = migrationCluster == "N/A" ? "" : migrationCluster
-        self.migrationClusterReadiness = migrationClusterReadiness == "N/A" ? "" : migrationClusterReadiness?.trimmingCharacters(in: .whitespaces)
+        self.departmentSimple = departmentSimple.flatMap { $0 == "N/A" || $0.isEmpty ? nil : $0 }
+        self.domain = domain.flatMap { $0 == "N/A" || $0.isEmpty ? nil : $0 }
+        self.migrationCluster = migrationCluster.flatMap { $0 == "N/A" || $0.isEmpty ? nil : $0 }
+        
+        // Special handling for migrationClusterReadiness to trim whitespace and normalize case
+        self.migrationClusterReadiness = migrationClusterReadiness.flatMap { value in
+            let trimmed = value.trimmingCharacters(in: .whitespaces)
+            if trimmed == "N/A" || trimmed.isEmpty {
+                return nil
+            }
+            
+            let normalizedInput = trimmed.lowercased()
+            return ClusterData.migrationReadinessNormalizations[normalizedInput] ?? trimmed
+        }
         
         print("Final values:")
         print("- Department: '\(self.department)'")

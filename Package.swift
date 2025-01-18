@@ -6,28 +6,23 @@ let package = Package(
     platforms: [
         .macOS(.v14)
     ],
+    products: [
+        .executable(name: "FLC", targets: ["FLC"])
+    ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.0.0"),
-        .package(url: "https://github.com/CoreOffice/CoreXLSX.git", from: "0.14.0")
+        .package(url: "https://github.com/groue/GRDB.swift.git", branch: "master"),
+        .package(url: "https://github.com/weichsel/ZIPFoundation.git", exact: "0.9.19"),
+        .package(url: "https://github.com/CoreOffice/CoreXLSX.git", exact: "0.14.2")
     ],
     targets: [
-        .target(
+        .executableTarget(
             name: "FLC",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
-                .product(name: "CoreXLSX", package: "CoreXLSX")
+                "ZIPFoundation",
+                "CoreXLSX"
             ],
-            path: "FLC",
-            resources: [
-                .process("Assets.xcassets"),
-                .process("Preview Content/Preview Assets.xcassets"),
-                .process("Templates/HR_template.xlsx"),
-                .process("Templates/TestStatus_template.xlsx"),
-                .process("Templates/PackageStatus_template.xlsx"),
-                .process("Templates/MigrationStatus_template.xlsx"),
-                .process("Templates/AD_template.xlsx"),
-                .process("Templates/Cluster_template.xlsx")
-            ]
+            path: "FLC"
         ),
         .testTarget(
             name: "FLCTests",

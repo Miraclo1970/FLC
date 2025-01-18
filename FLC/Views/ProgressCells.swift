@@ -129,7 +129,7 @@ struct OverallProgressCell: View {
         }
     }
     
-    private var statusText: String {
+    var statusText: String {
         switch Int(round(stableProgress)) {
         case 0:
             return "Not started"
