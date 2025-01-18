@@ -93,15 +93,21 @@ struct ClusterProgressView: View {
             .sorted()
     }
     
+    private func shouldIncludeRecord(_ record: CombinedRecord) -> Bool {
+        // Check cluster filter
+        let matchesCluster = selectedCluster.isEmpty || 
+                           selectedCluster == "All" || 
+                           record.migrationCluster == selectedCluster
+        
+        // Check division filter
+        let matchesDivision = selectedDivision.isEmpty || 
+                            record.division == selectedDivision
+        
+        return matchesCluster && matchesDivision
+    }
+    
     private var filteredRecords: [CombinedRecord] {
-        return records.filter { record in
-            let clusterFilter = selectedCluster.isEmpty || 
-                              selectedCluster == "All" || 
-                              record.migrationCluster == selectedCluster
-            let divisionFilter = selectedDivision.isEmpty || 
-                               record.division == selectedDivision
-            return clusterFilter && divisionFilter
-        }
+        records.filter(shouldIncludeRecord)
     }
     
     private var departments: [String] {
@@ -133,241 +139,127 @@ struct ClusterProgressView: View {
         // Calculate combined progress (only package and test)
         let combinedProgress = (avgPackageProgress + avgTestProgress) / 2.0
         
+        // Find latest dates
         let latestPackageDate = departmentStats.compactMap { $0.packageReadyDate }.max()
         let latestTestDate = departmentStats.compactMap { $0.testReadyDate }.max()
         
-        // Get the most common readiness value for the total
+        // Calculate most common readiness value
         let readinessValues = departmentStats.compactMap { $0.migrationClusterReadiness }
-        let mostCommonReadiness = readinessValues
-            .reduce(into: [:]) { counts, value in counts[value, default: 0] += 1 }
-            .max(by: { $0.value < $1.value })?
-            .key
+        let readinessCounts = readinessValues.reduce(into: [:]) { counts, value in 
+            counts[value, default: 0] += 1 
+        }
+        let mostCommonReadiness = readinessCounts.max { $0.value < $1.value }?.key
         
-        return (totalApplications, totalUsers, avgPackageProgress, avgTestProgress, combinedProgress, latestPackageDate, latestTestDate, mostCommonReadiness)
+        return (
+            applications: totalApplications,
+            users: totalUsers,
+            packageProgress: avgPackageProgress,
+            testProgress: avgTestProgress,
+            overallProgress: combinedProgress,
+            packageReadyDate: latestPackageDate,
+            testReadyDate: latestTestDate,
+            migrationClusterReadiness: mostCommonReadiness
+        )
+    }
+    
+    // MARK: - Sub-views
+    private var filterSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Cluster Progress")
+                .font(.headline)
+            
+            HStack(spacing: 20) {
+                VStack(alignment: .leading) {
+                    Text("Division:")
+                        .font(.subheadline)
+                    Picker("", selection: $selectedDivision) {
+                        Text("Select Division").tag("")
+                        ForEach(divisions, id: \.self) { division in
+                            Text(division).tag(division)
+                        }
+                    }
+                    .frame(width: 200)
+                }
+                
+                VStack(alignment: .leading) {
+                    Text("Cluster:")
+                        .font(.subheadline)
+                    Picker("", selection: $selectedCluster) {
+                        Text("Select Cluster").tag("")
+                        ForEach(clusters, id: \.self) { cluster in
+                            Text(cluster).tag(cluster)
+                        }
+                    }
+                    .frame(width: 200)
+                }
+            }
+        }
+        .padding(.bottom, 8)
+    }
+    
+    private var loadingView: some View {
+        ProgressView("Loading data...")
+    }
+    
+    private var mainContent: some View {
+        VStack(spacing: 20) {
+            filterSection
+            
+            if !selectedCluster.isEmpty {
+                clusterDetailsView
+            } else {
+                Text("Please select a cluster")
+                    .foregroundColor(.gray)
+            }
+            
+            Spacer()
+            exportSection
+        }
+    }
+    
+    private var exportSection: some View {
+        VStack(spacing: 8) {
+            Divider()
+            HStack {
+                Text("Export Cluster Progress Report")
+                    .font(.headline)
+                
+                Spacer()
+                
+                if let error = exportError {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+                
+                Button(action: exportAsCSV) {
+                    HStack {
+                        if isExporting {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .frame(width: 16, height: 16)
+                        } else {
+                            Image(systemName: "arrow.down.doc")
+                        }
+                        Text("Export to CSV")
+                    }
+                    .frame(width: 120)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isExporting || selectedCluster.isEmpty)
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+        }
+        .background(Color(NSColor.windowBackgroundColor))
     }
     
     var body: some View {
         VStack(spacing: 20) {
             if isLoading {
-                ProgressView("Loading data...")
+                loadingView
             } else {
-                // Cluster and Division Filters
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Cluster Progress")
-                        .font(.headline)
-                    
-                    HStack(spacing: 20) {
-                        VStack(alignment: .leading) {
-                            Text("Division:")
-                                .font(.subheadline)
-                            Picker("", selection: $selectedDivision) {
-                                Text("Select Division").tag("")
-                                ForEach(divisions, id: \.self) { division in
-                                    Text(division).tag(division)
-                                }
-                            }
-                            .frame(width: 200)
-                        }
-                        
-                        VStack(alignment: .leading) {
-                            Text("Cluster:")
-                                .font(.subheadline)
-                            Picker("", selection: $selectedCluster) {
-                                Text("Select Cluster").tag("")
-                                ForEach(clusters, id: \.self) { cluster in
-                                    Text(cluster).tag(cluster)
-                                }
-                            }
-                            .frame(width: 200)
-                        }
-                    }
-                }
-                .padding(.bottom, 8)
-                
-                if !selectedCluster.isEmpty {
-                    ScrollView {
-                        VStack(spacing: 8) {
-                            // Header
-                            HStack(spacing: 0) {
-                                Text("Migration Cluster")
-                                    .frame(width: 200, alignment: .leading)
-                                    .padding(.leading, 8)
-                                Text("Department")
-                                    .frame(width: 150, alignment: .leading)
-                                Text("Apps")
-                                    .frame(width: 50, alignment: .center)
-                                Text("Users")
-                                    .frame(width: 50, alignment: .center)
-                                VStack(spacing: 0) {
-                                    Text("Average")
-                                    Text("Package")
-                                }
-                                .frame(width: 100, alignment: .center)
-                                Text("Ready by")
-                                    .frame(width: 70, alignment: .center)
-                                VStack(spacing: 0) {
-                                    Text("Average")
-                                    Text("Testing")
-                                }
-                                .frame(width: 100, alignment: .center)
-                                Text("Ready by")
-                                    .frame(width: 70, alignment: .center)
-                                Text("Progress")
-                                    .frame(width: 120, alignment: .center)
-                                Text("Cluster Migration Readiness")
-                                    .frame(width: 150, alignment: .center)
-                            }
-                            .frame(width: 1240)
-                            .padding(.vertical, 4)
-                            .background(Color(NSColor.controlBackgroundColor))
-                            .cornerRadius(8)
-                            
-                            // Cluster total row
-                            let departmentStats = departments.map { department in
-                                let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
-                                return calculateStats(for: departmentRecords)
-                            }
-                            
-                            let totals = calculateClusterTotals(from: departmentStats)
-                            
-                            HStack(spacing: 0) {
-                                Text(selectedCluster == "All" ? "Total All Clusters" : "Total \(selectedCluster)")
-                                    .bold()
-                                    .frame(width: 200, alignment: .leading)
-                                    .padding(.leading, 8)
-                                Text("")  // Empty Department for total
-                                    .frame(width: 150, alignment: .leading)
-                                Text("\(totals.applications)")
-                                    .bold()
-                                    .frame(width: 50, alignment: .center)
-                                Text("\(totals.users)")
-                                    .bold()
-                                    .frame(width: 50, alignment: .center)
-                                AverageProgressCell(progress: totals.packageProgress)
-                                    .frame(width: 100)
-                                Text(formatDate(totals.packageReadyDate))
-                                    .bold()
-                                    .frame(width: 70, alignment: .center)
-                                    .font(.system(size: 11))
-                                AverageProgressCell(progress: totals.testProgress)
-                                    .frame(width: 100)
-                                Text(formatDate(totals.testReadyDate))
-                                    .bold()
-                                    .frame(width: 70, alignment: .center)
-                                    .font(.system(size: 11))
-                                OverallProgressCell(progress: totals.overallProgress)
-                                    .frame(width: 100)
-                            }
-                            .frame(width: 890)
-                            .padding(.vertical, 2)
-                            .background(Color(NSColor.controlBackgroundColor))
-                            
-                            // Department rows
-                            ForEach(departments, id: \.self) { department in
-                                let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
-                                let stats = calculateStats(for: departmentRecords)
-                                let clusterName = selectedCluster == "All" ? (departmentRecords.first?.migrationCluster ?? "") : selectedCluster
-                                HStack(spacing: 0) {
-                                    Text(clusterName)
-                                        .frame(width: 200, alignment: .leading)
-                                        .padding(.leading, 8)
-                                    Text(department)
-                                        .frame(width: 150, alignment: .leading)
-                                    Text("\(stats.applications)")
-                                        .frame(width: 50, alignment: .center)
-                                    Text("\(stats.users)")
-                                        .frame(width: 50, alignment: .center)
-                                    AverageProgressCell(progress: stats.packageProgress)
-                                        .frame(width: 100)
-                                    Text(formatDate(stats.packageReadyDate))
-                                        .frame(width: 70, alignment: .center)
-                                        .font(.system(size: 11))
-                                    AverageProgressCell(progress: stats.testProgress)
-                                        .frame(width: 100)
-                                    Text(formatDate(stats.testReadyDate))
-                                        .frame(width: 70, alignment: .center)
-                                        .font(.system(size: 11))
-                                    OverallProgressCell(progress: stats.combinedProgress)
-                                        .frame(width: 100)
-                                    AverageProgressCell(progress: getMigrationClusterReadinessProgress(stats.migrationClusterReadiness), color: getMigrationClusterReadinessColor(stats.migrationClusterReadiness))
-                                        .frame(width: 100)
-                                    Text(stats.migrationClusterReadiness ?? "-")
-                                        .frame(width: 150, alignment: .center)
-                                        .foregroundColor({
-                                            guard let status = stats.migrationClusterReadiness?.lowercased() else { return .clear }
-                                            switch status {
-                                            case "orderlist to dep":
-                                                return .blue
-                                            case "orderlist confirmed":
-                                                return .blue
-                                            case "waiting for apps":
-                                                return .orange
-                                            case "on hold":
-                                                return .orange
-                                            case "ready to start":
-                                                return .blue
-                                            case "planned":
-                                                return .green
-                                            case "executed":
-                                                return .green
-                                            case "aftercare ok":
-                                                return .orange
-                                            case "decharge":
-                                                return .green
-                                            default:
-                                                return .primary
-                                            }
-                                        }())
-                                }
-                                .frame(width: 1140)
-                                .padding(.vertical, 4)
-                                .background(Color(NSColor.controlBackgroundColor))
-                                .cornerRadius(8)
-                            }
-                        }
-                    }
-                } else {
-                    Text("Please select a cluster")
-                        .foregroundColor(.gray)
-                }
-                
-                Spacer()
-                
-                // Export Bar
-                VStack(spacing: 8) {
-                    Divider()
-                    HStack {
-                        Text("Export Cluster Progress Report")
-                            .font(.headline)
-                        
-                        Spacer()
-                        
-                        if let error = exportError {
-                            Text(error)
-                                .foregroundColor(.red)
-                                .font(.caption)
-                        }
-                        
-                        Button(action: exportAsCSV) {
-                            HStack {
-                                if isExporting {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                        .frame(width: 16, height: 16)
-                                } else {
-                                    Image(systemName: "arrow.down.doc")
-                                }
-                                Text("Export to CSV")
-                            }
-                            .frame(width: 120)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isExporting || selectedCluster.isEmpty)
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                }
-                .background(Color(NSColor.windowBackgroundColor))
+                mainContent
             }
         }
         .padding()
@@ -581,7 +473,7 @@ struct ClusterProgressView: View {
         }
     }
     
-    private func getMigrationClusterReadinessColor(_ status: String?, forText: Bool = false) -> Color {
+    private func getMigrationClusterReadinessColor(_ status: String?) -> Color {
         guard let status = status?.lowercased() else { return .clear }
         
         switch status {
@@ -647,6 +539,107 @@ struct ClusterProgressView: View {
             }
         }
     }
+    
+    private var headerView: some View {
+        HStack(spacing: 0) {
+            Text("Migration Cluster")
+                .frame(width: 200, alignment: .leading)
+                .padding(.leading, 8)
+            Text("Department")
+                .frame(width: 150, alignment: .leading)
+            Text("Apps")
+                .frame(width: 50, alignment: .center)
+            Text("Users")
+                .frame(width: 50, alignment: .center)
+            VStack(spacing: 0) {
+                Text("Average")
+                Text("Package")
+            }
+            .frame(width: 100, alignment: .center)
+            Text("Ready by")
+                .frame(width: 70, alignment: .center)
+            VStack(spacing: 0) {
+                Text("Average")
+                Text("Testing")
+            }
+            .frame(width: 100, alignment: .center)
+            Text("Ready by")
+                .frame(width: 70, alignment: .center)
+            Text("Progress")
+                .frame(width: 120, alignment: .center)
+            Text("Cluster Migration Readiness")
+                .frame(width: 150, alignment: .center)
+        }
+        .frame(width: 1240)
+        .padding(.vertical, 4)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+    }
+    
+    private var clusterTotalRow: some View {
+        let departmentStats = departments.map { department in
+            let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
+            return calculateStats(for: departmentRecords)
+        }
+        
+        let totals = calculateClusterTotals(from: departmentStats)
+        
+        return HStack(spacing: 0) {
+            Text(selectedCluster == "All" ? "Total All Clusters" : "Total \(selectedCluster)")
+                .bold()
+                .frame(width: 200, alignment: .leading)
+                .padding(.leading, 8)
+            Text("")  // Empty Department for total
+                .frame(width: 150, alignment: .leading)
+            Text("\(totals.applications)")
+                .bold()
+                .frame(width: 50, alignment: .center)
+            Text("\(totals.users)")
+                .bold()
+                .frame(width: 50, alignment: .center)
+            AverageProgressCell(progress: totals.packageProgress)
+                .frame(width: 100)
+            Text(formatDate(totals.packageReadyDate))
+                .bold()
+                .frame(width: 70, alignment: .center)
+                .font(.system(size: 11))
+            AverageProgressCell(progress: totals.testProgress)
+                .frame(width: 100)
+            Text(formatDate(totals.testReadyDate))
+                .bold()
+                .frame(width: 70, alignment: .center)
+                .font(.system(size: 11))
+            OverallProgressCell(progress: totals.overallProgress)
+                .frame(width: 100)
+        }
+        .frame(width: 890)
+        .padding(.vertical, 2)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    private var departmentRows: some View {
+        ForEach(departments, id: \.self) { department in
+            DepartmentRow(
+                department: department,
+                filteredRecords: filteredRecords,
+                selectedCluster: selectedCluster,
+                calculateStats: calculateStats,
+                formatDate: formatDate,
+                getMigrationClusterReadinessProgress: getMigrationClusterReadinessProgress,
+                getMigrationClusterReadinessColor: getMigrationClusterReadinessColor
+            )
+        }
+    }
+    
+    private var clusterDetailsView: some View {
+        ScrollView {
+            VStack(spacing: 8) {
+                headerView
+                clusterTotalRow
+                departmentRows
+            }
+        }
+    }
 }
 
 struct ProgressBar: View {
@@ -664,6 +657,70 @@ struct ProgressBar: View {
                     .frame(width: geometry.size.width * CGFloat(min(max(progress, 0), 100)) / 100)
             }
             .cornerRadius(4)
+        }
+    }
+}
+
+// MARK: - Supporting Views
+struct DepartmentRow: View {
+    let department: String
+    let filteredRecords: [CombinedRecord]
+    let selectedCluster: String
+    let calculateStats: ([CombinedRecord]) -> ClusterSummary
+    let formatDate: (Date?) -> String
+    let getMigrationClusterReadinessProgress: (String?) -> Double
+    let getMigrationClusterReadinessColor: (String?) -> Color
+    
+    var body: some View {
+        let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
+        let stats = calculateStats(departmentRecords)
+        let clusterName = selectedCluster == "All" ? (departmentRecords.first?.migrationCluster ?? "") : selectedCluster
+        
+        HStack(spacing: 0) {
+            Text(clusterName)
+                .frame(width: 200, alignment: .leading)
+                .padding(.leading, 8)
+            Text(department)
+                .frame(width: 150, alignment: .leading)
+            Text("\(stats.applications)")
+                .frame(width: 50, alignment: .center)
+            Text("\(stats.users)")
+                .frame(width: 50, alignment: .center)
+            AverageProgressCell(progress: stats.packageProgress)
+                .frame(width: 100)
+            Text(formatDate(stats.packageReadyDate))
+                .frame(width: 70, alignment: .center)
+                .font(.system(size: 11))
+            AverageProgressCell(progress: stats.testProgress)
+                .frame(width: 100)
+            Text(formatDate(stats.testReadyDate))
+                .frame(width: 70, alignment: .center)
+                .font(.system(size: 11))
+            OverallProgressCell(progress: stats.combinedProgress)
+                .frame(width: 100)
+            AverageProgressCell(progress: getMigrationClusterReadinessProgress(stats.migrationClusterReadiness))
+                .frame(width: 100)
+            Text(stats.migrationClusterReadiness ?? "-")
+                .frame(width: 150, alignment: .center)
+                .foregroundColor(getMigrationReadinessTextColor(stats.migrationClusterReadiness))
+        }
+        .frame(width: 1140)
+        .padding(.vertical, 4)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+    }
+    
+    private func getMigrationReadinessTextColor(_ status: String?) -> Color {
+        guard let status = status?.lowercased() else { return .clear }
+        switch status {
+        case "orderlist to dep", "orderlist confirmed", "ready to start":
+            return .blue
+        case "waiting for apps", "on hold", "aftercare ok":
+            return .orange
+        case "planned", "executed", "decharge":
+            return .green
+        default:
+            return .primary
         }
     }
 }

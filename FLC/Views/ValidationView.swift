@@ -152,6 +152,71 @@ struct ValidationView: View {
         ]
     }
     
+    // Helper view to handle type erasure
+    private struct TabContentView: View {
+        let progress: ImportProgress
+        let searchText: String
+        let tabIndex: Int
+        
+        var body: some View {
+            switch tabIndex {
+            case 0: // Valid Records Tab
+                switch progress.selectedDataType {
+                case .ad:
+                    ValidRecordsView(records: progress.validRecords, searchText: searchText)
+                case .hr:
+                    ValidHRRecordsView(records: progress.validHRRecords, searchText: searchText)
+                case .packageStatus:
+                    ValidPackageStatusRecordsView(records: progress.validPackageRecords, searchText: searchText)
+                case .testing:
+                    ValidTestRecordsView(records: progress.validTestRecords, searchText: searchText)
+                case .migration:
+                    ValidMigrationRecordsView(records: progress.validMigrationRecords, searchText: searchText)
+                case .cluster:
+                    ValidClusterRecordsView(records: progress.validClusterRecords)
+                case .combined:
+                    Text("Combined records cannot be validated")
+                }
+            case 1: // Invalid Records Tab
+                switch progress.selectedDataType {
+                case .ad:
+                    InvalidRecordsView(records: progress.invalidRecords, searchText: searchText)
+                case .hr:
+                    InvalidRecordsView(records: progress.invalidHRRecords, searchText: searchText)
+                case .packageStatus:
+                    InvalidRecordsView(records: progress.invalidPackageRecords, searchText: searchText)
+                case .testing:
+                    InvalidRecordsView(records: progress.invalidTestRecords, searchText: searchText)
+                case .migration:
+                    InvalidRecordsView(records: progress.invalidMigrationRecords, searchText: searchText)
+                case .cluster:
+                    InvalidRecordsView(records: progress.invalidClusterRecords, searchText: searchText)
+                default:
+                    Text("No invalid records to display")
+                }
+            case 2: // Duplicate Records Tab
+                switch progress.selectedDataType {
+                case .ad:
+                    DuplicateRecordsView(records: progress.duplicateRecords, searchText: searchText)
+                case .hr:
+                    DuplicateRecordsView(records: progress.duplicateHRRecords, searchText: searchText)
+                case .packageStatus:
+                    DuplicateRecordsView(records: progress.duplicatePackageRecords, searchText: searchText)
+                case .testing:
+                    DuplicateRecordsView(records: progress.duplicateTestRecords, searchText: searchText)
+                case .migration:
+                    DuplicateRecordsView(records: progress.duplicateMigrationRecords, searchText: searchText)
+                case .cluster:
+                    DuplicateRecordsView(records: progress.duplicateClusterRecords, searchText: searchText)
+                default:
+                    Text("No duplicate records to display")
+                }
+            default:
+                EmptyView()
+            }
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 20) {
             // Data Type Picker with enhanced visibility
@@ -270,77 +335,23 @@ struct ValidationView: View {
             
             // Tabs and Content
             TabView(selection: $selectedTab) {
-                // Valid Records Tab
-                Group {
-                    switch progress.selectedDataType {
-                    case .ad:
-                        ValidRecordsView(records: progress.validRecords, searchText: searchText)
-                    case .hr:
-                        ValidHRRecordsView(records: progress.validHRRecords, searchText: searchText)
-                    case .packageStatus:
-                        ValidPackageStatusRecordsView(records: progress.validPackageRecords, searchText: searchText)
-                    case .testing:
-                        ValidTestRecordsView(records: progress.validTestRecords, searchText: searchText)
-                    case .migration:
-                        ValidMigrationRecordsView(records: progress.validMigrationRecords, searchText: searchText)
-                    case .cluster:
-                        ValidClusterRecordsView(records: progress.validClusterRecords, searchText: searchText)
-                    case .combined:
-                        Text("Combined records cannot be validated")
+                TabContentView(progress: progress, searchText: searchText, tabIndex: 0)
+                    .tabItem {
+                        Label("Valid", systemImage: "checkmark.circle")
                     }
-                }
-                .tabItem {
-                    Label("Valid", systemImage: "checkmark.circle")
-                }
-                .tag(0)
+                    .tag(0)
                 
-                // Invalid Records Tab
-                Group {
-                    switch progress.selectedDataType {
-                    case .ad:
-                        InvalidRecordsView(records: progress.invalidRecords, searchText: searchText)
-                    case .hr:
-                        InvalidRecordsView(records: progress.invalidHRRecords, searchText: searchText)
-                    case .packageStatus:
-                        InvalidRecordsView(records: progress.invalidPackageRecords, searchText: searchText)
-                    case .testing:
-                        InvalidRecordsView(records: progress.invalidTestRecords, searchText: searchText)
-                    case .migration:
-                        InvalidRecordsView(records: progress.invalidMigrationRecords, searchText: searchText)
-                    case .cluster:
-                        InvalidRecordsView(records: progress.invalidClusterRecords, searchText: searchText)
-                    default:
-                        Text("No invalid records to display")
+                TabContentView(progress: progress, searchText: searchText, tabIndex: 1)
+                    .tabItem {
+                        Label("Invalid", systemImage: "xmark.circle")
                     }
-                }
-                .tabItem {
-                    Label("Invalid", systemImage: "xmark.circle")
-                }
-                .tag(1)
+                    .tag(1)
                 
-                // Duplicate Records Tab
-                Group {
-                    switch progress.selectedDataType {
-                    case .ad:
-                        DuplicateRecordsView(records: progress.duplicateRecords, searchText: searchText)
-                    case .hr:
-                        DuplicateRecordsView(records: progress.duplicateHRRecords, searchText: searchText)
-                    case .packageStatus:
-                        DuplicateRecordsView(records: progress.duplicatePackageRecords, searchText: searchText)
-                    case .testing:
-                        DuplicateRecordsView(records: progress.duplicateTestRecords, searchText: searchText)
-                    case .migration:
-                        DuplicateRecordsView(records: progress.duplicateMigrationRecords, searchText: searchText)
-                    case .cluster:
-                        DuplicateRecordsView(records: progress.duplicateClusterRecords, searchText: searchText)
-                    default:
-                        Text("No duplicate records to display")
+                TabContentView(progress: progress, searchText: searchText, tabIndex: 2)
+                    .tabItem {
+                        Label("Duplicates", systemImage: "doc.on.doc")
                     }
-                }
-                .tabItem {
-                    Label("Duplicates", systemImage: "doc.on.doc")
-                }
-                .tag(2)
+                    .tag(2)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1052,71 +1063,7 @@ struct ValidTestRecordsView: View {
     }
 }
 
-<<<<<<< HEAD
-=======
-struct ValidClusterRecordsView: View {
-    let records: [ClusterData]
-    let searchText: String
-    
-    var filteredRecords: [ClusterData] {
-        if searchText.isEmpty {
-            return records
-        }
-        return records.filter { record in
-            record.department.localizedCaseInsensitiveContains(searchText) ||
-            (record.departmentSimple ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.domain ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.migrationCluster ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (record.migrationClusterReadiness ?? "").localizedCaseInsensitiveContains(searchText)
-        }
-    }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                Text("Department")
-                    .frame(width: 200, alignment: .leading)
-                Text("Department Simple")
-                    .frame(width: 200, alignment: .leading)
-                Text("Domain")
-                    .frame(width: 150, alignment: .leading)
-                Text("Migration Cluster")
-                    .frame(width: 200, alignment: .leading)
-                Text("Migration Cluster Readiness")
-                    .frame(width: 200, alignment: .leading)
-            }
-            .padding(.vertical, 4)
-            .font(.system(size: 11, weight: .bold))
-            .background(Color(NSColor.windowBackgroundColor))
-            
-            // Results
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(filteredRecords) { record in
-                        HStack(spacing: 0) {
-                            Text(record.department)
-                                .frame(width: 200, alignment: .leading)
-                            Text(record.departmentSimple ?? "")
-                                .frame(width: 200, alignment: .leading)
-                            Text(record.domain ?? "")
-                                .frame(width: 150, alignment: .leading)
-                            Text(record.migrationCluster ?? "")
-                                .frame(width: 200, alignment: .leading)
-                            Text(record.migrationClusterReadiness ?? "")
-                                .frame(width: 200, alignment: .leading)
-                        }
-                        .frame(height: 18)
-                        .font(.system(size: 11))
-                        .background(filteredRecords.firstIndex(where: { $0.id == record.id })!.isMultiple(of: 2) ? Color(NSColor.controlBackgroundColor) : Color.clear)
-                    }
-                }
-            }
-        }
-    }
-}
 
->>>>>>> v0.96.7
 struct VisualEffectView: NSViewRepresentable {
     let material: NSVisualEffectView.Material
     let blendingMode: NSVisualEffectView.BlendingMode

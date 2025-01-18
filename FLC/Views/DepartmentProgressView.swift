@@ -53,383 +53,169 @@ struct DepartmentProgressView: View {
             .sorted()
     }
     
+    // MARK: - Sub-views
+    private var loadingView: some View {
+        ProgressView("Loading data...")
+    }
+    
+    private var divisionPicker: some View {
+        VStack(alignment: .leading) {
+            Text("Division:")
+                .font(.subheadline)
+            Picker("", selection: $selectedDivision) {
+                Text("Select Division").tag("")
+                Text("All Divisions").tag("All")
+                ForEach(divisions, id: \.self) { division in
+                    Text(division).tag(division)
+                }
+            }
+            .frame(width: 200)
+        }
+    }
+    
+    private var departmentPicker: some View {
+        VStack(alignment: .leading) {
+            Text("Department Simple:")
+                .font(.subheadline)
+            Picker("", selection: $selectedDepartment) {
+                Text("Select Department Simple").tag("")
+                Text("All Departments").tag("All")
+                ForEach(departments, id: \.self) { department in
+                    Text(department).tag(department)
+                }
+            }
+            .frame(width: 200)
+            .disabled(selectedDivision.isEmpty)
+        }
+    }
+    
+    private var environmentFilter: some View {
+        VStack(alignment: .leading) {
+            Text("Environment:")
+                .font(.subheadline)
+            HStack(spacing: 8) {
+                ForEach(environments, id: \.self) { env in
+                    Toggle(env, isOn: environmentBinding(for: env))
+                        .toggleStyle(.checkbox)
+                }
+            }
+        }
+    }
+    
+    private var statusFilter: some View {
+        VStack(alignment: .leading) {
+            Text("Status:")
+                .font(.subheadline)
+            Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
+                .toggleStyle(.checkbox)
+            Toggle("Exclude users without HR match", isOn: $excludeNoHRMatch)
+                .toggleStyle(.checkbox)
+            Toggle("Exclude users who have left", isOn: $excludeLeftUsers)
+                .toggleStyle(.checkbox)
+        }
+    }
+    
+    private var platformFilter: some View {
+        VStack(alignment: .leading) {
+            Text("Platform:")
+                .font(.subheadline)
+            HStack(spacing: 8) {
+                ForEach(platforms, id: \.self) { platform in
+                    Toggle(platform, isOn: platformBinding(for: platform))
+                        .toggleStyle(.checkbox)
+                }
+            }
+        }
+    }
+    
+    private var generateButton: some View {
+        Button(action: { showResults = true }) {
+            Text("Generate")
+                .frame(width: 100)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(selectedDivision.isEmpty || selectedDepartment.isEmpty)
+    }
+    
+    private var filtersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Select Department Simple")
+                .font(.headline)
+            
+            HStack(spacing: 20) {
+                divisionPicker
+                departmentPicker
+                Spacer()
+                environmentFilter
+                statusFilter
+                platformFilter
+                Spacer()
+                generateButton
+            }
+        }
+        .frame(width: 1280)
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
+    }
+    
+    private func environmentBinding(for env: String) -> Binding<Bool> {
+        Binding(
+            get: { 
+                if env == "All" {
+                    return selectedEnvironments.count == environments.count - 1
+                }
+                return selectedEnvironments.contains(env)
+            },
+            set: { isSelected in
+                if env == "All" {
+                    if isSelected {
+                        selectedEnvironments = Set(environments.filter { $0 != "All" })
+                    }
+                } else {
+                    if isSelected {
+                        selectedEnvironments.insert(env)
+                    } else if selectedEnvironments.count > 1 {
+                        selectedEnvironments.remove(env)
+                    }
+                }
+            }
+        )
+    }
+    
+    private func platformBinding(for platform: String) -> Binding<Bool> {
+        Binding(
+            get: { selectedPlatforms.contains(platform) },
+            set: { isSelected in
+                if platform == "All" {
+                    if isSelected {
+                        selectedPlatforms = ["All"]
+                    } else {
+                        selectedPlatforms = ["SAAS"]
+                    }
+                } else {
+                    if isSelected {
+                        selectedPlatforms.remove("All")
+                        selectedPlatforms.insert(platform)
+                    } else if selectedPlatforms.count > 1 {
+                        selectedPlatforms.remove(platform)
+                    }
+                }
+            }
+        )
+    }
+    
     var body: some View {
         VStack(spacing: 20) {
             if isLoading {
-                ProgressView("Loading data...")
+                loadingView
             } else {
-                // Filters Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Select Department Simple")
-                        .font(.headline)
-                    
-                    HStack(spacing: 20) {
-                        // Division Picker
-                        VStack(alignment: .leading) {
-                            Text("Division:")
-                                .font(.subheadline)
-                            Picker("", selection: $selectedDivision) {
-                                Text("Select Division").tag("")
-                                Text("All Divisions").tag("All")
-                                ForEach(divisions, id: \.self) { division in
-                                    Text(division).tag(division)
-                                }
-                            }
-                            .frame(width: 200)
-                        }
-                        
-                        // Department Simple Picker
-                        VStack(alignment: .leading) {
-                            Text("Department Simple:")
-                                .font(.subheadline)
-                            Picker("", selection: $selectedDepartment) {
-                                Text("Select Department Simple").tag("")
-                                Text("All Departments").tag("All")
-                                ForEach(departments, id: \.self) { department in
-                                    Text(department).tag(department)
-                                }
-                            }
-                            .frame(width: 200)
-                            .disabled(selectedDivision.isEmpty)
-                        }
-                        
-                        Spacer()
-                        
-                        // Environment Filter
-                        VStack(alignment: .leading) {
-                            Text("Environment:")
-                                .font(.subheadline)
-                            HStack(spacing: 8) {
-                                ForEach(environments, id: \.self) { env in
-                                    Toggle(env, isOn: Binding(
-                                        get: { 
-                                            if env == "All" {
-                                                return selectedEnvironments.count == environments.count - 1  // -1 for "All" itself
-                                            }
-                                            return selectedEnvironments.contains(env)
-                                        },
-                                        set: { isSelected in
-                                            if env == "All" {
-                                                if isSelected {
-                                                    // Select all environments except "All" itself
-                                                    selectedEnvironments = Set(environments.filter { $0 != "All" })
-                                                } else {
-                                                    // When deselecting "All", keep current selection
-                                                    selectedEnvironments = selectedEnvironments
-                                                }
-                                            } else {
-                                                if isSelected {
-                                                    selectedEnvironments.insert(env)
-                                                } else if selectedEnvironments.count > 1 {  // Prevent deselecting all
-                                                    selectedEnvironments.remove(env)
-                                                }
-                                            }
-                                        }
-                                    ))
-                                    .toggleStyle(.checkbox)
-                                }
-                            }
-                        }
-                        
-                        // Status Filter
-                        VStack(alignment: .leading) {
-                            Text("Status:")
-                                .font(.subheadline)
-                            Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
-                                .toggleStyle(.checkbox)
-                            Toggle("Exclude users without HR match", isOn: $excludeNoHRMatch)
-                                .toggleStyle(.checkbox)
-                            Toggle("Exclude users who have left", isOn: $excludeLeftUsers)
-                                .toggleStyle(.checkbox)
-                        }
-                        
-                        // Platform Filter
-                        VStack(alignment: .leading) {
-                            Text("Platform:")
-                                .font(.subheadline)
-                            HStack(spacing: 8) {
-                                ForEach(platforms, id: \.self) { platform in
-                                    Toggle(platform, isOn: Binding(
-                                        get: { selectedPlatforms.contains(platform) },
-                                        set: { isSelected in
-                                            if platform == "All" {
-                                                if isSelected {
-                                                    selectedPlatforms = ["All"]
-                                                } else {
-                                                    selectedPlatforms = ["SAAS"]
-                                                }
-                                            } else {
-                                                if isSelected {
-                                                    selectedPlatforms.remove("All")
-                                                    selectedPlatforms.insert(platform)
-                                                } else if selectedPlatforms.count > 1 {
-                                                    selectedPlatforms.remove(platform)
-                                                }
-                                            }
-                                        }
-                                    ))
-                                    .toggleStyle(.checkbox)
-                                }
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        // Generate Button
-                        Button(action: {
-                            showResults = true
-                        }) {
-                            Text("Generate")
-                                .frame(width: 100)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(selectedDivision.isEmpty || selectedDepartment.isEmpty)
-                    }
-                }
-                .frame(width: 1280)  // Broader width
-                .padding()
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(10)
-                
+                filtersSection
                 if showResults {
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            // Combined header with totals
-                            HStack(spacing: 0) {
-                                VStack(alignment: .leading) {
-                                    Text("\(selectedDivision)")
-                                        .font(.headline)
-                                    Text("\(selectedDepartment)")
-                                        .font(.headline)
-                                }
-                                .frame(width: 300, alignment: .leading)
-                                .padding(.leading, 8)
-                                Text("")
-                                    .frame(width: 100, alignment: .leading)
-                                Text("")
-                                    .frame(width: 80, alignment: .leading)
-                                Text("")
-                                    .frame(width: 80, alignment: .leading)
-                                Text("Users")
-                                    .frame(width: 60, alignment: .center)
-                                Text("Depts")
-                                    .frame(width: 60, alignment: .center)
-                                VStack {
-                                    Text("Average")
-                                    Text("Package")
-                                }
-                                .frame(width: 120, alignment: .center)
-                                Text("Ready by")
-                                    .frame(width: 80, alignment: .center)
-                                VStack {
-                                    Text("Average")
-                                    Text("Testing")
-                                }
-                                .frame(width: 120, alignment: .center)
-                                Text("Ready by")
-                                    .frame(width: 80, alignment: .center)
-                                Text("Test\nResult")
-                                    .frame(width: 80, alignment: .center)
-                                    .multilineTextAlignment(.center)
-                                Text("Application\nReadiness")
-                                    .frame(width: 120, alignment: .center)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .frame(width: 1280)  // Broader width
-                            .padding(.vertical, 4)
-                            .background(Color(NSColor.controlBackgroundColor))
-                            
-                            // Values row
-                            HStack(spacing: 0) {
-                                VStack(alignment: .leading) {
-                                    Text("\(selectedDivision)")
-                                        .font(.headline)
-                                    Text("\(selectedDepartment)")
-                                        .font(.headline)
-                                }
-                                .frame(width: 300, alignment: .leading)
-                                .padding(.leading, 8)
-                                Text("")
-                                    .frame(width: 100, alignment: .leading)
-                                Text("")
-                                    .frame(width: 80, alignment: .leading)
-                                Text("")
-                                    .frame(width: 80, alignment: .leading)
-                                Text("\(totalUniqueUsers)")
-                                    .frame(width: 60, alignment: .center)
-                                Text("\(totalUniqueDepartments)")
-                                    .frame(width: 60, alignment: .center)
-                                AverageProgressCell(progress: Double(averagePackageProgress) ?? 0)
-                                    .frame(width: 120)
-                                Text(latestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
-                                    .frame(width: 80, alignment: .center)
-                                    .font(.system(size: 11))
-                                AverageProgressCell(progress: Double(averageTestingProgress) ?? 0)
-                                    .frame(width: 120)
-                                Text(latestTestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
-                                    .frame(width: 80, alignment: .center)
-                                    .font(.system(size: 11))
-                                Text(getBestTestResult(from: departmentApplications))
-                                    .frame(width: 80, alignment: .center)
-                                    .foregroundColor(getTestResultColor(getBestTestResult(from: departmentApplications)))
-                                Text("\(Int(Double(averageMigrationProgress) ?? 0))%")
-                                    .frame(width: 120, alignment: .center)
-                            }
-                            .frame(width: 1280)  // Broader width
-                            .padding(.vertical, 4)
-                            .background(Color(NSColor.controlBackgroundColor))
-                            
-                            // Applications List
-                            VStack(alignment: .leading, spacing: 4) {
-                                // Header
-                                HStack(spacing: 0) {
-                                    SortableColumnHeader("Application", column: .name, width: 300)
-                                        .padding(.leading, 8)
-                                    Text("Will be")
-                                        .frame(width: 100, alignment: .leading)
-                                    Text("Platform")
-                                        .frame(width: 80, alignment: .leading)
-                                    Text("In/Out Scope")
-                                        .frame(width: 80, alignment: .leading)
-                                    SortableColumnHeader("Users", column: .users, width: 60, alignment: .center)
-                                    SortableColumnHeader("Depts", column: .departments, width: 60, alignment: .center)
-                                    VStack {
-                                        Text("Average")
-                                        Text("Package")
-                                    }
-                                    .frame(width: 120, alignment: .center)
-                                    Text("Ready by")
-                                        .frame(width: 80, alignment: .center)
-                                    VStack {
-                                        Text("Average")
-                                        Text("Testing")
-                                    }
-                                    .frame(width: 120, alignment: .center)
-                                    Text("Ready by")
-                                        .frame(width: 80, alignment: .center)
-                                    SortableColumnHeader("Test\nResult", column: .testResult, width: 80, alignment: .center)
-                                        .multilineTextAlignment(.center)
-                                    Text("Application\nReadiness")
-                                        .frame(width: 120, alignment: .center)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .font(.headline)
-                                .padding(.vertical, 8)
-                                .background(Color(NSColor.controlBackgroundColor))
-                                
-                                // Application rows
-                                ForEach(departmentApplications, id: \.name) { app in
-                                    HStack(spacing: 0) {
-                                        Text(app.name)
-                                            .frame(width: 300, alignment: .leading)
-                                            .lineLimit(1)
-                                            .padding(.leading, 8)
-                                        Text(app.willBe)
-                                            .frame(width: 100, alignment: .leading)
-                                        Text(app.platform == "N/A" ? "" : app.platform)
-                                            .frame(width: 80, alignment: .leading)
-                                        Text(app.inOutScope == "N/A" ? "" : app.inOutScope)
-                                            .frame(width: 80, alignment: .leading)
-                                        Text("\(app.uniqueUsers)")
-                                            .frame(width: 60, alignment: .center)
-                                        Text("\(app.uniqueDepartments)")
-                                            .frame(width: 60, alignment: .center)
-                                        DepartmentProgressCell(status: app.packageStatus, isTestStatus: false)
-                                            .frame(width: 120)
-                                        Text(app.packageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
-                                            .frame(width: 80, alignment: .center)
-                                            .font(.system(size: 11))
-                                        DepartmentProgressCell(status: app.testingStatus, isTestStatus: true)
-                                            .frame(width: 120)
-                                        formatDateWithColor(app.testReadinessDate, packageDate: app.packageReadinessDate)
-                                            .frame(width: 80, alignment: .center)
-                                            .font(.system(size: 11))
-                                        Text(app.testResult)
-                                            .frame(width: 80, alignment: .center)
-                                            .foregroundColor({
-                                                switch app.testResult.lowercased() {
-                                                case "gat ok":
-                                                    return .green
-                                                case "fat ok":
-                                                    return Color(red: 0.4, green: 0.8, blue: 0.4) // light green
-                                                case "fat nok", "gat nok":
-                                                    return .orange
-                                                case "on hold", "reject":
-                                                    return .red
-                                                case "not started", "":
-                                                    return .gray
-                                                default:
-                                                    return .primary
-                                                }
-                                            }())
-                                        Text(app.applicationReadiness)
-                                            .frame(width: 120)
-                                            .foregroundColor({
-                                                switch app.applicationReadiness {
-                                                case "Sunset":
-                                                    return .orange
-                                                case "Out of scope":
-                                                    return .cyan
-                                                case "Migration ready":
-                                                    return .green
-                                                case "In Progress":
-                                                    return .blue
-                                                default:
-                                                    return .gray
-                                                }
-                                            }())
-                                    }
-                                    .padding(.vertical, 4)
-                                }
-                            }
-                            .frame(width: 1280)  // Broader width
-                            .padding(.vertical, 4)
-                            .background(Color(NSColor.controlBackgroundColor))
-                            .cornerRadius(8)
-                        }
-                    }
+                    resultsView
                 }
-                
-                Spacer()
-                
-                // Export Bar
-                VStack(spacing: 8) {
-                    Divider()
-                    HStack {
-                        Text("Export Progress Report")
-                            .font(.headline)
-                        
-                        Spacer()
-                        
-                        if let error = exportError {
-                            Text(error)
-                                .foregroundColor(.red)
-                                .font(.caption)
-                        }
-                        
-                        Button(action: exportAsCSV) {
-                            HStack {
-                                if isExporting {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                        .frame(width: 16, height: 16)
-                                } else {
-                                    Image(systemName: "arrow.down.doc")
-                                }
-                                Text("Export to CSV")
-                            }
-                            .frame(width: 120)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isExporting || departmentApplications.isEmpty)
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                }
-                .background(Color(NSColor.windowBackgroundColor))
             }
         }
-        .padding()
         .task {
             await loadData()
         }
@@ -873,6 +659,273 @@ struct DepartmentProgressView: View {
             return .gray
         default:
             return .primary
+        }
+    }
+    
+    private var resultsHeader: some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading) {
+                Text("\(selectedDivision)")
+                    .font(.headline)
+                Text("\(selectedDepartment)")
+                    .font(.headline)
+            }
+            .frame(width: 300, alignment: .leading)
+            .padding(.leading, 8)
+            Text("")
+                .frame(width: 100, alignment: .leading)
+            Text("")
+                .frame(width: 80, alignment: .leading)
+            Text("")
+                .frame(width: 80, alignment: .leading)
+            Text("Users")
+                .frame(width: 60, alignment: .center)
+            Text("Depts")
+                .frame(width: 60, alignment: .center)
+            VStack {
+                Text("Average")
+                Text("Package")
+            }
+            .frame(width: 120, alignment: .center)
+            Text("Ready by")
+                .frame(width: 80, alignment: .center)
+            VStack {
+                Text("Average")
+                Text("Testing")
+            }
+            .frame(width: 120, alignment: .center)
+            Text("Ready by")
+                .frame(width: 80, alignment: .center)
+            Text("Test\nResult")
+                .frame(width: 80, alignment: .center)
+                .multilineTextAlignment(.center)
+            Text("Application\nReadiness")
+                .frame(width: 120, alignment: .center)
+                .multilineTextAlignment(.center)
+        }
+        .frame(width: 1280)
+        .padding(.vertical, 4)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    private var resultsValues: some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading) {
+                Text("\(selectedDivision)")
+                    .font(.headline)
+                Text("\(selectedDepartment)")
+                    .font(.headline)
+            }
+            .frame(width: 300, alignment: .leading)
+            .padding(.leading, 8)
+            Text("")
+                .frame(width: 100, alignment: .leading)
+            Text("")
+                .frame(width: 80, alignment: .leading)
+            Text("")
+                .frame(width: 80, alignment: .leading)
+            Text("\(totalUniqueUsers)")
+                .frame(width: 60, alignment: .center)
+            Text("\(totalUniqueDepartments)")
+                .frame(width: 60, alignment: .center)
+            AverageProgressCell(progress: Double(averagePackageProgress) ?? 0)
+                .frame(width: 120)
+            Text(latestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
+                .frame(width: 80, alignment: .center)
+                .font(.system(size: 11))
+            AverageProgressCell(progress: Double(averageTestingProgress) ?? 0)
+                .frame(width: 120)
+            Text(latestTestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
+                .frame(width: 80, alignment: .center)
+                .font(.system(size: 11))
+            Text(getBestTestResult(from: departmentApplications))
+                .frame(width: 80, alignment: .center)
+                .foregroundColor(getTestResultColor(getBestTestResult(from: departmentApplications)))
+            Text("\(Int(Double(averageMigrationProgress) ?? 0))%")
+                .frame(width: 120, alignment: .center)
+        }
+        .frame(width: 1280)
+        .padding(.vertical, 4)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    private var applicationsListHeader: some View {
+        HStack(spacing: 0) {
+            SortableColumnHeader("Application", column: .name, width: 300)
+                .padding(.leading, 8)
+            Text("Will be")
+                .frame(width: 100, alignment: .leading)
+            Text("Platform")
+                .frame(width: 80, alignment: .leading)
+            Text("In/Out Scope")
+                .frame(width: 80, alignment: .leading)
+            SortableColumnHeader("Users", column: .users, width: 60, alignment: .center)
+            SortableColumnHeader("Depts", column: .departments, width: 60, alignment: .center)
+            VStack {
+                Text("Average")
+                Text("Package")
+            }
+            .frame(width: 120, alignment: .center)
+            Text("Ready by")
+                .frame(width: 80, alignment: .center)
+            VStack {
+                Text("Average")
+                Text("Testing")
+            }
+            .frame(width: 120, alignment: .center)
+            Text("Ready by")
+                .frame(width: 80, alignment: .center)
+            SortableColumnHeader("Test\nResult", column: .testResult, width: 80, alignment: .center)
+                .multilineTextAlignment(.center)
+            Text("Application\nReadiness")
+                .frame(width: 120, alignment: .center)
+                .multilineTextAlignment(.center)
+        }
+        .font(.headline)
+        .padding(.vertical, 8)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    private var applicationsList: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            applicationsListHeader
+            
+            ForEach(departmentApplications, id: \.name) { app in
+                ApplicationRow(app: app)
+            }
+        }
+        .frame(width: 1280)
+        .padding(.vertical, 4)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+    }
+    
+    private var exportSection: some View {
+        VStack(spacing: 8) {
+            Divider()
+            HStack {
+                Text("Export Progress Report")
+                    .font(.headline)
+                
+                Spacer()
+                
+                if let error = exportError {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+                
+                Button(action: exportAsCSV) {
+                    HStack {
+                        if isExporting {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .frame(width: 16, height: 16)
+                        } else {
+                            Image(systemName: "arrow.down.doc")
+                        }
+                        Text("Export to CSV")
+                    }
+                    .frame(width: 120)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isExporting || departmentApplications.isEmpty)
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+        }
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+    
+    private var resultsView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                resultsHeader
+                resultsValues
+                applicationsList
+            }
+        }
+    }
+    
+    private struct ApplicationRow: View {
+        private let app: ApplicationInfo
+        
+        fileprivate init(app: ApplicationInfo) {
+            self.app = app
+        }
+        
+        var body: some View {
+            HStack(spacing: 0) {
+                Text(app.name)
+                    .frame(width: 300, alignment: .leading)
+                    .lineLimit(1)
+                    .padding(.leading, 8)
+                Text(app.willBe)
+                    .frame(width: 100, alignment: .leading)
+                Text(app.platform == "N/A" ? "" : app.platform)
+                    .frame(width: 80, alignment: .leading)
+                Text(app.inOutScope == "N/A" ? "" : app.inOutScope)
+                    .frame(width: 80, alignment: .leading)
+                Text("\(app.uniqueUsers)")
+                    .frame(width: 60, alignment: .center)
+                Text("\(app.uniqueDepartments)")
+                    .frame(width: 60, alignment: .center)
+                DepartmentProgressCell(status: app.packageStatus)
+                    .frame(width: 120)
+                Text(app.packageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")
+                    .frame(width: 80, alignment: .center)
+                    .font(.system(size: 11))
+                DepartmentProgressCell(status: app.testingStatus)
+                    .frame(width: 120)
+                self.formatDateWithColor(app.testReadinessDate, packageDate: app.packageReadinessDate)
+                    .frame(width: 80, alignment: .center)
+                    .font(.system(size: 11))
+                Text(app.testResult)
+                    .frame(width: 80, alignment: .center)
+                    .foregroundColor(getTestResultColor(app.testResult))
+                Text(app.applicationReadiness)
+                    .frame(width: 120)
+                    .foregroundColor(getApplicationReadinessColor(app.applicationReadiness))
+            }
+            .padding(.vertical, 4)
+        }
+        
+        private func formatDateWithColor(_ testDate: Date?, packageDate: Date?) -> Text {
+            let dateStr = testDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-"
+            return Text(dateStr)
+                .foregroundColor(testDate != nil && packageDate != nil && testDate! < packageDate! ? .red : .primary)
+        }
+        
+        private func getTestResultColor(_ testResult: String) -> Color {
+            switch testResult.lowercased() {
+            case "gat ok":
+                return .green
+            case "fat ok":
+                return Color(red: 0.4, green: 0.8, blue: 0.4) // light green
+            case "fat nok", "gat nok":
+                return .orange
+            case "on hold", "reject":
+                return .red
+            case "not started", "":
+                return .gray
+            default:
+                return .primary
+            }
+        }
+        
+        private func getApplicationReadinessColor(_ readiness: String) -> Color {
+            switch readiness {
+            case "Sunset":
+                return .orange
+            case "Out of scope":
+                return .cyan
+            case "Migration ready":
+                return .green
+            case "In Progress":
+                return .blue
+            default:
+                return .gray
+            }
         }
     }
 }
