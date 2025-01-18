@@ -34,7 +34,7 @@ struct ValidClusterRecordsView: View {
             }
             .navigationTitle("Valid Records")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .automatic) {
                     Button("Done") {
                         dismiss()
                     }
