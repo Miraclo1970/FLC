@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ValidClusterRecordsView: View {
     let records: [ClusterData]
-    @Environment(\.dismiss) private var dismiss
+    let dismiss: () -> Void
     
     var body: some View {
         NavigationView {
@@ -45,13 +45,18 @@ struct ValidClusterRecordsView: View {
 }
 
 #Preview {
-    ValidClusterRecordsView(records: [
-        ClusterData(
-            department: "Test Department",
-            departmentSimple: "Test Simple",
-            domain: "Test Domain",
-            migrationCluster: "Test Cluster",
-            migrationClusterReadiness: "planned"
+    NavigationView {
+        ValidClusterRecordsView(
+            records: [
+                ClusterData(
+                    department: "Test Department",
+                    departmentSimple: "Test Simple",
+                    domain: "Test Domain",
+                    migrationCluster: "Test Cluster",
+                    migrationClusterReadiness: "planned"
+                )
+            ],
+            dismiss: {}
         )
-    ])
+    }
 } 

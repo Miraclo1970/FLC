@@ -144,7 +144,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = AC60B8F92D0C1ADD00B4F20E /* Build configuration list for PBXNativeTarget "FLCTests" */;
 			buildPhases = (
-				F4ABDF0EFAEE5E54182E8FE3 /* [CP] Check Pods Manifest.lock */,
 				AC60B8DE2D0C1ADD00B4F20E /* Sources */,
 				AC60B8DF2D0C1ADD00B4F20E /* Frameworks */,
 				AC60B8E02D0C1ADD00B4F20E /* Resources */,
@@ -166,7 +165,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = AC60B8FC2D0C1ADD00B4F20E /* Build configuration list for PBXNativeTarget "FLCUITests" */;
 			buildPhases = (
-				C50D0AD905573ED1F2858309 /* [CP] Check Pods Manifest.lock */,
 				AC60B8E82D0C1ADD00B4F20E /* Sources */,
 				AC60B8E92D0C1ADD00B4F20E /* Frameworks */,
 				AC60B8EA2D0C1ADD00B4F20E /* Resources */,
@@ -273,50 +271,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-FLC-FLCUITests/Pods-FLC-FLCUITests-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		C50D0AD905573ED1F2858309 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-FLC-FLCUITests-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		F4ABDF0EFAEE5E54182E8FE3 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-FLCTests-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

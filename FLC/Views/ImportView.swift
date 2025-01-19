@@ -7,7 +7,7 @@ struct ImportView: View {
     @State private var message = "Select type of data to import"
     @State private var importType: ImportType?
     @EnvironmentObject private var progress: ImportProgress
-    @Environment(\.dismiss) var dismiss
+    let dismiss: () -> Void
     @State private var selectedRows: Set<Int> = []
     @State private var selectedRowsCount: Int = 0
     @State private var selectedRowsText: String = ""
@@ -2142,5 +2142,8 @@ extension String {
 }
 
 #Preview {
-    ImportView()
+    NavigationView {
+        ImportView(dismiss: {})
+            .environmentObject(ImportProgress())
+    }
 } 

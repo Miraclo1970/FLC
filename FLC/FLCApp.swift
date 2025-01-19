@@ -19,6 +19,12 @@ struct FLCApp: App {
             ContentView()
                 .environmentObject(DatabaseManager.shared)
                 .preferredColorScheme(.dark)
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        EnvironmentSelectorView()
+                            .environmentObject(DatabaseManager.shared)
+                    }
+                }
         }
     }
 }
