@@ -50,11 +50,6 @@
 			path = FLCTests;
 			sourceTree = "<group>";
 		};
-		AC60B8EF2D0C1ADD00B4F20E /* FLCUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = FLCUITests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -91,7 +86,6 @@
 			children = (
 				AC60B8D32D0C1ADC00B4F20E /* FLC */,
 				AC60B8E52D0C1ADD00B4F20E /* FLCTests */,
-				AC60B8EF2D0C1ADD00B4F20E /* FLCUITests */,
 				AC60B8D22D0C1ADC00B4F20E /* Products */,
 				DC7CE6D624BBADEDBCBFB2FC /* Frameworks */,
 			);
@@ -176,9 +170,6 @@
 			);
 			dependencies = (
 				AC60B8EE2D0C1ADD00B4F20E /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				AC60B8EF2D0C1ADD00B4F20E /* FLCUITests */,
 			);
 			name = FLCUITests;
 			productName = FLCUITests;
