@@ -21,9 +21,15 @@ struct MigrationData: Identifiable, Codable {
     var validationErrors: [String] {
         var errors: [String] = []
         
-        // Only required field is application name
+        // Validate application name
         if applicationName.isEmpty || applicationName == "N/A" {
             errors.append("Application Name is required")
+            return errors
+        }
+        
+        // Check if application exists in AD
+        if !DatabaseManager.shared.hasADApplication(applicationName) {
+            errors.append("Application '\(applicationName)' not found in AD records")
             return errors
         }
         
@@ -32,12 +38,12 @@ struct MigrationData: Identifiable, Codable {
             errors.append("Duplicate Application Name '\(applicationName)'")
         }
         
-        // Only validate "Will be" if it's filled in and not N/A
+        // Validate "Will be" if it's filled in and not N/A
         if !willBe.isEmpty && willBe != "N/A" {
-            // Don't validate against AD records for now
-            // if !DatabaseManager.shared.hasADApplication(willBe) {
-            //     errors.append("Will be application '\(willBe)' not found in AD records")
-            // }
+            // Check if target application exists in AD
+            if !DatabaseManager.shared.hasADApplication(willBe) {
+                errors.append("Will be application '\(willBe)' not found in AD records")
+            }
         }
         
         // All other fields are accepted as-is
