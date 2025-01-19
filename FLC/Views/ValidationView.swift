@@ -88,6 +88,7 @@ struct ValidationView: View {
     @State private var saveResult: String?
     @ObservedObject var progress: ImportProgress
     @State private var saveProgress: Double = 0.0
+    let dismiss: () -> Void
     private let batchSize = 5000
     
     private var stats: [(String, String)] {
@@ -157,6 +158,7 @@ struct ValidationView: View {
         let progress: ImportProgress
         let searchText: String
         let tabIndex: Int
+        let dismiss: () -> Void
         
         var body: some View {
             switch tabIndex {
@@ -173,7 +175,7 @@ struct ValidationView: View {
                 case .migration:
                     ValidMigrationRecordsView(records: progress.validMigrationRecords, searchText: searchText)
                 case .cluster:
-                    ValidClusterRecordsView(records: progress.validClusterRecords)
+                    ValidClusterRecordsView(records: progress.validClusterRecords, dismiss: dismiss)
                 case .combined:
                     Text("Combined records cannot be validated")
                 }
@@ -335,19 +337,19 @@ struct ValidationView: View {
             
             // Tabs and Content
             TabView(selection: $selectedTab) {
-                TabContentView(progress: progress, searchText: searchText, tabIndex: 0)
+                TabContentView(progress: progress, searchText: searchText, tabIndex: 0, dismiss: { dismiss() })
                     .tabItem {
                         Label("Valid", systemImage: "checkmark.circle")
                     }
                     .tag(0)
                 
-                TabContentView(progress: progress, searchText: searchText, tabIndex: 1)
+                TabContentView(progress: progress, searchText: searchText, tabIndex: 1, dismiss: { dismiss() })
                     .tabItem {
                         Label("Invalid", systemImage: "xmark.circle")
                     }
                     .tag(1)
                 
-                TabContentView(progress: progress, searchText: searchText, tabIndex: 2)
+                TabContentView(progress: progress, searchText: searchText, tabIndex: 2, dismiss: { dismiss() })
                     .tabItem {
                         Label("Duplicates", systemImage: "doc.on.doc")
                     }
@@ -1063,7 +1065,6 @@ struct ValidTestRecordsView: View {
     }
 }
 
-
 struct VisualEffectView: NSViewRepresentable {
     let material: NSVisualEffectView.Material
     let blendingMode: NSVisualEffectView.BlendingMode
@@ -1083,5 +1084,5 @@ struct VisualEffectView: NSViewRepresentable {
 }
 
 #Preview {
-    ValidationView(progress: ImportProgress())
+    ValidationView(progress: ImportProgress(), dismiss: {} as () -> Void)
 } 

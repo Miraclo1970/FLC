@@ -11,19 +11,20 @@ struct DatabaseContentView: View {
     @State private var testRecords: [TestRecord] = []
     @State private var migrationRecords: [MigrationRecord] = []
     @State private var clusterRecords: [ClusterRecord] = []
-    @State private var isLoading = false
+    @State private var isLoading = true
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
     @State private var showingDeleteAlert = false
     @State private var currentPage = 0
     @State private var hasMoreData = true
     private let pageSize = 1000 // Increased page size for faster loading
-    @Environment(\.refresh) private var refresh
+    let refresh: (() async -> Void)?
     @State private var autoLoadingEnabled = true
     @State private var loadingTask: Task<Void, Never>?
     @State private var showingAlert = false
     @State private var alertTitle = ""
     @State private var alertMessage = ""
+    let dismiss: () -> Void
     
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -1293,7 +1294,10 @@ struct DatabaseClusterRecordsView: View {
 }
 
 #Preview {
-    DatabaseContentView()
+    DatabaseContentView(
+        refresh: {},
+        dismiss: {}
+    )
 }
 
 // Environment key for refresh action

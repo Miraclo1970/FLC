@@ -139,8 +139,181 @@ enum DataSource {
 class DatabaseManager: ObservableObject {
     public static let shared: DatabaseManager = DatabaseManager()
     @Published private var dbPool: DatabasePool?
+    @Published private(set) var currentEnvironment: Environment
     private let currentVersion = 4  // Increment this to force schema update
     private let versionKey = "database_version"
+    
+    private init() {
+        // Load the last used environment or default to Development
+        if let savedEnv = UserDefaults.standard.string(forKey: "current_environment"),
+           let env = Environment(rawValue: savedEnv) {
+            self.currentEnvironment = env
+        } else {
+            self.currentEnvironment = .development
+        }
+        
+        // Migrate old development directory structure if needed
+        migrateOldDevelopmentStructure()
+        
+        // Initialize database for the current environment
+        do {
+            try initializeDatabase()
+        } catch {
+            print("Failed to initialize database during initialization: \(error)")
+            // Since we can't throw from init, we'll just ensure we're in a known state
+            self.currentEnvironment = .development
+            // Try one more time with development environment
+            do {
+                try initializeDatabase()
+            } catch {
+                print("Critical: Failed to initialize development database: \(error)")
+            }
+        }
+    }
+    
+    private func migrateOldDevelopmentStructure() {
+        let fileManager = FileManager.default
+        guard let baseDir = currentEnvironment.baseDirectory else { return }
+        
+        // Check if we need to migrate development environment
+        if currentEnvironment == .development {
+            let oldDbPath = baseDir.appendingPathComponent("flc.db")
+            let oldShmPath = baseDir.appendingPathComponent("flc.db-shm")
+            let oldWalPath = baseDir.appendingPathComponent("flc.db-wal")
+            
+            if fileManager.fileExists(atPath: oldDbPath.path) {
+                do {
+                    // Create new directory structure
+                    try currentEnvironment.createDirectories()
+                    
+                    // Move database files to new location
+                    if let newDbPath = currentEnvironment.databasePath {
+                        try? fileManager.removeItem(at: newDbPath)
+                        try fileManager.moveItem(at: oldDbPath, to: newDbPath)
+                        
+                        // Move associated SQLite files if they exist
+                        if fileManager.fileExists(atPath: oldShmPath.path) {
+                            let newShmPath = newDbPath.deletingLastPathComponent().appendingPathComponent("flc.db-shm")
+                            try? fileManager.removeItem(at: newShmPath)
+                            try fileManager.moveItem(at: oldShmPath, to: newShmPath)
+                        }
+                        
+                        if fileManager.fileExists(atPath: oldWalPath.path) {
+                            let newWalPath = newDbPath.deletingLastPathComponent().appendingPathComponent("flc.db-wal")
+                            try? fileManager.removeItem(at: newWalPath)
+                            try fileManager.moveItem(at: oldWalPath, to: newWalPath)
+                        }
+                    }
+                } catch {
+                    print("Migration error: \(error)")
+                }
+            }
+        }
+    }
+    
+    private func initializeDatabase() throws {
+        let fileManager = FileManager.default
+        
+        // Ensure directories exist for current environment
+        try currentEnvironment.createDirectories()
+        
+        // Get database path for current environment
+        guard let dbURL = currentEnvironment.databasePath else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not get database path for environment \(currentEnvironment)"])
+        }
+        
+        print("Database path: \(dbURL.path)")
+        
+        // Check if we need to delete the existing database due to version mismatch
+        let defaults = UserDefaults.standard
+        let versionKey = "\(currentEnvironment.rawValue)_\(self.versionKey)"
+        let savedVersion = defaults.integer(forKey: versionKey)
+        
+        // Function to create fresh database
+        func createFreshDatabase() throws {
+            // Remove existing database files
+            if fileManager.fileExists(atPath: dbURL.path) {
+                try? fileManager.removeItem(at: dbURL)
+            }
+            // Also remove SQLite auxiliary files
+            try? fileManager.removeItem(at: dbURL.deletingLastPathComponent().appendingPathComponent("flc.db-shm"))
+            try? fileManager.removeItem(at: dbURL.deletingLastPathComponent().appendingPathComponent("flc.db-wal"))
+            
+            // Create new database connection
+            dbPool = try DatabasePool(path: dbURL.path)
+            try createTables()
+            try seedInitialData()
+            
+            // Update version
+            defaults.set(currentVersion, forKey: versionKey)
+        }
+        
+        do {
+            if savedVersion < currentVersion {
+                // Version mismatch - create fresh database
+                try createFreshDatabase()
+            } else {
+                // Try to open existing database
+                dbPool = try DatabasePool(path: dbURL.path)
+                
+                // Verify database is valid by running a simple query
+                try dbPool?.read { db in
+                    try db.execute(sql: "SELECT * FROM sqlite_master LIMIT 1")
+                }
+            }
+        } catch {
+            print("Database initialization failed, recreating: \(error)")
+            // If anything fails, try creating a fresh database
+            try createFreshDatabase()
+        }
+        
+        // Save the current environment as the last used
+        defaults.set(currentEnvironment.rawValue, forKey: "current_environment")
+    }
+    
+    // Switch to a different environment
+    @MainActor
+    func switchEnvironment(to newEnvironment: Environment) async throws {
+        guard newEnvironment != currentEnvironment else { return }
+        
+        // Close existing connection
+        dbPool = nil
+        
+        // Update current environment
+        currentEnvironment = newEnvironment
+        
+        do {
+            // Initialize database for new environment
+            try initializeDatabase()
+        } catch {
+            print("Failed to initialize database: \(error)")
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize database for environment \(newEnvironment): \(error.localizedDescription)"])
+        }
+        
+        // Verify database connection
+        guard dbPool != nil else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize database for environment \(newEnvironment)"])
+        }
+        
+        // Notify observers of the change
+        objectWillChange.send()
+    }
+    
+    // Get the current environment's database path
+    func getDatabasePath() throws -> String {
+        guard let path = currentEnvironment.databasePath?.path else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not get database path for environment \(currentEnvironment)"])
+        }
+        return path
+    }
+    
+    // Get the current environment's derived data directory
+    func getDerivedDataDirectory() throws -> URL {
+        guard let directory = currentEnvironment.derivedDataDirectory else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not get derived data directory for environment \(currentEnvironment)"])
+        }
+        return directory
+    }
     
     // Add fetch method for combined records
     func fetchAllRecords() async throws -> [CombinedRecord] {
@@ -150,37 +323,6 @@ class DatabaseManager: ObservableObject {
         
         return try await dbPool.read { db in
             try CombinedRecord.fetchAll(db)
-        }
-    }
-    
-    private init() {
-        do {
-            let fileManager = FileManager.default
-            
-            // Get the app's container directory
-            guard let containerURL = fileManager.containerURL(forSecurityApplicationGroupIdentifier: "nl.jillten.FLC") else {
-                print("Error: Could not get container URL")
-                return
-            }
-            
-            let dbFolderURL = containerURL.appendingPathComponent("Library/Application Support/FLC", isDirectory: true)
-            try fileManager.createDirectory(at: dbFolderURL, withIntermediateDirectories: true)
-            
-            let dbURL = dbFolderURL.appendingPathComponent("flc.db")
-            print("Database path: \(dbURL.path)")
-            
-            // Check if we need to delete the existing database due to version mismatch
-            let defaults = UserDefaults.standard
-            let savedVersion = defaults.integer(forKey: versionKey)
-            if savedVersion < currentVersion {
-                try? fileManager.removeItem(at: dbURL)
-                defaults.set(currentVersion, forKey: versionKey)
-            }
-            
-            dbPool = try DatabasePool(path: dbURL.path)
-            try createTables()
-        } catch {
-            print("Database initialization error: \(error)")
         }
     }
     
@@ -1414,16 +1556,6 @@ class DatabaseManager: ObservableObject {
             print("Database reinitialization error: \(error)")
             throw error
         }
-    }
-    
-    // Function to get the database file path
-    func getDatabasePath() throws -> String {
-        guard let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find Application Support directory"])
-        }
-        
-        let flcDir = appSupportDir.appendingPathComponent("FLC")
-        return flcDir.appendingPathComponent("database.sqlite").path
     }
     
     // Fetch all unique AD application names
