@@ -145,7 +145,7 @@ class DatabaseManager: ObservableObject {
     
     private init() {
         // Load the last used environment or default to Development
-        if let savedEnv = UserDefaults.standard.string(forKey: "last_environment"),
+        if let savedEnv = UserDefaults.standard.string(forKey: "current_environment"),
            let env = Environment(rawValue: savedEnv) {
             self.currentEnvironment = env
         } else {
@@ -156,7 +156,19 @@ class DatabaseManager: ObservableObject {
         migrateOldDevelopmentStructure()
         
         // Initialize database for the current environment
-        initializeDatabase()
+        do {
+            try initializeDatabase()
+        } catch {
+            print("Failed to initialize database during initialization: \(error)")
+            // Since we can't throw from init, we'll just ensure we're in a known state
+            self.currentEnvironment = .development
+            // Try one more time with development environment
+            do {
+                try initializeDatabase()
+            } catch {
+                print("Critical: Failed to initialize development database: \(error)")
+            }
+        }
     }
     
     private func migrateOldDevelopmentStructure() {
@@ -199,43 +211,64 @@ class DatabaseManager: ObservableObject {
         }
     }
     
-    private func initializeDatabase() {
-        do {
-            // Ensure directories exist for current environment
-            try currentEnvironment.createDirectories()
-            
-            // Get database path for current environment
-            guard let dbURL = currentEnvironment.databasePath else {
-                print("Error: Could not get database path for environment \(currentEnvironment)")
-                return
+    private func initializeDatabase() throws {
+        let fileManager = FileManager.default
+        
+        // Ensure directories exist for current environment
+        try currentEnvironment.createDirectories()
+        
+        // Get database path for current environment
+        guard let dbURL = currentEnvironment.databasePath else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not get database path for environment \(currentEnvironment)"])
+        }
+        
+        print("Database path: \(dbURL.path)")
+        
+        // Check if we need to delete the existing database due to version mismatch
+        let defaults = UserDefaults.standard
+        let versionKey = "\(currentEnvironment.rawValue)_\(self.versionKey)"
+        let savedVersion = defaults.integer(forKey: versionKey)
+        
+        // Function to create fresh database
+        func createFreshDatabase() throws {
+            // Remove existing database files
+            if fileManager.fileExists(atPath: dbURL.path) {
+                try? fileManager.removeItem(at: dbURL)
             }
-            
-            print("Database path: \(dbURL.path)")
-            
-            // Check if we need to delete the existing database due to version mismatch
-            let defaults = UserDefaults.standard
-            let versionKey = "\(currentEnvironment.rawValue)_\(self.versionKey)"
-            let savedVersion = defaults.integer(forKey: versionKey)
-            
-            if savedVersion < currentVersion {
-                try? FileManager.default.removeItem(at: dbURL)
-                defaults.set(currentVersion, forKey: versionKey)
-            }
+            // Also remove SQLite auxiliary files
+            try? fileManager.removeItem(at: dbURL.deletingLastPathComponent().appendingPathComponent("flc.db-shm"))
+            try? fileManager.removeItem(at: dbURL.deletingLastPathComponent().appendingPathComponent("flc.db-wal"))
             
             // Create new database connection
             dbPool = try DatabasePool(path: dbURL.path)
             try createTables()
+            try seedInitialData()
             
-            // Only seed initial data for new databases
-            if savedVersion < currentVersion {
-                ensureInitialData()
-            }
-            
-            // Save the current environment as the last used
-            defaults.set(currentEnvironment.rawValue, forKey: "last_environment")
-        } catch {
-            print("Database initialization error: \(error)")
+            // Update version
+            defaults.set(currentVersion, forKey: versionKey)
         }
+        
+        do {
+            if savedVersion < currentVersion {
+                // Version mismatch - create fresh database
+                try createFreshDatabase()
+            } else {
+                // Try to open existing database
+                dbPool = try DatabasePool(path: dbURL.path)
+                
+                // Verify database is valid by running a simple query
+                try dbPool?.read { db in
+                    try db.execute(sql: "SELECT * FROM sqlite_master LIMIT 1")
+                }
+            }
+        } catch {
+            print("Database initialization failed, recreating: \(error)")
+            // If anything fails, try creating a fresh database
+            try createFreshDatabase()
+        }
+        
+        // Save the current environment as the last used
+        defaults.set(currentEnvironment.rawValue, forKey: "current_environment")
     }
     
     // Switch to a different environment
@@ -249,8 +282,13 @@ class DatabaseManager: ObservableObject {
         // Update current environment
         currentEnvironment = newEnvironment
         
-        // Initialize database for new environment
-        initializeDatabase()
+        do {
+            // Initialize database for new environment
+            try initializeDatabase()
+        } catch {
+            print("Failed to initialize database: \(error)")
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize database for environment \(newEnvironment): \(error.localizedDescription)"])
+        }
         
         // Verify database connection
         guard dbPool != nil else {

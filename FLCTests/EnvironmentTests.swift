@@ -55,7 +55,7 @@ final class EnvironmentTests: XCTestCase {
             XCTAssertTrue(dbPath.contains(environment.rawValue.lowercased()))
             
             // Verify UserDefaults persistence
-            let savedEnv = UserDefaults.standard.string(forKey: "last_environment")
+            let savedEnv = UserDefaults.standard.string(forKey: "current_environment")
             XCTAssertEqual(savedEnv, environment.rawValue)
         }
     }
@@ -101,6 +101,77 @@ final class EnvironmentTests: XCTestCase {
             XCTAssertTrue(path?.lastPathComponent == testFile)
             XCTAssertTrue(path?.path.contains(environment.rawValue.lowercased()) ?? false)
         }
+    }
+    
+    func testInvalidDirectoryPaths() {
+        // Test behavior with invalid paths
+        let testEnv = Environment.test
+        
+        // Simulate invalid base directory
+        let invalidPath = URL(fileURLWithPath: "/invalid/path")
+        
+        // Attempt to create directories with invalid path
+        XCTAssertThrowsError(try testEnv.createDirectories(basePath: invalidPath)) { error in
+            XCTAssertTrue(error is FileManager.DirectoryError)
+        }
+    }
+    
+    func testDevelopmentEnvironmentMigration() throws {
+        let devEnv = Environment.development
+        let fileManager = FileManager.default
+        
+        // Create old structure (database files in root)
+        guard let baseDir = devEnv.baseDirectory else {
+            XCTFail("Could not get base directory")
+            return
+        }
+        
+        // Clean up any existing files
+        try? fileManager.removeItem(at: baseDir)
+        try fileManager.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        
+        // Create dummy database files in root
+        let dummyData = "test".data(using: .utf8)!
+        try dummyData.write(to: baseDir.appendingPathComponent("flc.db"))
+        try dummyData.write(to: baseDir.appendingPathComponent("flc.db-shm"))
+        try dummyData.write(to: baseDir.appendingPathComponent("flc.db-wal"))
+        
+        // Perform migration
+        try devEnv.migrateOldDevelopmentStructure()
+        
+        // Verify files were moved to new structure
+        XCTAssertTrue(fileManager.fileExists(atPath: devEnv.databaseDirectory!.appendingPathComponent("flc.db").path))
+        XCTAssertTrue(fileManager.fileExists(atPath: devEnv.databaseDirectory!.appendingPathComponent("flc.db-shm").path))
+        XCTAssertTrue(fileManager.fileExists(atPath: devEnv.databaseDirectory!.appendingPathComponent("flc.db-wal").path))
+        
+        // Verify old files are gone
+        XCTAssertFalse(fileManager.fileExists(atPath: baseDir.appendingPathComponent("flc.db").path))
+    }
+    
+    func testDirectoryCleanup() throws {
+        let testEnv = Environment.test
+        let fileManager = FileManager.default
+        
+        // Create test directories and files
+        try testEnv.createDirectories()
+        
+        // Create a test file in derived data
+        let testFile = "test.json"
+        let testData = "test".data(using: .utf8)!
+        let testPath = testEnv.derivedDataDirectory!.appendingPathComponent(testFile)
+        try testData.write(to: testPath)
+        
+        // Verify file exists
+        XCTAssertTrue(fileManager.fileExists(atPath: testPath.path))
+        
+        // Clean up directories
+        try testEnv.cleanupDirectories()
+        
+        // Verify directories and files are removed
+        XCTAssertFalse(fileManager.fileExists(atPath: testEnv.baseDirectory!.path))
+        XCTAssertFalse(fileManager.fileExists(atPath: testEnv.databaseDirectory!.path))
+        XCTAssertFalse(fileManager.fileExists(atPath: testEnv.derivedDataDirectory!.path))
+        XCTAssertFalse(fileManager.fileExists(atPath: testPath.path))
     }
 }
 

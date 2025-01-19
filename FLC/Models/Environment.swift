@@ -1,11 +1,31 @@
 import Foundation
 import SwiftUI
 
+extension FileManager {
+    enum DirectoryError: Error {
+        case invalidPath
+        case creationFailed
+        case deletionFailed
+    }
+}
+
 enum Environment: String, CaseIterable {
     case development = "Development"
     case test = "Test"
     case acceptance = "Acceptance"
     case production = "Production"
+    
+    static var defaultEnvironment: Environment {
+        #if DEBUG
+        return .development
+        #elseif TESTING
+        return .test
+        #elseif ACCEPTANCE
+        return .acceptance
+        #else
+        return .production
+        #endif
+    }
     
     static var current: Environment {
         get {
@@ -14,7 +34,7 @@ enum Environment: String, CaseIterable {
                let environment = Environment(rawValue: storedValue) {
                 return environment
             }
-            return .development // Default to development
+            return defaultEnvironment
         }
         set {
             let defaults = UserDefaults.standard
@@ -24,9 +44,14 @@ enum Environment: String, CaseIterable {
     
     // Base directory for all environment data
     var baseDirectory: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "nl.jillten.FLC")?
-            .appendingPathComponent("Library/Application Support/FLC", isDirectory: true)
-            .appendingPathComponent(rawValue.lowercased(), isDirectory: true)
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "nl.jillten.FLC") else {
+            // Fall back to app's support directory if app group is not available
+            let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            return paths.first?.appendingPathComponent("FLC", isDirectory: true)
+                       .appendingPathComponent(rawValue.lowercased(), isDirectory: true)
+        }
+        return containerURL.appendingPathComponent("Library/Application Support/FLC", isDirectory: true)
+                         .appendingPathComponent(rawValue.lowercased(), isDirectory: true)
     }
     
     // Database directory for this environment
@@ -45,22 +70,80 @@ enum Environment: String, CaseIterable {
     }
     
     // Create all necessary directories for this environment
-    func createDirectories() throws {
+    func createDirectories(basePath: URL? = nil) throws {
         let fileManager = FileManager.default
+        let baseDir = basePath ?? baseDirectory
+        
+        guard let baseDir = baseDir else {
+            throw FileManager.DirectoryError.invalidPath
+        }
         
         // Create base directory
-        if let baseDir = baseDirectory {
+        do {
             try fileManager.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        } catch {
+            throw FileManager.DirectoryError.creationFailed
         }
         
         // Create database directory
         if let dbDir = databaseDirectory {
-            try fileManager.createDirectory(at: dbDir, withIntermediateDirectories: true)
+            do {
+                try fileManager.createDirectory(at: dbDir, withIntermediateDirectories: true)
+            } catch {
+                throw FileManager.DirectoryError.creationFailed
+            }
         }
         
         // Create derived data directory
         if let derivedDir = derivedDataDirectory {
-            try fileManager.createDirectory(at: derivedDir, withIntermediateDirectories: true)
+            do {
+                try fileManager.createDirectory(at: derivedDir, withIntermediateDirectories: true)
+            } catch {
+                throw FileManager.DirectoryError.creationFailed
+            }
+        }
+    }
+    
+    // Clean up all directories for this environment
+    func cleanupDirectories() throws {
+        let fileManager = FileManager.default
+        
+        // Remove base directory (this will remove all subdirectories as well)
+        if let baseDir = baseDirectory, fileManager.fileExists(atPath: baseDir.path) {
+            do {
+                try fileManager.removeItem(at: baseDir)
+            } catch {
+                throw FileManager.DirectoryError.deletionFailed
+            }
+        }
+    }
+    
+    // Migrate old development environment structure to new structure
+    func migrateOldDevelopmentStructure() throws {
+        guard self == .development else { return }
+        let fileManager = FileManager.default
+        
+        guard let baseDir = baseDirectory,
+              let dbDir = databaseDirectory else {
+            throw FileManager.DirectoryError.invalidPath
+        }
+        
+        // Create new directory structure
+        try createDirectories()
+        
+        // Check for old database files
+        let dbFiles = ["flc.db", "flc.db-shm", "flc.db-wal"]
+        for file in dbFiles {
+            let oldPath = baseDir.appendingPathComponent(file)
+            let newPath = dbDir.appendingPathComponent(file)
+            
+            if fileManager.fileExists(atPath: oldPath.path) {
+                do {
+                    try fileManager.moveItem(at: oldPath, to: newPath)
+                } catch {
+                    throw FileManager.DirectoryError.creationFailed
+                }
+            }
         }
     }
     

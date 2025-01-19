@@ -7,8 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		6244DF33620024D30235D6DD /* Pods_FLCTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1E78E20CC434CE4D350FB96A /* Pods_FLCTests.framework */; };
-		665002BE7517A618291DFA2E /* Pods_FLC_FLCUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5FB1B17709AC307D8717D0ED /* Pods_FLC_FLCUITests.framework */; };
 		AC93358A2D0C972C00142927 /* CoreXLSX in Frameworks */ = {isa = PBXBuildFile; productRef = AC9335892D0C972C00142927 /* CoreXLSX */; };
 		ACCEF9DE2D0C8B9000EDACAC /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = ACCEF9DD2D0C8B9000EDACAC /* GRDB */; };
 /* End PBXBuildFile section */
@@ -31,9 +29,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		1E78E20CC434CE4D350FB96A /* Pods_FLCTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_FLCTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		5FB1B17709AC307D8717D0ED /* Pods_FLC_FLCUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_FLC_FLCUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		ABC154E9F9D5197FBD3A2EE7 /* Pods_FLC.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_FLC.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC60B8D12D0C1ADC00B4F20E /* FLC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FLC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC60B8E22D0C1ADD00B4F20E /* FLCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FLCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AC60B8EC2D0C1ADD00B4F20E /* FLCUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FLCUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -71,15 +66,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6244DF33620024D30235D6DD /* Pods_FLCTests.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		AC60B8E92D0C1ADD00B4F20E /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				665002BE7517A618291DFA2E /* Pods_FLC_FLCUITests.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -93,7 +79,6 @@
 				AC60B8E52D0C1ADD00B4F20E /* FLCTests */,
 				AC60B8EF2D0C1ADD00B4F20E /* FLCUITests */,
 				AC60B8D22D0C1ADC00B4F20E /* Products */,
-				DC7CE6D624BBADEDBCBFB2FC /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -105,16 +90,6 @@
 				AC60B8EC2D0C1ADD00B4F20E /* FLCUITests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		DC7CE6D624BBADEDBCBFB2FC /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				ABC154E9F9D5197FBD3A2EE7 /* Pods_FLC.framework */,
-				5FB1B17709AC307D8717D0ED /* Pods_FLC_FLCUITests.framework */,
-				1E78E20CC434CE4D350FB96A /* Pods_FLCTests.framework */,
-			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -166,9 +141,7 @@
 			buildConfigurationList = AC60B8FC2D0C1ADD00B4F20E /* Build configuration list for PBXNativeTarget "FLCUITests" */;
 			buildPhases = (
 				AC60B8E82D0C1ADD00B4F20E /* Sources */,
-				AC60B8E92D0C1ADD00B4F20E /* Frameworks */,
 				AC60B8EA2D0C1ADD00B4F20E /* Resources */,
-				921F248487D9F340E653F1A5 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -254,26 +227,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		921F248487D9F340E653F1A5 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-FLC-FLCUITests/Pods-FLC-FLCUITests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-FLC-FLCUITests/Pods-FLC-FLCUITests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-FLC-FLCUITests/Pods-FLC-FLCUITests-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		AC60B8CD2D0C1ADC00B4F20E /* Sources */ = {
@@ -456,6 +409,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = nl.jillten.FLC;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -561,6 +515,66 @@
 			};
 			name = Release;
 		};
+		/* Test Configuration */
+		AC60B8F72D0C1ADD00B4F20F /* Test */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = FLC/FLC.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_ASSET_PATHS = "\"FLC/Preview Content\"";
+				DEVELOPMENT_TEAM = S8643SCV8J;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nl.jillten.FLC.test;
+				PRODUCT_NAME = "$(TARGET_NAME) Test";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "TESTING";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Test;
+		};
+		/* Acceptance Configuration */
+		AC60B8F72D0C1ADD00B4F210 /* Acceptance */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = FLC/FLC.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_ASSET_PATHS = "\"FLC/Preview Content\"";
+				DEVELOPMENT_TEAM = S8643SCV8J;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = nl.jillten.FLC.acceptance;
+				PRODUCT_NAME = "$(TARGET_NAME) Acceptance";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "ACCEPTANCE";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Acceptance;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -568,7 +582,9 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AC60B8F42D0C1ADD00B4F20E /* Debug */,
-				AC60B8F52D0C1ADD00B4F20E /* Release */,
+				AC60B8F72D0C1ADD00B4F20F /* Test */,
+				AC60B8F72D0C1ADD00B4F210 /* Acceptance */,
+				AC60B8F82D0C1ADD00B4F20E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
