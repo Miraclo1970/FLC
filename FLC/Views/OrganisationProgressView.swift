@@ -11,6 +11,7 @@ struct OrganisationSummary {
     let testReadyDate: Date?
     let combinedProgress: Double
     let status: String
+    let migrationClusterReadiness: String?
 }
 
 struct OrganisationProgressView: View {
@@ -26,31 +27,145 @@ struct OrganisationProgressView: View {
             .sorted()
     }
     
-    private func calculateOrganisationTotals(from divisionStats: [OrganisationSummary]) -> (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?) {
-        // Simple sum for applications and users
-        let totalApplications = divisionStats.reduce(0) { $0 + $1.applications }
-        let totalUsers = divisionStats.reduce(0) { $0 + $1.users }
+    private func calculateOrganisationTotals(from departmentStats: [OrganisationSummary]) -> (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?, migrationClusterReadiness: String) {
+        // Get unique apps across all divisions
+        let uniqueApps = Set(records.map { $0.applicationName }).count
+        let totalUsers = departmentStats.reduce(0) { $0 + $1.users }
         
         // Calculate weighted averages based on number of applications
         var totalWeightedPackageProgress = 0.0
         var totalWeightedTestProgress = 0.0
         var totalWeight = 0
         
-        for stats in divisionStats {
+        // Calculate weighted readiness progress
+        var totalWeightedReadiness = 0.0
+        var readinessWeight = 0
+        
+        for stats in departmentStats {
             let weight = stats.applications
             totalWeightedPackageProgress += stats.packageProgress * Double(weight)
             totalWeightedTestProgress += stats.testProgress * Double(weight)
             totalWeight += weight
+            
+            // For readiness, calculate weighted progress
+            if let readiness = stats.migrationClusterReadiness {
+                totalWeightedReadiness += getMigrationClusterReadinessProgress(readiness) * Double(weight)
+                readinessWeight += weight
+            }
         }
         
         let avgPackageProgress = totalWeight > 0 ? totalWeightedPackageProgress / Double(totalWeight) : 0.0
         let avgTestProgress = totalWeight > 0 ? totalWeightedTestProgress / Double(totalWeight) : 0.0
-        let overallProgress = (avgPackageProgress + avgTestProgress) / 2.0
         
-        let latestPackageDate = divisionStats.compactMap { $0.packageReadyDate }.max()
-        let latestTestDate = divisionStats.compactMap { $0.testReadyDate }.max()
+        // First calculate the weighted average readiness
+        let weightedReadinessProgress = readinessWeight > 0 ? totalWeightedReadiness / Double(readinessWeight) : 0.0
+        // Then divide by total number of divisions to get fair representation
+        let avgReadinessProgress = weightedReadinessProgress / Double(departmentStats.count)
         
-        return (totalApplications, totalUsers, avgPackageProgress, avgTestProgress, overallProgress, latestPackageDate, latestTestDate)
+        // Calculate preparation progress (average of package and test)
+        let preparationProgress = (avgPackageProgress + avgTestProgress) / 2.0
+        
+        // Calculate overall progress as average of preparation and execution
+        let overallProgress = (preparationProgress + avgReadinessProgress) / 2.0
+        
+        // Find latest dates
+        let latestPackageDate = departmentStats.compactMap { $0.packageReadyDate }.max()
+        let latestTestDate = departmentStats.compactMap { $0.testReadyDate }.max()
+        
+        return (
+            applications: uniqueApps,
+            users: totalUsers,
+            packageProgress: avgPackageProgress,
+            testProgress: avgTestProgress,
+            overallProgress: overallProgress,
+            packageReadyDate: latestPackageDate,
+            testReadyDate: latestTestDate,
+            migrationClusterReadiness: String(format: "%.1f%%", avgReadinessProgress)
+        )
+    }
+    
+    // Add helper functions for readiness calculations
+    private func getMigrationClusterReadinessProgress(_ status: String?) -> Double {
+        guard let status = status?.lowercased() else { return 0.0 }
+        
+        switch status {
+        case "orderlist to dep":
+            return 10.0
+        case "orderlist confirmed":
+            return 20.0
+        case "waiting for apps":
+            return 25.0
+        case "on hold":
+            return 30.0
+        case "ready to start":
+            return 50.0
+        case "planned":
+            return 60.0
+        case "executed":
+            return 90.0
+        case "aftercare ok":
+            return 98.0
+        case "decharge":
+            return 100.0
+        default:
+            return 0.0
+        }
+    }
+    
+    private func getReadinessStatusFromProgress(_ progress: Double) -> String {
+        switch progress {
+        case 0..<15:
+            return "orderlist to dep"
+        case 15..<22.5:
+            return "orderlist confirmed"
+        case 22.5..<27.5:
+            return "waiting for apps"
+        case 27.5..<40:
+            return "on hold"
+        case 40..<55:
+            return "ready to start"
+        case 55..<75:
+            return "planned"
+        case 75..<95:
+            return "executed"
+        case 95..<99:
+            return "aftercare ok"
+        case 99...100:
+            return "decharge"
+        default:
+            return "orderlist to dep"
+        }
+    }
+    
+    private func getMigrationReadinessTextColor(_ status: String?) -> Color {
+        guard let status = status?.lowercased() else { return .clear }
+        switch status {
+        case "orderlist to dep":
+            return .blue.opacity(0.6)
+        case "orderlist confirmed":
+            return .blue.opacity(0.8)
+        case "ready to start":
+            return .blue
+        case "waiting for apps":
+            return .gray.opacity(0.8)
+        case "on hold":
+            return .orange.opacity(0.8)
+        case "planned":
+            return .green.opacity(0.6)
+        case "executed":
+            return .green.opacity(0.8)
+        case "aftercare ok":
+            return .green.opacity(0.9)
+        case "decharge":
+            return .green
+        default:
+            return .primary
+        }
+    }
+    
+    private func formatReadinessText(_ status: String?) -> String {
+        guard let status = status else { return "-" }
+        return status == "Decharge" ? "Decharge 🏁" : status
     }
     
     var body: some View {
@@ -88,56 +203,29 @@ struct OrganisationProgressView: View {
                             .frame(width: 120, alignment: .center)
                             Text("Ready by")
                                 .frame(width: 70, alignment: .center)
-                            Text("Progress")
-                                .frame(width: 120, alignment: .center)
+                            Text("Application Readiness %")
+                                .frame(width: 150, alignment: .center)
+                            Text("Cluster Readiness %")
+                                .frame(width: 100, alignment: .center)
+                            Text("Overall Progress")
+                                .frame(width: 100, alignment: .center)
                         }
-                        .frame(width: 970)
+                        .frame(width: 1200)
                         .padding(.vertical, 4)
                         .background(Color(NSColor.controlBackgroundColor))
                         .cornerRadius(8)
                         
                         // Organisation total row
-                        let divisionStats = divisions.map { division in
-                            let divisionRecords = records.filter { $0.division == division }
-                            return calculateStats(for: divisionRecords)
-                        }
-                        
-                        let totals = calculateOrganisationTotals(from: divisionStats)
-                        
-                        HStack(spacing: 0) {
-                            Text("Total Organisation")
-                                .bold()
-                                .frame(width: 350, alignment: .leading)
-                                .padding(.leading, 8)
-                            Text("\(totals.applications)")
-                                .bold()
-                                .frame(width: 60, alignment: .center)
-                            Text("\(totals.users)")
-                                .bold()
-                                .frame(width: 60, alignment: .center)
-                            AverageProgressCell(progress: totals.packageProgress)
-                                .frame(width: 120)
-                            Text(formatDate(totals.packageReadyDate))
-                                .bold()
-                                .frame(width: 70, alignment: .center)
-                                .font(.system(size: 11))
-                            AverageProgressCell(progress: totals.testProgress)
-                                .frame(width: 120)
-                            Text(formatDate(totals.testReadyDate))
-                                .bold()
-                                .frame(width: 70, alignment: .center)
-                                .font(.system(size: 11))
-                            OverallProgressCell(progress: totals.overallProgress)
-                                .frame(width: 120)
-                        }
-                        .frame(width: 970)
-                        .padding(.vertical, 2)
-                        .background(Color(NSColor.controlBackgroundColor))
+                        organisationTotalRow
                         
                         // Division rows
                         ForEach(divisions, id: \.self) { division in
                             let divisionRecords = records.filter { $0.division == division }
                             let stats = calculateStats(for: divisionRecords)
+                            let preparationProgress = (stats.packageProgress + stats.testProgress) / 2.0
+                            let readinessProgress = getMigrationClusterReadinessProgress(stats.migrationClusterReadiness)
+                            let overallProgress = (preparationProgress + readinessProgress) / 2.0
+                            
                             HStack(spacing: 0) {
                                 Text(division)
                                     .frame(width: 350, alignment: .leading)
@@ -156,10 +244,17 @@ struct OrganisationProgressView: View {
                                 Text(formatDate(stats.testReadyDate))
                                     .frame(width: 70, alignment: .center)
                                     .font(.system(size: 11))
-                                OverallProgressCell(progress: stats.combinedProgress)
-                                    .frame(width: 120)
+                                Text(String(format: "%.1f%%", preparationProgress))
+                                    .frame(width: 150, alignment: .center)
+                                    .foregroundColor(.blue)
+                                Text(String(format: "%.1f%%", readinessProgress))
+                                    .frame(width: 100, alignment: .center)
+                                    .foregroundColor(.blue)
+                                Text(String(format: "%.1f%%", overallProgress))
+                                    .frame(width: 100, alignment: .center)
+                                    .foregroundColor(.blue)
                             }
-                            .frame(width: 970)
+                            .frame(width: 1200)
                             .padding(.vertical, 2)
                             .background(Color(NSColor.controlBackgroundColor))
                         }
@@ -211,6 +306,55 @@ struct OrganisationProgressView: View {
         }
     }
     
+    private var organisationTotalRow: some View {
+        let departmentStats = divisions.map { division in
+            let divisionRecords = records.filter { $0.division == division }
+            return calculateStats(for: divisionRecords)
+        }
+        
+        let totals = calculateOrganisationTotals(from: departmentStats)
+        
+        return HStack(spacing: 0) {
+            Text("Total Organisation")
+                .bold()
+                .frame(width: 350, alignment: .leading)
+                .padding(.leading, 8)
+            Text("\(totals.applications)")
+                .bold()
+                .frame(width: 60, alignment: .center)
+            Text("\(totals.users)")
+                .bold()
+                .frame(width: 70, alignment: .center)
+            AverageProgressCell(progress: totals.packageProgress)
+                .frame(width: 120)
+            Text(formatDate(totals.packageReadyDate))
+                .bold()
+                .frame(width: 70, alignment: .center)
+                .font(.system(size: 11))
+            AverageProgressCell(progress: totals.testProgress)
+                .frame(width: 120)
+            Text(formatDate(totals.testReadyDate))
+                .bold()
+                .frame(width: 70, alignment: .center)
+                .font(.system(size: 11))
+            Text(String(format: "%.1f%%", (totals.packageProgress + totals.testProgress) / 2.0))
+                .bold()
+                .frame(width: 150, alignment: .center)
+                .foregroundColor(.blue)
+            Text(totals.migrationClusterReadiness)
+                .bold()
+                .frame(width: 100, alignment: .center)
+                .foregroundColor(.blue)
+            Text(String(format: "%.1f%%", totals.overallProgress))
+                .bold()
+                .frame(width: 100, alignment: .center)
+                .foregroundColor(.blue)
+        }
+        .frame(width: 1200)
+        .padding(.vertical, 2)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
     private func formatDate(_ date: Date?) -> String {
         guard let date = date else { return "-" }
         let formatter = DateFormatter()
@@ -228,6 +372,9 @@ struct OrganisationProgressView: View {
             let inOutScope = record.inScopeOutScopeDivision?.lowercased() ?? ""
             return (willBe.isEmpty || willBe == "N/A") && inOutScope != "out"
         }
+        
+        // Get migration cluster readiness from the first record
+        let migrationClusterReadiness = records.first?.migrationClusterReadiness
         
         // Group by application name
         let groupedByApp = Dictionary(grouping: activeRecords) { $0.applicationName }
@@ -271,15 +418,21 @@ struct OrganisationProgressView: View {
         
         let packageProgress = totalApps > 0 ? totalPackagePoints / totalApps : 0.0
         let testProgress = totalApps > 0 ? totalTestPoints / totalApps : 0.0
-        let combinedProgress = (packageProgress + testProgress) / 2.0
+        
+        // Calculate preparation progress (average of package and test)
+        let preparationProgress = (packageProgress + testProgress) / 2.0
+        
+        // Get execution progress from migration cluster readiness
+        let executionProgress = getMigrationClusterReadinessProgress(migrationClusterReadiness)
+        
+        // Calculate combined progress as average of preparation and execution
+        let combinedProgress = (preparationProgress + executionProgress) / 2.0
         
         let packageReadyDate = records.compactMap { $0.applicationPackageReadinessDate }.max()
         let testReadyDate = records.compactMap { $0.applicationTestReadinessDate }.max()
         
-        let division = records.first?.division ?? ""
-        
         return OrganisationSummary(
-            division: division,
+            division: records.first?.division ?? "",
             applications: uniqueApps,
             users: uniqueUsers,
             packageProgress: packageProgress,
@@ -287,7 +440,8 @@ struct OrganisationProgressView: View {
             packageReadyDate: packageReadyDate,
             testReadyDate: testReadyDate,
             combinedProgress: combinedProgress,
-            status: determineStatus(progress: combinedProgress)
+            status: determineStatus(progress: combinedProgress),
+            migrationClusterReadiness: migrationClusterReadiness
         )
     }
     
