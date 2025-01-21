@@ -7,9 +7,9 @@ extension NSColor {
     static let darkBlue = NSColor(red: 0.0, green: 0.0, blue: 0.5, alpha: 1.0)
     static let lightOrange = NSColor(red: 1.0, green: 0.8, blue: 0.6, alpha: 1.0)
     static let orange = NSColor(red: 1.0, green: 0.65, blue: 0.0, alpha: 1.0)
-    static let lightGreen = NSColor(red: 0.6, green: 0.9, blue: 0.6, alpha: 1.0)
+    static let lightGreen = NSColor(red: 0.8, green: 1.0, blue: 0.8, alpha: 1.0)
     static let green = NSColor(red: 0.0, green: 0.8, blue: 0.0, alpha: 1.0)
-    static let darkGreen = NSColor(red: 0.0, green: 0.5, blue: 0.0, alpha: 1.0)
+    static let darkGreen = NSColor(red: 0.0, green: 0.4, blue: 0.0, alpha: 1.0)
 }
 
 struct ClusterSummary {
@@ -35,40 +35,27 @@ struct MigrationReadinessCell: View {
         return value == "Decharge" ? "Decharge 🏁" : value
     }
     
-    private var backgroundColor: Color {
+    private var textColor: Color {
         guard let value = readiness, !value.isEmpty else {
-            return .clear  // No color for empty value
+            return .primary
         }
         
-        switch value {
-        case "Orderlist to Dep":
-            return Color(.lightBlue)
-        case "Orderlist Confirmed":
-            return Color(.mediumBlue)
-        case "Waiting for Apps":
-            return Color(.lightOrange)
-        case "On Hold":
-            return Color(.orange)
-        case "Ready to start":
-            return Color(.darkBlue)
-        case "Planned":
-            return Color(.lightGreen)
-        case "Executed":
-            return Color(.green)
-        case "Aftercare OK":
-            return Color(.darkGreen)
-        case "Decharge":
-            return Color(.darkGreen)
+        switch value.lowercased() {
+        case "orderlist to dep", "orderlist confirmed", "ready to start":
+            return .blue
+        case "waiting for apps", "on hold":
+            return .orange
+        case "planned", "executed", "decharge", "aftercare ok":
+            return .green
         default:
-            return .clear
+            return .primary
         }
     }
     
     var body: some View {
         Text(displayText)
             .frame(width: 150, alignment: .center)
-            .background(backgroundColor.opacity(0.3))
-            .cornerRadius(4)
+            .foregroundColor(textColor)
     }
 }
 
@@ -126,29 +113,31 @@ struct ClusterProgressView: View {
         var totalWeightedTestProgress = 0.0
         var totalWeight = 0
         
+        // Find the most common status weighted by number of applications
+        var statusWeights: [String: Int] = [:]
         for stats in departmentStats {
             let weight = stats.applications
             totalWeightedPackageProgress += stats.packageProgress * Double(weight)
             totalWeightedTestProgress += stats.testProgress * Double(weight)
             totalWeight += weight
+            
+            if let readiness = stats.migrationClusterReadiness?.lowercased() {
+                statusWeights[readiness, default: 0] += stats.applications
+            }
         }
         
         let avgPackageProgress = totalWeight > 0 ? totalWeightedPackageProgress / Double(totalWeight) : 0.0
         let avgTestProgress = totalWeight > 0 ? totalWeightedTestProgress / Double(totalWeight) : 0.0
         
-        // Calculate combined progress (only package and test)
+        // Get the status with the highest weight (most applications)
+        let dominantStatus = statusWeights.max(by: { $0.value < $1.value })?.key ?? "orderlist to dep"
+        
+        // Calculate combined progress including readiness progress
         let combinedProgress = (avgPackageProgress + avgTestProgress) / 2.0
         
         // Find latest dates
         let latestPackageDate = departmentStats.compactMap { $0.packageReadyDate }.max()
         let latestTestDate = departmentStats.compactMap { $0.testReadyDate }.max()
-        
-        // Calculate most common readiness value
-        let readinessValues = departmentStats.compactMap { $0.migrationClusterReadiness }
-        let readinessCounts = readinessValues.reduce(into: [:]) { counts, value in 
-            counts[value, default: 0] += 1 
-        }
-        let mostCommonReadiness = readinessCounts.max { $0.value < $1.value }?.key
         
         return (
             applications: totalApplications,
@@ -158,8 +147,34 @@ struct ClusterProgressView: View {
             overallProgress: combinedProgress,
             packageReadyDate: latestPackageDate,
             testReadyDate: latestTestDate,
-            migrationClusterReadiness: mostCommonReadiness
+            migrationClusterReadiness: dominantStatus
         )
+    }
+    
+    // Helper function to convert progress back to status
+    private func getReadinessStatusFromProgress(_ progress: Double) -> String {
+        switch progress {
+        case 0..<15:
+            return "orderlist to dep"
+        case 15..<22.5:
+            return "orderlist confirmed"
+        case 22.5..<27.5:
+            return "waiting for apps"
+        case 27.5..<40:
+            return "on hold"
+        case 40..<55:
+            return "ready to start"
+        case 55..<75:
+            return "planned"
+        case 75..<95:
+            return "executed"
+        case 95..<99:
+            return "aftercare ok"
+        case 99...100:
+            return "decharge"
+        default:
+            return "orderlist to dep"
+        }
     }
     
     // MARK: - Sub-views
@@ -286,9 +301,9 @@ struct ClusterProgressView: View {
             return (willBe.isEmpty || willBe == "N/A") && inOutScope != "out"
         }
         
-        // Get migration cluster readiness from the first record (should be same for all records in the group)
+        // Get migration cluster readiness from the first record
         let migrationClusterReadiness = records.first?.migrationClusterReadiness
-
+        
         // Group by application name
         let groupedByApp = Dictionary(grouping: activeRecords) { $0.applicationName }
         
@@ -332,8 +347,14 @@ struct ClusterProgressView: View {
         let packageProgress = totalApps > 0 ? totalPackagePoints / totalApps : 0.0
         let testProgress = totalApps > 0 ? totalTestPoints / totalApps : 0.0
         
-        // Calculate combined progress (only package and test)
-        let combinedProgress = (packageProgress + testProgress) / 2.0
+        // Calculate preparation progress (average of package and test)
+        let preparationProgress = (packageProgress + testProgress) / 2.0
+        
+        // Get execution progress from migration cluster readiness
+        let executionProgress = getMigrationClusterReadinessProgress(migrationClusterReadiness)
+        
+        // Calculate combined progress as average of preparation and execution
+        let combinedProgress = (preparationProgress + executionProgress) / 2.0
         
         let packageReadyDate = records.compactMap { $0.applicationPackageReadinessDate }.max()
         let testReadyDate = records.compactMap { $0.applicationTestReadinessDate }.max()
@@ -477,27 +498,46 @@ struct ClusterProgressView: View {
         guard let status = status?.lowercased() else { return .clear }
         
         switch status {
-        case "orderlist to dep":
-            return .blue.opacity(0.1)
-        case "orderlist confirmed":
-            return .blue.opacity(0.2)
-        case "waiting for apps":
-            return .orange.opacity(0.25)
-        case "on hold":
-            return .orange.opacity(0.3)
-        case "ready to start":
-            return .blue.opacity(0.5)
-        case "planned":
-            return .green.opacity(0.6)
-        case "executed":
-            return .green.opacity(0.9)
-        case "aftercare ok":
-            return .orange.opacity(0.88)
-        case "decharge":
+        case "orderlist to dep", "orderlist confirmed", "ready to start":
+            return .blue
+        case "waiting for apps", "on hold":
+            return .orange
+        case "planned", "executed", "decharge", "aftercare ok":
             return .green
         default:
             return .clear
         }
+    }
+    
+    private func getMigrationReadinessTextColor(_ status: String?) -> Color {
+        guard let status = status?.lowercased() else { return .clear }
+        switch status {
+        case "orderlist to dep":
+            return .blue.opacity(0.6)
+        case "orderlist confirmed":
+            return .blue.opacity(0.8)
+        case "ready to start":
+            return .blue
+        case "waiting for apps":
+            return .gray.opacity(0.8)
+        case "on hold":
+            return .orange.opacity(0.8)
+        case "planned":
+            return .green.opacity(0.6)
+        case "executed":
+            return .green.opacity(0.8)
+        case "aftercare ok":
+            return .green.opacity(0.9)
+        case "decharge":
+            return .green
+        default:
+            return .primary
+        }
+    }
+    
+    private func formatReadinessText(_ status: String?) -> String {
+        guard let status = status else { return "-" }
+        return status == "Decharge" ? "Decharge 🏁" : status
     }
     
     private func progressCell(for stats: ClusterSummary, column: String) -> some View {
@@ -534,23 +574,23 @@ struct ClusterProgressView: View {
             Text(String(format: "%.1f%%", progress))
                 .frame(width: 50, alignment: .trailing)
             if column == "Migration Cluster Readiness" {
-                Text(stats.migrationClusterReadiness ?? "")
+                let displayStatus = getReadinessStatusFromProgress(progress)
+                Text(displayStatus)
                     .frame(width: 120, alignment: .leading)
+                    .foregroundColor(getMigrationReadinessTextColor(displayStatus))
             }
         }
     }
     
     private var headerView: some View {
         HStack(spacing: 0) {
-            Text("Migration Cluster")
+            Text("Division")
                 .frame(width: 200, alignment: .leading)
                 .padding(.leading, 8)
-            Text("Department")
-                .frame(width: 150, alignment: .leading)
             Text("Apps")
                 .frame(width: 50, alignment: .center)
             Text("Users")
-                .frame(width: 50, alignment: .center)
+                .frame(width: 70, alignment: .center)
             VStack(spacing: 0) {
                 Text("Average")
                 Text("Package")
@@ -565,15 +605,29 @@ struct ClusterProgressView: View {
             .frame(width: 100, alignment: .center)
             Text("Ready by")
                 .frame(width: 70, alignment: .center)
-            Text("Progress")
-                .frame(width: 120, alignment: .center)
-            Text("Cluster Migration Readiness")
-                .frame(width: 150, alignment: .center)
+            Text("Migration Cluster Readiness")
+                .frame(width: 250, alignment: .center)
         }
         .frame(width: 1240)
         .padding(.vertical, 4)
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(8)
+    }
+    
+    // Add new function for percentage-based color
+    private func getProgressColor(_ percentage: Double) -> Color {
+        switch percentage {
+        case 0..<25:
+            return .red
+        case 25..<50:
+            return .orange
+        case 50..<75:
+            return .blue
+        case 75...100:
+            return .green
+        default:
+            return .primary
+        }
     }
     
     private var clusterTotalRow: some View {
@@ -583,20 +637,19 @@ struct ClusterProgressView: View {
         }
         
         let totals = calculateClusterTotals(from: departmentStats)
+        let readinessProgress = getMigrationClusterReadinessProgress(totals.migrationClusterReadiness)
         
         return HStack(spacing: 0) {
-            Text(selectedCluster == "All" ? "Total All Clusters" : "Total \(selectedCluster)")
+            Text("Total Cluster")
                 .bold()
                 .frame(width: 200, alignment: .leading)
                 .padding(.leading, 8)
-            Text("")  // Empty Department for total
-                .frame(width: 150, alignment: .leading)
             Text("\(totals.applications)")
                 .bold()
                 .frame(width: 50, alignment: .center)
             Text("\(totals.users)")
                 .bold()
-                .frame(width: 50, alignment: .center)
+                .frame(width: 70, alignment: .center)
             AverageProgressCell(progress: totals.packageProgress)
                 .frame(width: 100)
             Text(formatDate(totals.packageReadyDate))
@@ -609,10 +662,12 @@ struct ClusterProgressView: View {
                 .bold()
                 .frame(width: 70, alignment: .center)
                 .font(.system(size: 11))
-            OverallProgressCell(progress: totals.overallProgress)
-                .frame(width: 100)
+            Text(String(format: "%.1f%%", readinessProgress))
+                .bold()
+                .frame(width: 250, alignment: .center)
+                .foregroundColor(.blue)
         }
-        .frame(width: 890)
+        .frame(width: 1240)
         .padding(.vertical, 2)
         .background(Color(NSColor.controlBackgroundColor))
     }
@@ -626,7 +681,9 @@ struct ClusterProgressView: View {
                 calculateStats: calculateStats,
                 formatDate: formatDate,
                 getMigrationClusterReadinessProgress: getMigrationClusterReadinessProgress,
-                getMigrationClusterReadinessColor: getMigrationClusterReadinessColor
+                getMigrationClusterReadinessColor: getMigrationClusterReadinessColor,
+                getMigrationReadinessTextColor: getMigrationReadinessTextColor,
+                formatReadinessText: formatReadinessText
             )
         }
     }
@@ -670,22 +727,21 @@ struct DepartmentRow: View {
     let formatDate: (Date?) -> String
     let getMigrationClusterReadinessProgress: (String?) -> Double
     let getMigrationClusterReadinessColor: (String?) -> Color
+    let getMigrationReadinessTextColor: (String?) -> Color
+    let formatReadinessText: (String?) -> String
     
     var body: some View {
         let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
         let stats = calculateStats(departmentRecords)
-        let clusterName = selectedCluster == "All" ? (departmentRecords.first?.migrationCluster ?? "") : selectedCluster
         
         HStack(spacing: 0) {
-            Text(clusterName)
+            Text(department)
                 .frame(width: 200, alignment: .leading)
                 .padding(.leading, 8)
-            Text(department)
-                .frame(width: 150, alignment: .leading)
             Text("\(stats.applications)")
                 .frame(width: 50, alignment: .center)
             Text("\(stats.users)")
-                .frame(width: 50, alignment: .center)
+                .frame(width: 70, alignment: .center)
             AverageProgressCell(progress: stats.packageProgress)
                 .frame(width: 100)
             Text(formatDate(stats.packageReadyDate))
@@ -696,32 +752,14 @@ struct DepartmentRow: View {
             Text(formatDate(stats.testReadyDate))
                 .frame(width: 70, alignment: .center)
                 .font(.system(size: 11))
-            OverallProgressCell(progress: stats.combinedProgress)
-                .frame(width: 100)
-            AverageProgressCell(progress: getMigrationClusterReadinessProgress(stats.migrationClusterReadiness))
-                .frame(width: 100)
-            Text(stats.migrationClusterReadiness ?? "-")
-                .frame(width: 150, alignment: .center)
+            Text(formatReadinessText(stats.migrationClusterReadiness))
+                .frame(width: 250, alignment: .center)
                 .foregroundColor(getMigrationReadinessTextColor(stats.migrationClusterReadiness))
         }
-        .frame(width: 1140)
+        .frame(width: 1240)
         .padding(.vertical, 4)
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(8)
-    }
-    
-    private func getMigrationReadinessTextColor(_ status: String?) -> Color {
-        guard let status = status?.lowercased() else { return .clear }
-        switch status {
-        case "orderlist to dep", "orderlist confirmed", "ready to start":
-            return .blue
-        case "waiting for apps", "on hold", "aftercare ok":
-            return .orange
-        case "planned", "executed", "decharge":
-            return .green
-        default:
-            return .primary
-        }
     }
 }
 
