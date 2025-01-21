@@ -1520,11 +1520,70 @@ class DatabaseManager: ObservableObject {
         }
     }
     
+    // Add backup functionality
+    private func backupDatabase() throws {
+        // Only backup production database
+        guard currentEnvironment == .production else {
+            print("Skipping backup for non-production environment: \(currentEnvironment)")
+            return
+        }
+        
+        guard let dbPath = currentEnvironment.databasePath else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not get database path"])
+        }
+        
+        let fileManager = FileManager.default
+        
+        // Create backup directory if it doesn't exist
+        let backupDir = dbPath.deletingLastPathComponent().appendingPathComponent("backups", isDirectory: true)
+        try? fileManager.createDirectory(at: backupDir, withIntermediateDirectories: true)
+        
+        // Create backup filename with timestamp
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+        let timestamp = dateFormatter.string(from: Date())
+        let backupPath = backupDir.appendingPathComponent("flc_\(currentEnvironment.rawValue)_\(timestamp).db")
+        
+        // Only backup if database file exists
+        if fileManager.fileExists(atPath: dbPath.path) {
+            do {
+                print("Creating production database backup...")
+                // Copy database file
+                try fileManager.copyItem(at: dbPath, to: backupPath)
+                
+                // Also backup WAL and SHM files if they exist
+                let walPath = dbPath.appendingPathExtension("wal")
+                let shmPath = dbPath.appendingPathExtension("shm")
+                
+                if fileManager.fileExists(atPath: walPath.path) {
+                    try fileManager.copyItem(at: walPath, to: backupPath.appendingPathExtension("wal"))
+                }
+                if fileManager.fileExists(atPath: shmPath.path) {
+                    try fileManager.copyItem(at: shmPath, to: backupPath.appendingPathExtension("shm"))
+                }
+                
+                print("Production database backup created at: \(backupPath.path)")
+            } catch {
+                print("Error creating production database backup: \(error)")
+                throw error
+            }
+        }
+    }
+    
     public func reinitialize() async throws {
-        // Close existing connection if any
-        dbPool = nil
+        // Prevent reinitialization in production unless explicitly confirmed
+        if currentEnvironment == .production {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Database reinitialization is not allowed in production environment"])
+        }
         
         do {
+            // Create backup before reinitializing
+            print("Creating database backup before reinitialization...")
+            try backupDatabase()
+            
+            // Close existing connection if any
+            dbPool = nil
+            
             let fileManager = FileManager.default
             
             // Get the app's container directory
