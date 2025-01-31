@@ -1,8 +1,9 @@
 import SwiftUI
 import GRDB
 
-struct DivisionSummary {
-    let division: String
+struct DivisionReport {
+    let department: String
+    let migrationCluster: String
     let applications: Int
     let users: Int
     let packageProgress: Double
@@ -17,16 +18,18 @@ struct DivisionProgressView: View {
     @EnvironmentObject private var databaseManager: DatabaseManager
     @AppStorage("divisionView.selectedDivision") private var selectedDivision: String = ""
     @AppStorage("divisionView.excludeNonActive") private var excludeNonActive: Bool = false
-    @AppStorage("divisionView.excludeNoHRMatch") private var excludeNoHRMatch: Bool = false
     @AppStorage("divisionView.excludeLeftUsers") private var excludeLeftUsers: Bool = false
     @AppStorage("divisionView.showResults") private var showResults: Bool = false
     @AppStorage("divisionView.sortColumn") private var sortColumnRaw: String = "name"
     @AppStorage("divisionView.sortAscending") private var sortAscending: Bool = true
+    @State private var selectedEnvironments: Set<String> = ["P"]  // Default to Production
     @State private var records: [CombinedRecord] = []
     @State private var selectedCluster: String = "All"
     @State private var isLoading = true
     @State private var isExporting = false
     @State private var exportError: String?
+    
+    private let environments = ["All", "P", "A", "OT"]
     
     private var divisions: [String] {
         Array(Set(records.compactMap { $0.division }))
@@ -53,46 +56,157 @@ struct DivisionProgressView: View {
             .sorted()
     }
     
-    private func calculateDivisionTotals(from departmentStats: [DivisionSummary]) -> (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?) {
-        // Simple sum for applications and users
-        let totalApplications = departmentStats.reduce(0) { $0 + $1.applications }
-        let totalUsers = departmentStats.reduce(0) { $0 + $1.users }
+    private var divisionReport: [DivisionReport] {
+        // First, filter records by division only
+        let divisionRecords = records.filter { record in
+            // Division filter
+            let divisionFilter = selectedDivision == "All" || record.division == selectedDivision
+            
+            // Environment filter - if "All" is not selected, check against selected environments
+            let environmentFilter = selectedEnvironments.contains("All") || 
+                (!record.otap.isEmpty && selectedEnvironments.contains(record.otap))
+            
+            return divisionFilter && environmentFilter
+        }
         
-        print("\nDivision Totals Calculation:")
-        print("Total Applications: \(totalApplications)")
-        print("Total Users: \(totalUsers)")
+        // Then create reports for each department
+        return departments.map { department in
+            let departmentRecords = divisionRecords.filter { record in
+                // Department filter
+                guard record.departmentSimple == department else { return false }
+                
+                // Leave date filter
+                let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
+                
+                // Out of scope filter
+                let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
+                let scopeFilter = {
+                    if !excludeNonActive {
+                        return true
+                    }
+                    
+                    // Check for sunset
+                    if inOutScope == "sunset" {
+                        return false
+                    }
+                    
+                    // Check for general "out"
+                    if inOutScope == "out" {
+                        return false
+                    }
+                    
+                    // Check for "out" followed by division names
+                    if inOutScope.starts(with: "out ") {
+                        let divisions = inOutScope.dropFirst(4).split(separator: " ").map { String($0).lowercased() }
+                        return !divisions.contains(selectedDivision.lowercased())
+                    }
+                    
+                    return true
+                }()
+                
+                return leaveFilter && scopeFilter
+            }
+            
+            // Count unique applications and users
+            let uniqueApps = Set(departmentRecords.map { $0.applicationName }).count
+            let uniqueUsers = Set(departmentRecords.map { $0.systemAccount }).count
+            
+            // Group by application for progress calculations
+            let groupedByApp = Dictionary(grouping: departmentRecords) { $0.applicationName }
+            
+            // Calculate progress
+            let packageProgress = calculatePackageProgress(from: groupedByApp)
+            let testProgress = calculateTestProgress(from: groupedByApp)
+            let combinedProgress = (packageProgress + testProgress) / 2.0
+            
+            return DivisionReport(
+                department: department,
+                migrationCluster: departmentRecords.first?.migrationCluster ?? "",
+                applications: uniqueApps,
+                users: uniqueUsers,
+                packageProgress: packageProgress,
+                testProgress: testProgress,
+                packageReadyDate: departmentRecords.compactMap { $0.applicationPackageReadinessDate }.max(),
+                testReadyDate: departmentRecords.compactMap { $0.applicationTestReadinessDate }.max(),
+                combinedProgress: combinedProgress,
+                status: determineStatus(progress: combinedProgress)
+            )
+        }
+    }
+    
+    private var divisionTotals: (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?) {
+        // Get all records for the selected division with filters applied
+        let divisionRecords = records.filter { record in
+            // Division filter
+            let divisionFilter = selectedDivision == "All" || record.division == selectedDivision
+            
+            // Environment filter - if "All" is not selected, check against selected environments
+            let environmentFilter = selectedEnvironments.contains("All") || 
+                (!record.otap.isEmpty && selectedEnvironments.contains(record.otap))
+            
+            guard divisionFilter && environmentFilter else { return false }
+            
+            // Leave date filter
+            let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
+            
+            // Out of scope filter
+            let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
+            let scopeFilter = {
+                if !excludeNonActive {
+                    return true
+                }
+                
+                // Check for sunset
+                if inOutScope == "sunset" {
+                    return false
+                }
+                
+                // Check for general "out"
+                if inOutScope == "out" {
+                    return false
+                }
+                
+                // Check for "out" followed by division names
+                if inOutScope.starts(with: "out ") {
+                    let divisions = inOutScope.dropFirst(4).split(separator: " ").map { String($0).lowercased() }
+                    return !divisions.contains(selectedDivision.lowercased())
+                }
+                
+                return true
+            }()
+            
+            return leaveFilter && scopeFilter
+        }
         
-        // Calculate weighted averages based on number of applications
+        // Count unique applications and users
+        let uniqueApps = Set(divisionRecords.map { $0.applicationName }).count
+        let uniqueUsers = Set(divisionRecords.map { $0.systemAccount }).count
+        
+        // Calculate weighted averages based on department stats
         var totalWeightedPackageProgress = 0.0
         var totalWeightedTestProgress = 0.0
         var totalWeight = 0
         
-        for stats in departmentStats {
-            print("\nDepartment: \(stats.division)")
-            print("Apps: \(stats.applications), Package Progress: \(stats.packageProgress)%, Test Progress: \(stats.testProgress)%")
-            
-            let weight = stats.applications
-            totalWeightedPackageProgress += stats.packageProgress * Double(weight)
-            totalWeightedTestProgress += stats.testProgress * Double(weight)
+        for report in divisionReport {
+            let weight = report.applications
+            totalWeightedPackageProgress += report.packageProgress * Double(weight)
+            totalWeightedTestProgress += report.testProgress * Double(weight)
             totalWeight += weight
-            
-            print("Weighted Package Progress: \(stats.packageProgress * Double(weight))")
-            print("Weighted Test Progress: \(stats.testProgress * Double(weight))")
         }
         
         let avgPackageProgress = totalWeight > 0 ? totalWeightedPackageProgress / Double(totalWeight) : 0.0
         let avgTestProgress = totalWeight > 0 ? totalWeightedTestProgress / Double(totalWeight) : 0.0
         let overallProgress = (avgPackageProgress + avgTestProgress) / 2.0
         
-        print("\nFinal Calculations:")
-        print("Average Package Progress: \(avgPackageProgress)%")
-        print("Average Test Progress: \(avgTestProgress)%")
-        print("Overall Progress: \(overallProgress)%")
-        
-        let latestPackageDate = departmentStats.compactMap { $0.packageReadyDate }.max()
-        let testReadyDate = departmentStats.compactMap { $0.testReadyDate }.max()
-        
-        return (totalApplications, totalUsers, avgPackageProgress, avgTestProgress, overallProgress, latestPackageDate, testReadyDate)
+        return (
+            uniqueApps,
+            uniqueUsers,
+            avgPackageProgress,
+            avgTestProgress,
+            overallProgress,
+            divisionReport.compactMap { $0.packageReadyDate }.max(),
+            divisionReport.compactMap { $0.testReadyDate }.max()
+        )
     }
     
     var body: some View {
@@ -100,35 +214,55 @@ struct DivisionProgressView: View {
             if isLoading {
                 ProgressView("Loading data...")
             } else {
-                // Division and Cluster Filters
+                // Filter Section
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Division Progress")
+                    Text("Select Division")
                         .font(.headline)
                     
-                    VStack(alignment: .leading) {
-                        Text("Division:")
-                            .font(.subheadline)
-                        Picker("", selection: $selectedDivision) {
-                            ForEach(divisions, id: \.self) { division in
-                                Text(division).tag(division)
+                    HStack(spacing: 40) {
+                        // Left column
+                        HStack(spacing: 20) {
+                            // Division Picker
+                            VStack(alignment: .leading) {
+                                Text("Division:")
+                                    .font(.subheadline)
+                                Picker("", selection: $selectedDivision) {
+                                    ForEach(divisions, id: \.self) { division in
+                                        Text(division).tag(division)
+                                    }
+                                }
+                                .frame(width: 200)
+                            }
+                            
+                            // Environment Filter
+                            VStack(alignment: .leading) {
+                                Text("Environment:")
+                                    .font(.subheadline)
+                                HStack(spacing: 8) {
+                                    ForEach(environments, id: \.self) { env in
+                                        Toggle(env, isOn: environmentBinding(for: env))
+                                            .toggleStyle(.checkbox)
+                                    }
+                                }
                             }
                         }
-                        .frame(width: 200)
-                    }
-                    
-                    // Status Filters
-                    VStack(alignment: .leading) {
-                        Text("Status:")
-                            .font(.subheadline)
-                        Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
-                            .toggleStyle(.checkbox)
-                        Toggle("Exclude users without HR match", isOn: $excludeNoHRMatch)
-                            .toggleStyle(.checkbox)
-                        Toggle("Exclude users who have left", isOn: $excludeLeftUsers)
-                            .toggleStyle(.checkbox)
+                        
+                        // Right column
+                        VStack(alignment: .leading) {
+                            Text("Status:")
+                                .font(.subheadline)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
+                                    .toggleStyle(.checkbox)
+                                Toggle("Exclude users who have left", isOn: $excludeLeftUsers)
+                                    .toggleStyle(.checkbox)
+                            }
+                        }
                     }
                 }
-                .padding(.bottom, 8)
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
                 
                 if !selectedDivision.isEmpty {
                     ScrollView {
@@ -162,17 +296,12 @@ struct DivisionProgressView: View {
                                     .frame(width: 120, alignment: .center)
                             }
                             .frame(width: 1090)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 12)
                             .background(Color(NSColor.controlBackgroundColor))
                             .cornerRadius(8)
                             
                             // Division total row
-                            let departmentStats = departments.map { department in
-                                let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
-                                return calculateStats(for: departmentRecords)
-                            }
-                            
-                            let totals = calculateDivisionTotals(from: departmentStats)
+                            let totals = divisionTotals
                             
                             HStack(spacing: 0) {
                                 Text("Total \(selectedDivision)")
@@ -203,35 +332,32 @@ struct DivisionProgressView: View {
                                     .frame(width: 120)
                             }
                             .frame(width: 1090)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 12)
                             .background(Color(NSColor.controlBackgroundColor))
                             
                             // Department rows
-                            ForEach(departments, id: \.self) { department in
-                                let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
-                                let stats = calculateStats(for: departmentRecords)
-                                let migrationCluster = departmentRecords.first?.migrationCluster ?? ""
+                            ForEach(divisionReport, id: \.department) { report in
                                 HStack(spacing: 0) {
-                                    Text(department)
+                                    Text(report.department)
                                         .frame(width: 350, alignment: .leading)
                                         .padding(.leading, 8)
-                                    Text(migrationCluster)
+                                    Text(report.migrationCluster)
                                         .frame(width: 120, alignment: .leading)
-                                    Text("\(stats.applications)")
+                                    Text("\(report.applications)")
                                         .frame(width: 60, alignment: .center)
-                                    Text("\(stats.users)")
+                                    Text("\(report.users)")
                                         .frame(width: 60, alignment: .center)
-                                    AverageProgressCell(progress: stats.packageProgress)
+                                    AverageProgressCell(progress: report.packageProgress)
                                         .frame(width: 120)
-                                    Text(formatDate(stats.packageReadyDate))
+                                    Text(formatDate(report.packageReadyDate))
                                         .frame(width: 70, alignment: .center)
                                         .font(.system(size: 11))
-                                    AverageProgressCell(progress: stats.testProgress)
+                                    AverageProgressCell(progress: report.testProgress)
                                         .frame(width: 120)
-                                    Text(formatDate(stats.testReadyDate))
+                                    Text(formatDate(report.testReadyDate))
                                         .frame(width: 70, alignment: .center)
                                         .font(.system(size: 11))
-                                    OverallProgressCell(progress: stats.combinedProgress)
+                                    OverallProgressCell(progress: report.combinedProgress)
                                         .frame(width: 120)
                                 }
                                 .frame(width: 1090)
@@ -297,60 +423,6 @@ struct DivisionProgressView: View {
         return formatter.string(from: date)
     }
     
-    private func calculateStats(for records: [CombinedRecord]) -> DivisionSummary {
-        // Apply HR match and leave date filters
-        let filteredRecords = records.filter { record in
-            // HR match filter - check both nil and empty string cases
-            let hrFilter = !excludeNoHRMatch || (record.department != nil && !record.department!.isEmpty)
-            
-            // Leave date filter - only include users who haven't left
-            let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
-            
-            return hrFilter && leaveFilter
-        }
-
-        // Group by application
-        let groupedByApp = Dictionary(grouping: filteredRecords) { $0.applicationName }
-        
-        // Calculate totals
-        let totalApplications = groupedByApp.count
-        let uniqueUsers = Set(filteredRecords.map { $0.systemAccount }).count
-        
-        print("Division Stats - Applications: \(totalApplications), Users: \(uniqueUsers)")
-        
-        // Calculate package progress
-        let packageProgress = calculatePackageProgress(from: groupedByApp)
-        
-        // Calculate test progress
-        let testProgress = calculateTestProgress(from: groupedByApp)
-        
-        print("Division Stats - Package Progress: \(packageProgress)%, Test Progress: \(testProgress)%")
-        
-        // Get latest dates
-        let packageReadyDate = filteredRecords.compactMap { $0.applicationPackageReadinessDate }.max()
-        let testReadyDate = filteredRecords.compactMap { $0.applicationTestReadinessDate }.max()
-        
-        // Calculate combined progress
-        let combinedProgress = (packageProgress + testProgress) / 2.0
-        
-        print("Division Stats - Combined Progress: \(combinedProgress)%")
-        
-        // Determine status
-        let status = determineStatus(progress: combinedProgress)
-        
-        return DivisionSummary(
-            division: filteredRecords.first?.division ?? "",
-            applications: totalApplications,
-            users: uniqueUsers,
-            packageProgress: packageProgress,
-            testProgress: testProgress,
-            packageReadyDate: packageReadyDate,
-            testReadyDate: testReadyDate,
-            combinedProgress: combinedProgress,
-            status: status
-        )
-    }
-    
     private func determineStatus(progress: Double) -> String {
         switch progress {
         case 0:
@@ -393,21 +465,17 @@ struct DivisionProgressView: View {
                     var csvContent = "Department,Migration Cluster,Applications,Users,Package Progress,Package Ready By,Testing Progress,Test Ready By,Overall Progress\n"
                     
                     // Add department rows
-                    for department in departments {
-                        let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
-                        let stats = calculateStats(for: departmentRecords)
-                        let migrationCluster = departmentRecords.first?.migrationCluster ?? ""
-                        
+                    for report in divisionReport {
                         let fields = [
-                            department,
-                            migrationCluster,
-                            String(stats.applications),
-                            String(stats.users),
-                            String(format: "%.1f", stats.packageProgress),
-                            stats.packageReadyDate.map { formatDate($0) } ?? "",
-                            String(format: "%.1f", stats.testProgress),
-                            stats.testReadyDate.map { formatDate($0) } ?? "",
-                            String(format: "%.1f", stats.combinedProgress)
+                            report.department,
+                            report.migrationCluster,
+                            String(report.applications),
+                            String(report.users),
+                            String(format: "%.1f", report.packageProgress),
+                            report.packageReadyDate.map { formatDate($0) } ?? "",
+                            String(format: "%.1f", report.testProgress),
+                            report.testReadyDate.map { formatDate($0) } ?? "",
+                            String(format: "%.1f", report.combinedProgress)
                         ].map { field in
                             // Escape fields that contain commas or quotes
                             let escaped = field.replacingOccurrences(of: "\"", with: "\"\"")
@@ -418,12 +486,7 @@ struct DivisionProgressView: View {
                     }
                     
                     // Add division totals
-                    let departmentStats = departments.map { department in
-                        let departmentRecords = filteredRecords.filter { $0.departmentSimple == department }
-                        return calculateStats(for: departmentRecords)
-                    }
-                    
-                    let totals = calculateDivisionTotals(from: departmentStats)
+                    let totals = divisionTotals
                     
                     csvContent += "\nDivision Summary\n"
                     csvContent += "Total Applications,\(totals.applications)\n"
@@ -492,6 +555,30 @@ struct DivisionProgressView: View {
         let progress = totalApps > 0 ? totalPoints / totalApps : 0.0
         print("Test Progress - Total Points: \(totalPoints), Final Progress: \(progress)%")
         return progress
+    }
+    
+    private func environmentBinding(for env: String) -> Binding<Bool> {
+        Binding(
+            get: {
+                if env == "All" {
+                    return selectedEnvironments.count == environments.count - 1
+                }
+                return selectedEnvironments.contains(env)
+            },
+            set: { isSelected in
+                if env == "All" {
+                    if isSelected {
+                        selectedEnvironments = Set(environments.filter { $0 != "All" })
+                    }
+                } else {
+                    if isSelected {
+                        selectedEnvironments.insert(env)
+                    } else if selectedEnvironments.count > 1 {
+                        selectedEnvironments.remove(env)
+                    }
+                }
+            }
+        )
     }
 }
 
