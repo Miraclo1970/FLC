@@ -6,9 +6,7 @@ struct DepartmentProgressView: View {
     @AppStorage("departmentView.selectedDivision") private var selectedDivision: String = ""
     @AppStorage("departmentView.selectedDepartment") private var selectedDepartment: String = ""
     @AppStorage("departmentView.excludeNonActive") private var excludeNonActive: Bool = false
-    @AppStorage("departmentView.excludeNoHRMatch") private var excludeNoHRMatch: Bool = false
     @AppStorage("departmentView.excludeLeftUsers") private var excludeLeftUsers: Bool = false
-    @AppStorage("departmentView.showResults") private var showResults: Bool = false
     @AppStorage("departmentView.sortColumn") private var sortColumnRaw: String = "name"
     @AppStorage("departmentView.sortAscending") private var sortAscending: Bool = true
     
@@ -108,8 +106,6 @@ struct DepartmentProgressView: View {
                 .font(.subheadline)
             Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
                 .toggleStyle(.checkbox)
-            Toggle("Exclude users without HR match", isOn: $excludeNoHRMatch)
-                .toggleStyle(.checkbox)
             Toggle("Exclude users who have left", isOn: $excludeLeftUsers)
                 .toggleStyle(.checkbox)
         }
@@ -128,15 +124,6 @@ struct DepartmentProgressView: View {
         }
     }
     
-    private var generateButton: some View {
-        Button(action: { showResults = true }) {
-            Text("Generate")
-                .frame(width: 100)
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(selectedDivision.isEmpty || selectedDepartment.isEmpty)
-    }
-    
     private var filtersSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Select Department Simple")
@@ -149,11 +136,9 @@ struct DepartmentProgressView: View {
                 environmentFilter
                 statusFilter
                 platformFilter
-                Spacer()
-                generateButton
             }
         }
-        .frame(width: 1280)
+        .frame(width: 1090)
         .padding()
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(10)
@@ -211,9 +196,8 @@ struct DepartmentProgressView: View {
                 loadingView
             } else {
                 filtersSection
-                if showResults {
-                    resultsView
-                }
+                resultsView
+                exportSection
             }
         }
         .task {
@@ -333,9 +317,6 @@ struct DepartmentProgressView: View {
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
             (selectedEnvironments.contains("All") || selectedEnvironments.contains(record.otap))
             
-            // HR match filter - check both nil and empty string cases
-            let hrFilter = !excludeNoHRMatch || (record.department != nil && !record.department!.isEmpty)
-            
             // Leave date filter - only include users who haven't left
             let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
             
@@ -343,7 +324,7 @@ struct DepartmentProgressView: View {
             let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
             let isOutOfScope = excludeNonActive && (inOutScope == "out" || inOutScope.hasPrefix("out "))
             
-            return basicFilter && hrFilter && leaveFilter && !isOutOfScope
+            return basicFilter && leaveFilter && !isOutOfScope
         }
         
         // Group all division records by application name for department counting
@@ -415,9 +396,6 @@ struct DepartmentProgressView: View {
             (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment) &&
             (selectedEnvironments.contains("All") || selectedEnvironments.contains(record.otap))
             
-            // HR match filter - check both nil and empty string cases
-            let hrFilter = !excludeNoHRMatch || (record.department != nil && !record.department!.isEmpty)
-            
             // Leave date filter - only include users who haven't left
             let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
             
@@ -425,7 +403,7 @@ struct DepartmentProgressView: View {
             let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
             let isOutOfScope = excludeNonActive && (inOutScope == "out" || inOutScope.hasPrefix("out "))
             
-            return basicFilter && hrFilter && leaveFilter && !isOutOfScope
+            return basicFilter && leaveFilter && !isOutOfScope
         }
         return Set(filteredRecords.map { $0.systemAccount }).count
     }
@@ -722,8 +700,12 @@ struct DepartmentProgressView: View {
                 .frame(width: 100, alignment: .leading)
             Text("")
                 .frame(width: 80, alignment: .leading)
-            Text("")
+            
+            // Application count
+            Text("\(departmentApplications.count) App\(departmentApplications.count == 1 ? "" : "s")")
+                .foregroundColor(Color(red: 1.0, green: 0.9, blue: 0.4))  // Soft yellow
                 .frame(width: 80, alignment: .leading)
+            
             Text("\(totalUniqueUsers)")
                 .frame(width: 60, alignment: .center)
             Text("\(totalUniqueDepartments)")
