@@ -283,32 +283,57 @@ struct ChecklistAppUserView: View {
                 (record.inScopeOutScopeDivision?.lowercased() != "out" &&
                  !(record.inScopeOutScopeDivision?.lowercased().starts(with: "out ") ?? false))
             
-            // Will be and sunset filter
-            let willBeMatch = !excludeWillBeAndSunset ||
-                (record.willBe?.isEmpty ?? true || record.willBe == "N/A")
-            
             // HR and leave date filter
             let hrMatch = !excludeNoHROrLeftUsers ||
                 (!(record.department?.isEmpty ?? true) &&
                  (record.leaveDate == nil || record.leaveDate! > Date()))
             
-            return divisionMatch && departmentMatch && otapMatch &&
-                   outScopeMatch && willBeMatch && hrMatch
+            return divisionMatch && departmentMatch && otapMatch && outScopeMatch && hrMatch
         }
         
-        // Get unique applications and users
-        applications = Array(Set(filteredRecords.map { $0.applicationName })).sorted()
+        // Build initial matrix of all applications and their users
+        var fullMatrix: [String: Set<String>] = [:]
+        
+        // First pass: Add all current applications and their users
+        for record in filteredRecords {
+            fullMatrix[record.applicationName, default: []].insert(record.systemAccount)
+        }
+        
+        // If excluding will-be applications
+        if excludeWillBeAndSunset {
+            // Collect all will-be target applications
+            let willBeTargets = Set(filteredRecords.compactMap { record -> String? in
+                guard let willBe = record.willBe, !willBe.isEmpty, willBe != "N/A" else { return nil }
+                return willBe
+            })
+            
+            // Ensure all will-be targets exist in the matrix
+            for target in willBeTargets {
+                if fullMatrix[target] == nil {
+                    fullMatrix[target] = []
+                }
+            }
+            
+            // Remove applications that will be migrated
+            let appsToRemove = filteredRecords.compactMap { record -> String? in
+                guard let willBe = record.willBe, !willBe.isEmpty, willBe != "N/A" else { return nil }
+                return record.applicationName
+            }
+            
+            // Remove the identified applications
+            for app in Set(appsToRemove) {
+                fullMatrix.removeValue(forKey: app)
+            }
+        }
+        
+        // Update view state
+        applications = Array(fullMatrix.keys).sorted()
         users = Array(Set(filteredRecords.map { $0.systemAccount })).sorted()
+        usageMatrix = fullMatrix
         
-        // Build usage matrix
-        usageMatrix = [:]
-        for app in applications {
-            usageMatrix[app] = Set(
-                filteredRecords
-                    .filter { $0.applicationName == app }
-                    .map { $0.systemAccount }
-            )
-        }
+        print("\nMatrix Summary:")
+        print("Total Applications: \(applications.count)")
+        print("Total Users: \(users.count)")
     }
     
     private func exportAsCSV() {

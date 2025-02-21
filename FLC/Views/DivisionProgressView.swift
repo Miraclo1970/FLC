@@ -23,8 +23,8 @@ struct DivisionProgressView: View {
     @AppStorage("divisionView.sortColumn") private var sortColumnRaw: String = "name"
     @AppStorage("divisionView.sortAscending") private var sortAscending: Bool = true
     @State private var selectedEnvironments: Set<String> = ["P"]  // Default to Production
+    @State private var selectedClusters: Set<String> = []  // Will be initialized after loading
     @State private var records: [CombinedRecord] = []
-    @State private var selectedCluster: String = "All"
     @State private var isLoading = true
     @State private var isExporting = false
     @State private var exportError: String?
@@ -46,7 +46,7 @@ struct DivisionProgressView: View {
     private var filteredRecords: [CombinedRecord] {
         records.filter { record in
             record.division == selectedDivision &&
-            (selectedCluster == "All" || record.migrationCluster == selectedCluster)
+            (selectedClusters.contains("All") || selectedClusters.contains(record.migrationCluster ?? ""))
         }
     }
     
@@ -57,55 +57,36 @@ struct DivisionProgressView: View {
     }
     
     private var divisionReport: [DivisionReport] {
-        // First, filter records by division only
+        // First, filter records by division and other filters
         let divisionRecords = records.filter { record in
             // Division filter
             let divisionFilter = selectedDivision == "All" || record.division == selectedDivision
             
-            // Environment filter - if "All" is not selected, check against selected environments
+            // Environment filter
             let environmentFilter = selectedEnvironments.contains("All") || 
                 (!record.otap.isEmpty && selectedEnvironments.contains(record.otap))
             
-            return divisionFilter && environmentFilter
+            // Cluster filter - only include records from selected clusters
+            let clusterFilter = selectedClusters.contains("All") || 
+                (record.migrationCluster != nil && selectedClusters.contains(record.migrationCluster!))
+            
+            // Leave date filter
+            let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
+            
+            // Out of scope filter
+            let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
+            let scopeFilter = !excludeNonActive || (inOutScope != "out" && !inOutScope.hasPrefix("out "))
+            
+            // Will be filter - exclude applications that will be migrated to another application
+            let willBe = record.willBe ?? ""
+            let willBeFilter = willBe.isEmpty || willBe == "N/A"
+            
+            return divisionFilter && environmentFilter && clusterFilter && leaveFilter && scopeFilter && willBeFilter
         }
         
         // Then create reports for each department
         return departments.map { department in
-            let departmentRecords = divisionRecords.filter { record in
-                // Department filter
-                guard record.departmentSimple == department else { return false }
-                
-                // Leave date filter
-                let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
-                
-                // Out of scope filter
-                let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
-                let scopeFilter = {
-                    if !excludeNonActive {
-                        return true
-                    }
-                    
-                    // Check for sunset
-                    if inOutScope == "sunset" {
-                        return false
-                    }
-                    
-                    // Check for general "out"
-                    if inOutScope == "out" {
-                        return false
-                    }
-                    
-                    // Check for "out" followed by division names
-                    if inOutScope.starts(with: "out ") {
-                        let divisions = inOutScope.dropFirst(4).split(separator: " ").map { String($0).lowercased() }
-                        return !divisions.contains(selectedDivision.lowercased())
-                    }
-                    
-                    return true
-                }()
-                
-                return leaveFilter && scopeFilter
-            }
+            let departmentRecords = divisionRecords.filter { $0.departmentSimple == department }
             
             // Count unique applications and users
             let uniqueApps = Set(departmentRecords.map { $0.applicationName }).count
@@ -135,54 +116,41 @@ struct DivisionProgressView: View {
     }
     
     private var divisionTotals: (applications: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?) {
-        // Get all records for the selected division with filters applied
-        let divisionRecords = records.filter { record in
+        // Get all filtered records first
+        let filteredRecords = records.filter { record in
             // Division filter
             let divisionFilter = selectedDivision == "All" || record.division == selectedDivision
             
-            // Environment filter - if "All" is not selected, check against selected environments
+            // Environment filter
             let environmentFilter = selectedEnvironments.contains("All") || 
                 (!record.otap.isEmpty && selectedEnvironments.contains(record.otap))
             
-            guard divisionFilter && environmentFilter else { return false }
+            // Cluster filter - only include records from selected clusters
+            let clusterFilter = selectedClusters.contains("All") || 
+                (record.migrationCluster != nil && selectedClusters.contains(record.migrationCluster!))
             
             // Leave date filter
             let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
             
             // Out of scope filter
             let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
-            let scopeFilter = {
-                if !excludeNonActive {
-                    return true
-                }
-                
-                // Check for sunset
-                if inOutScope == "sunset" {
-                    return false
-                }
-                
-                // Check for general "out"
-                if inOutScope == "out" {
-                    return false
-                }
-                
-                // Check for "out" followed by division names
-                if inOutScope.starts(with: "out ") {
-                    let divisions = inOutScope.dropFirst(4).split(separator: " ").map { String($0).lowercased() }
-                    return !divisions.contains(selectedDivision.lowercased())
-                }
-                
-                return true
-            }()
+            let scopeFilter = !excludeNonActive || (inOutScope != "out" && !inOutScope.hasPrefix("out "))
             
-            return leaveFilter && scopeFilter
+            return divisionFilter && environmentFilter && clusterFilter && leaveFilter && scopeFilter
         }
         
-        // Count unique applications and users
-        let uniqueApps = Set(divisionRecords.map { $0.applicationName }).count
-        let uniqueUsers = Set(divisionRecords.map { $0.systemAccount }).count
+        // Count unique applications and users across all departments
+        let uniqueApps = Set(filteredRecords.map { $0.applicationName }).count
+        let uniqueUsers = Set(filteredRecords.map { $0.systemAccount }).count
         
-        // Calculate weighted averages based on department stats
+        print("Division Report Counts:")
+        print("Total Unique Apps: \(uniqueApps)")
+        print("Total Unique Users: \(uniqueUsers)")
+        for report in divisionReport {
+            print("Department: \(report.department), Cluster: \(report.migrationCluster), Apps: \(report.applications), Users: \(report.users)")
+        }
+        
+        // Calculate progress using the division report
         var totalWeightedPackageProgress = 0.0
         var totalWeightedTestProgress = 0.0
         var totalWeight = 0
@@ -242,6 +210,30 @@ struct DivisionProgressView: View {
                                     ForEach(environments, id: \.self) { env in
                                         Toggle(env, isOn: environmentBinding(for: env))
                                             .toggleStyle(.checkbox)
+                                    }
+                                }
+                            }
+                            
+                            // Cluster Filter
+                            VStack(alignment: .leading) {
+                                Text("Clusters:")
+                                    .font(.subheadline)
+                                HStack(alignment: .top, spacing: 16) {
+                                    // First column
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Toggle("All", isOn: clusterBinding(for: "All"))
+                                            .toggleStyle(.checkbox)
+                                        ForEach(Array(clusters.filter { $0 != "All" }.prefix(clusters.count/2)), id: \.self) { cluster in
+                                            Toggle(cluster, isOn: clusterBinding(for: cluster))
+                                                .toggleStyle(.checkbox)
+                                        }
+                                    }
+                                    // Second column
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        ForEach(Array(clusters.filter { $0 != "All" }.suffix(from: (clusters.count-1)/2)), id: \.self) { cluster in
+                                            Toggle(cluster, isOn: clusterBinding(for: cluster))
+                                                .toggleStyle(.checkbox)
+                                        }
                                     }
                                 }
                             }
@@ -435,14 +427,16 @@ struct DivisionProgressView: View {
     }
     
     private func loadData() async {
+        isLoading = true
         do {
-            isLoading = true
-            records = try await databaseManager.fetchAllRecords()
+            records = try await databaseManager.fetchCombinedRecords()
+            // Initialize selectedClusters with all available clusters
+            selectedClusters = Set(clusters)
             if let firstDivision = divisions.first {
                 selectedDivision = firstDivision
             }
         } catch {
-            print("Error loading records: \(error)")
+            print("Error loading data: \(error)")
         }
         isLoading = false
     }
@@ -578,6 +572,92 @@ struct DivisionProgressView: View {
                     }
                 }
             }
+        )
+    }
+    
+    private func clusterBinding(for cluster: String) -> Binding<Bool> {
+        Binding(
+            get: {
+                if cluster == "All" {
+                    return selectedClusters.count == clusters.count - 1  // -1 because clusters includes "All"
+                }
+                return selectedClusters.contains(cluster)
+            },
+            set: { isSelected in
+                if cluster == "All" {
+                    if isSelected {
+                        selectedClusters = Set(clusters.filter { $0 != "All" })
+                    } else {
+                        selectedClusters = []
+                    }
+                } else {
+                    if isSelected {
+                        selectedClusters.insert(cluster)
+                        // If all non-"All" clusters are selected, add "All"
+                        if selectedClusters.count == clusters.count - 1 {
+                            selectedClusters.insert("All")
+                        }
+                    } else {
+                        selectedClusters.remove(cluster)
+                        selectedClusters.remove("All")  // Remove "All" when any cluster is deselected
+                    }
+                }
+            }
+        )
+    }
+    
+    private func calculateDivisionTotals() -> (apps: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?) {
+        // Get all records for the selected division with filters applied
+        let divisionRecords = records.filter { record in
+            // Division filter
+            let divisionFilter = selectedDivision == "All" || record.division == selectedDivision
+            
+            // Environment filter
+            let environmentFilter = selectedEnvironments.contains("All") || 
+                (!record.otap.isEmpty && selectedEnvironments.contains(record.otap))
+            
+            // Cluster filter - only include records from selected clusters
+            let clusterFilter = selectedClusters.contains("All") || 
+                (record.migrationCluster != nil && selectedClusters.contains(record.migrationCluster!))
+            
+            // Leave date filter
+            let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
+            
+            // Out of scope filter
+            let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
+            let scopeFilter = !excludeNonActive || (inOutScope != "out" && !inOutScope.hasPrefix("out "))
+            
+            return divisionFilter && environmentFilter && clusterFilter && leaveFilter && scopeFilter
+        }
+        
+        // Count unique applications and users directly from filtered records
+        let uniqueApps = Set(divisionRecords.map { $0.applicationName }).count
+        let uniqueUsers = Set(divisionRecords.map { $0.systemAccount }).count
+        
+        // Calculate progress using the division report
+        var totalWeightedPackageProgress = 0.0
+        var totalWeightedTestProgress = 0.0
+        var totalWeight = 0
+        
+        for report in divisionReport {
+            let weight = report.applications
+            totalWeightedPackageProgress += report.packageProgress * Double(weight)
+            totalWeightedTestProgress += report.testProgress * Double(weight)
+            totalWeight += weight
+        }
+        
+        let avgPackageProgress = totalWeight > 0 ? totalWeightedPackageProgress / Double(totalWeight) : 0.0
+        let avgTestProgress = totalWeight > 0 ? totalWeightedTestProgress / Double(totalWeight) : 0.0
+        let overallProgress = (avgPackageProgress + avgTestProgress) / 2.0
+        
+        return (
+            uniqueApps,
+            uniqueUsers,
+            avgPackageProgress,
+            avgTestProgress,
+            overallProgress,
+            divisionReport.compactMap { $0.packageReadyDate }.max(),
+            divisionReport.compactMap { $0.testReadyDate }.max()
         )
     }
 }
