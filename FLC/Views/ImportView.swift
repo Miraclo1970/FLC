@@ -336,14 +336,22 @@ struct ImportView: View {
                     }
                     
                 case .migration:
-                    let (valid, _, _) = try await processMigrationData(xlsx)
+                    let (valid, invalid, duplicates) = try await processMigrationData(xlsx)
                     await MainActor.run {
-                        print("Setting Migration records - Valid: \(valid.count)")
+                        print("Setting Migration records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         progress.selectedDataType = .migration
                         progress.validMigrationRecords = valid
+                        progress.invalidMigrationRecords = invalid
+                        progress.duplicateMigrationRecords = duplicates
+                        
+                        // Add a message when no changes are detected
+                        if valid.isEmpty && invalid.isEmpty && duplicates.isEmpty {
+                            progress.invalidMigrationRecords = ["No changes detected - all records are already in the database"]
+                        }
+                        
                         message = "Successfully processed Migration data from: \(file.lastPathComponent)"
                         progress.isProcessing = false
-                        print("Processed Migration records - Valid: \(valid.count)")
+                        print("Processed Migration records - Valid: \(valid.count), Invalid: \(invalid.count), Duplicates: \(duplicates.count)")
                         print("Data type is now: \(progress.selectedDataType)")
                         // Dismiss this view to return to the main navigation
                         dismiss()

@@ -24,17 +24,15 @@ struct MigrationData: Identifiable, Codable {
         // Validate application name
         if applicationName.isEmpty || applicationName == "N/A" {
             errors.append("Application Name is required")
-            return errors
         }
         
         // Check if application exists in AD
-        if !DatabaseManager.shared.hasADApplication(applicationName) {
+        if !applicationName.isEmpty && applicationName != "N/A" && !DatabaseManager.shared.hasADApplication(applicationName) {
             errors.append("Application '\(applicationName)' not found in AD records")
-            return errors
         }
         
         // Check for duplicates
-        if DatabaseManager.shared.isDuplicateMigrationApplication(normalizedApplicationName) {
+        if !applicationName.isEmpty && applicationName != "N/A" && DatabaseManager.shared.isDuplicateMigrationApplication(normalizedApplicationName) {
             errors.append("Duplicate Application Name '\(applicationName)'")
         }
         

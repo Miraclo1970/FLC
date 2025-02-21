@@ -324,18 +324,86 @@ struct DepartmentProgressView: View {
             let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
             let isOutOfScope = excludeNonActive && (inOutScope == "out" || inOutScope.hasPrefix("out "))
             
-            return basicFilter && leaveFilter && !isOutOfScope
+            // Will be filter - exclude applications that will be migrated to another application
+            let willBe = record.willBe ?? ""
+            let willBeFilter = !excludeNonActive || willBe.isEmpty || willBe == "N/A"
+            
+            return basicFilter && leaveFilter && !isOutOfScope && willBeFilter
         }
         
         // Group all division records by application name for department counting
         let divisionGroupedByApp = Dictionary(grouping: divisionRecords) { $0.applicationName }
         
         // Group filtered records by application name for display
-        let groupedByApp = Dictionary(grouping: filteredRecords) { $0.applicationName }
+        var groupedByApp = Dictionary(grouping: filteredRecords) { $0.applicationName }
         
         // Create a set of all "Will be" targets
-        let willBeTargets = Set(filteredRecords.compactMap { $0.willBe }
+        let willBeTargets = Set(records.compactMap { $0.willBe }
             .filter { !$0.isEmpty && $0 != "N/A" })
+        
+        // If we're excluding non-active apps, add the "will be" target applications
+        if excludeNonActive {
+            // First, create a mapping of old apps to their target apps
+            var willBeMapping: [String: String] = [:]
+            for record in records {
+                if let willBe = record.willBe, !willBe.isEmpty, willBe != "N/A" {
+                    willBeMapping[record.applicationName] = willBe
+                }
+            }
+            
+            // Group old applications by their target "will be" application
+            var willBeGroups: [String: [String]] = [:]
+            for (oldApp, willBeApp) in willBeMapping {
+                willBeGroups[willBeApp, default: []].append(oldApp)
+            }
+            
+            print("\nWill Be Migration Summary:")
+            for (willBeApp, oldApps) in willBeGroups {
+                print("\nTarget Application: \(willBeApp)")
+                print("Source Applications: \(oldApps.joined(separator: ", "))")
+                
+                // Get or create target app records
+                var targetRecords = groupedByApp[willBeApp] ?? []
+                let originalTargetUsers = Set(targetRecords.map { $0.systemAccount })
+                print("Target app original user count: \(originalTargetUsers.count)")
+                
+                // Collect all users from old applications
+                var allMigratedUsers = Set<String>()
+                for oldApp in oldApps {
+                    if let oldAppRecords = groupedByApp[oldApp] {
+                        let oldAppUsers = Set(oldAppRecords.map { $0.systemAccount })
+                        print("- From \(oldApp):")
+                        print("  • Original users: \(oldAppUsers.count)")
+                        
+                        // Add users to the combined set
+                        allMigratedUsers.formUnion(oldAppUsers)
+                        
+                        // Remove the old application
+                        groupedByApp.removeValue(forKey: oldApp)
+                    }
+                }
+                
+                // Calculate new users (excluding those already in target)
+                let newUsers = allMigratedUsers.subtracting(originalTargetUsers)
+                print("New unique users to add: \(newUsers.count)")
+                
+                // Add records for new users to target application
+                if !newUsers.isEmpty {
+                    let recordsToAdd = records.filter { record in
+                        newUsers.contains(record.systemAccount) &&
+                        oldApps.contains(record.applicationName) &&
+                        (selectedDivision == "All" || record.division == selectedDivision) &&
+                        (selectedDepartment == "All" || selectedDepartment == "" || record.departmentSimple == selectedDepartment)
+                    }
+                    targetRecords.append(contentsOf: recordsToAdd)
+                    groupedByApp[willBeApp] = targetRecords
+                }
+                
+                let finalUserCount = Set(groupedByApp[willBeApp]?.map { $0.systemAccount } ?? []).count
+                print("Final target app user count: \(finalUserCount)")
+                print("Total unique users added: \(newUsers.count)")
+            }
+        }
         
         // Convert to ApplicationInfo array
         var applications = groupedByApp.map { appName, appRecords in
@@ -352,7 +420,7 @@ struct DepartmentProgressView: View {
             let platform: String
             if willBeTargets.contains(appName) {
                 // Find records where this app is the target
-                let targetRecords = filteredRecords.filter { record in 
+                let targetRecords = records.filter { record in 
                     guard let willBe = record.willBe else { return false }
                     return willBe == appName 
                 }
@@ -519,7 +587,11 @@ struct DepartmentProgressView: View {
                 panel.allowedContentTypes = [.commaSeparatedText]
                 panel.nameFieldStringValue = "department_progress_\(selectedDivision)_\(selectedDepartment == "All" ? "all" : selectedDepartment).csv"
                 
-                let response = await panel.beginSheetModal(for: NSApp.keyWindow!)
+                guard let window = NSApplication.shared.windows.first(where: { $0.isKeyWindow }) else {
+                    throw NSError(domain: "Export", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not find window for save panel"])
+                }
+                
+                let response = await panel.beginSheetModal(for: window)
                 
                 if response == .OK, let url = panel.url {
                     // Create CSV content
@@ -533,25 +605,29 @@ struct DepartmentProgressView: View {
                             app.inOutScope,
                             String(app.uniqueUsers),
                             app.packageStatus,
-                            app.packageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "",
+                            app.packageReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-",
                             app.testingStatus,
-                            app.testReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "",
+                            app.testReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-",
                             app.applicationReadiness
                         ].map { field in
-                            // Escape fields that contain commas or quotes
+                            // Properly escape fields that contain commas, quotes, or newlines
                             let escaped = field.replacingOccurrences(of: "\"", with: "\"\"")
+                                .replacingOccurrences(of: "\n", with: " ")
+                                .replacingOccurrences(of: "\r", with: " ")
                             return "\"\(escaped)\""
                         }
                         
                         csvContent += fields.joined(separator: ",") + "\n"
                     }
                     
-                    // Add summary row
+                    // Add summary row with safe value handling
                     csvContent += "\nSummary\n"
+                    csvContent += "Total Applications,\(departmentApplications.count)\n"
                     csvContent += "Total Users,\(totalUniqueUsers)\n"
-                    csvContent += "Total Departments,\(totalUniqueDepartments)\n"
                     csvContent += "Average Package Progress,\(averagePackageProgress)%\n"
                     csvContent += "Average Testing Progress,\(averageTestingProgress)%\n"
+                    csvContent += "Latest Package Ready Date,\(latestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")\n"
+                    csvContent += "Latest Test Ready Date,\(latestTestReadinessDate.map { DateFormatter.shortDateFormatter.string(from: $0) } ?? "-")\n"
                     
                     try csvContent.write(to: url, atomically: true, encoding: .utf8)
                 }
@@ -798,17 +874,18 @@ struct DepartmentProgressView: View {
                 }
                 
                 Button(action: exportAsCSV) {
-                    HStack {
+                    HStack(spacing: 8) {
                         if isExporting {
                             ProgressView()
-                                .scaleEffect(0.7)
-                                .frame(width: 16, height: 16)
+                                .scaleEffect(0.5)
+                                .frame(width: 20, height: 20)
+                                .fixedSize()
                         } else {
                             Image(systemName: "arrow.down.doc")
                         }
                         Text("Export to CSV")
                     }
-                    .frame(width: 120)
+                    .frame(minWidth: 120)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(isExporting || departmentApplications.isEmpty)
