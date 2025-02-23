@@ -106,10 +106,10 @@ struct ChecklistAppUserView: View {
                         Toggle("Exclude out scope & out scope division", isOn: $excludeOutScope)
                             .onChange(of: excludeOutScope) { _, _ in updateMatrix() }
                         
-                        Toggle("Exclude will be and sunset", isOn: $excludeWillBeAndSunset)
+                        Toggle("Exclude sunset and show only Will be app", isOn: $excludeWillBeAndSunset)
                             .onChange(of: excludeWillBeAndSunset) { _, _ in updateMatrix() }
                         
-                        Toggle("Exclude not in HR or left users", isOn: $excludeNoHROrLeftUsers)
+                        Toggle("Exclude users who have left", isOn: $excludeNoHROrLeftUsers)
                             .onChange(of: excludeNoHROrLeftUsers) { _, _ in updateMatrix() }
                     }
                 }
@@ -283,46 +283,50 @@ struct ChecklistAppUserView: View {
                 (record.inScopeOutScopeDivision?.lowercased() != "out" &&
                  !(record.inScopeOutScopeDivision?.lowercased().starts(with: "out ") ?? false))
             
-            // HR and leave date filter
-            let hrMatch = !excludeNoHROrLeftUsers ||
-                (!(record.department?.isEmpty ?? true) &&
-                 (record.leaveDate == nil || record.leaveDate! > Date()))
+            // Left users filter - only check leave date
+            let leftUserMatch = !excludeNoHROrLeftUsers ||
+                (record.leaveDate == nil || record.leaveDate! > Date())
             
-            return divisionMatch && departmentMatch && otapMatch && outScopeMatch && hrMatch
+            return divisionMatch && departmentMatch && otapMatch && outScopeMatch && leftUserMatch
         }
         
         // Build initial matrix of all applications and their users
         var fullMatrix: [String: Set<String>] = [:]
+        var willBeSourceApps: Set<String> = []
         
-        // First pass: Add all current applications and their users
-        for record in filteredRecords {
-            fullMatrix[record.applicationName, default: []].insert(record.systemAccount)
+        // Group records by application name for easier processing
+        let recordsByApp = Dictionary(grouping: filteredRecords) { $0.applicationName }
+        
+        // First pass: Add all applications and their direct users
+        // Also collect applications that will be migrated
+        for (appName, appRecords) in recordsByApp {
+            let appUsers = Set(appRecords.map { $0.systemAccount })
+            fullMatrix[appName] = appUsers
+            
+            // If this app has a "will be" target, mark it for potential removal
+            if let willBe = appRecords.first?.willBe,
+               !willBe.isEmpty && willBe != "N/A" {
+                willBeSourceApps.insert(appName)
+            }
         }
         
-        // If excluding will-be applications
-        if excludeWillBeAndSunset {
-            // Collect all will-be target applications
-            let willBeTargets = Set(filteredRecords.compactMap { record -> String? in
-                guard let willBe = record.willBe, !willBe.isEmpty, willBe != "N/A" else { return nil }
-                return willBe
-            })
-            
-            // Ensure all will-be targets exist in the matrix
-            for target in willBeTargets {
-                if fullMatrix[target] == nil {
-                    fullMatrix[target] = []
-                }
+        // Second pass: Process will-be relationships and merge users
+        for (appName, appRecords) in recordsByApp {
+            // Get the will-be value for this application (if any)
+            guard let willBeApp = appRecords.first?.willBe,
+                  !willBeApp.isEmpty && willBeApp != "N/A" else {
+                continue
             }
             
-            // Remove applications that will be migrated
-            let appsToRemove = filteredRecords.compactMap { record -> String? in
-                guard let willBe = record.willBe, !willBe.isEmpty, willBe != "N/A" else { return nil }
-                return record.applicationName
-            }
+            // Get users for this application
+            let appUsers = Set(appRecords.map { $0.systemAccount })
             
-            // Remove the identified applications
-            for app in Set(appsToRemove) {
-                fullMatrix.removeValue(forKey: app)
+            // Merge users into the target application
+            fullMatrix[willBeApp, default: []].formUnion(appUsers)
+            
+            // If exclude filter is on, remove the source application
+            if excludeWillBeAndSunset {
+                fullMatrix.removeValue(forKey: appName)
             }
         }
         
@@ -334,6 +338,15 @@ struct ChecklistAppUserView: View {
         print("\nMatrix Summary:")
         print("Total Applications: \(applications.count)")
         print("Total Users: \(users.count)")
+        
+        // Debug information
+        print("\nWill-be relationships:")
+        for (app, users) in fullMatrix {
+            let willBe = recordsByApp[app]?.first?.willBe ?? "N/A"
+            if willBe != "N/A" {
+                print("\(app) -> \(willBe): \(users.count) users")
+            }
+        }
     }
     
     private func exportAsCSV() {

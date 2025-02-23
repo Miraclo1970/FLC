@@ -38,7 +38,16 @@ struct DivisionProgressView: View {
     }
     
     private var clusters: [String] {
-        var clusterSet = Set(records.compactMap { $0.migrationCluster })
+        var clusterSet = Set<String>()
+        
+        // Only get clusters for the selected division
+        if !selectedDivision.isEmpty {
+            clusterSet = Set(records.filter { $0.division == selectedDivision }
+                .compactMap { $0.migrationCluster }
+                .filter { !$0.isEmpty })
+        }
+        
+        // Add "All" option
         clusterSet.insert("All")
         return Array(clusterSet).sorted()
     }
@@ -195,11 +204,15 @@ struct DivisionProgressView: View {
                                 Text("Division:")
                                     .font(.subheadline)
                                 Picker("", selection: $selectedDivision) {
+                                    Text("Select Division").tag("")
                                     ForEach(divisions, id: \.self) { division in
                                         Text(division).tag(division)
                                     }
                                 }
                                 .frame(width: 200)
+                                .onChange(of: selectedDivision) { _, _ in
+                                    updateSelectedClustersForDivision()
+                                }
                             }
                             
                             // Environment Filter
@@ -218,24 +231,17 @@ struct DivisionProgressView: View {
                             VStack(alignment: .leading) {
                                 Text("Clusters:")
                                     .font(.subheadline)
-                                HStack(alignment: .top, spacing: 16) {
-                                    // First column
+                                ScrollView {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Toggle("All", isOn: clusterBinding(for: "All"))
                                             .toggleStyle(.checkbox)
-                                        ForEach(Array(clusters.filter { $0 != "All" }.prefix(clusters.count/2)), id: \.self) { cluster in
-                                            Toggle(cluster, isOn: clusterBinding(for: cluster))
-                                                .toggleStyle(.checkbox)
-                                        }
-                                    }
-                                    // Second column
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        ForEach(Array(clusters.filter { $0 != "All" }.suffix(from: (clusters.count-1)/2)), id: \.self) { cluster in
+                                        ForEach(clusters.filter { $0 != "All" }, id: \.self) { cluster in
                                             Toggle(cluster, isOn: clusterBinding(for: cluster))
                                                 .toggleStyle(.checkbox)
                                         }
                                     }
                                 }
+                                .frame(maxHeight: 200)
                             }
                         }
                         
@@ -606,59 +612,21 @@ struct DivisionProgressView: View {
         )
     }
     
-    private func calculateDivisionTotals() -> (apps: Int, users: Int, packageProgress: Double, testProgress: Double, overallProgress: Double, packageReadyDate: Date?, testReadyDate: Date?) {
-        // Get all records for the selected division with filters applied
-        let divisionRecords = records.filter { record in
-            // Division filter
-            let divisionFilter = selectedDivision == "All" || record.division == selectedDivision
-            
-            // Environment filter
-            let environmentFilter = selectedEnvironments.contains("All") || 
-                (!record.otap.isEmpty && selectedEnvironments.contains(record.otap))
-            
-            // Cluster filter - only include records from selected clusters
-            let clusterFilter = selectedClusters.contains("All") || 
-                (record.migrationCluster != nil && selectedClusters.contains(record.migrationCluster!))
-            
-            // Leave date filter
-            let leaveFilter = !excludeLeftUsers || (record.leaveDate == nil || record.leaveDate! > Date())
-            
-            // Out of scope filter
-            let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
-            let scopeFilter = !excludeNonActive || (inOutScope != "out" && !inOutScope.hasPrefix("out "))
-            
-            return divisionFilter && environmentFilter && clusterFilter && leaveFilter && scopeFilter
+    private func updateSelectedClustersForDivision() {
+        // When division changes, we need to:
+        // 1. Get clusters for the new division
+        let newClusters = Set(records.filter { $0.division == selectedDivision }
+            .compactMap { $0.migrationCluster }
+            .filter { !$0.isEmpty })
+        
+        // 2. Keep only the selected clusters that exist in the new division
+        selectedClusters = selectedClusters.intersection(newClusters)
+        
+        // 3. If no clusters are selected, select all available ones
+        if selectedClusters.isEmpty {
+            selectedClusters = newClusters
+            selectedClusters.insert("All")
         }
-        
-        // Count unique applications and users directly from filtered records
-        let uniqueApps = Set(divisionRecords.map { $0.applicationName }).count
-        let uniqueUsers = Set(divisionRecords.map { $0.systemAccount }).count
-        
-        // Calculate progress using the division report
-        var totalWeightedPackageProgress = 0.0
-        var totalWeightedTestProgress = 0.0
-        var totalWeight = 0
-        
-        for report in divisionReport {
-            let weight = report.applications
-            totalWeightedPackageProgress += report.packageProgress * Double(weight)
-            totalWeightedTestProgress += report.testProgress * Double(weight)
-            totalWeight += weight
-        }
-        
-        let avgPackageProgress = totalWeight > 0 ? totalWeightedPackageProgress / Double(totalWeight) : 0.0
-        let avgTestProgress = totalWeight > 0 ? totalWeightedTestProgress / Double(totalWeight) : 0.0
-        let overallProgress = (avgPackageProgress + avgTestProgress) / 2.0
-        
-        return (
-            uniqueApps,
-            uniqueUsers,
-            avgPackageProgress,
-            avgTestProgress,
-            overallProgress,
-            divisionReport.compactMap { $0.packageReadyDate }.max(),
-            divisionReport.compactMap { $0.testReadyDate }.max()
-        )
     }
 }
 
