@@ -21,7 +21,13 @@ struct BaselineApplicationsUsageView: View {
     
     // OTAP filter states
     @State private var selectedOTAP: Set<String> = ["P"]
-    private let otapOptions = ["A", "OT", "P", "Prullenbak", "TW", "VDI"]
+    @State private var records: [CombinedRecord] = []
+    
+    private var otapOptions: [String] {
+        Array(Set(records.compactMap { $0.otap }))
+            .filter { !$0.isEmpty }
+            .sorted()
+    }
     
     // Division filter states
     @State private var selectedDivision: String = "All"
@@ -376,9 +382,10 @@ struct BaselineApplicationsUsageView: View {
     
     private func loadDivisions() async {
         do {
-            let records = try await DatabaseManager.shared.fetchCombinedRecords()
-            let uniqueDivisions = Set(records.compactMap { $0.division })
+            let combinedRecords = try await DatabaseManager.shared.fetchCombinedRecords()
+            let uniqueDivisions = Set(combinedRecords.compactMap { $0.division })
             await MainActor.run {
+                records = combinedRecords  // Store records for dynamic OTAP options
                 divisions = ["All"] + uniqueDivisions.sorted()
             }
         } catch {
@@ -394,8 +401,10 @@ struct BaselineApplicationsUsageView: View {
                 lastUpdateTime = Date()
             }
             
-            // Get combined records
-            let combinedRecords = try await DatabaseManager.shared.fetchCombinedRecords()
+            // Get combined records if not already loaded
+            if records.isEmpty {
+                records = try await DatabaseManager.shared.fetchCombinedRecords()
+            }
             
             // Get last import dates from AD and HR records
             let adImportDate = try await DatabaseManager.shared.getLatestImportDate(from: "ad_records")
@@ -411,7 +420,7 @@ struct BaselineApplicationsUsageView: View {
             // First pass: Group users by application and track division information
             var applicationDivisions: [String: Set<String>] = [:]
             
-            for record in combinedRecords {
+            for record in records {
                 // Only process records that match the selected OTAP values
                 guard selectedOTAP.contains(record.otap) else { continue }
                 
@@ -444,7 +453,7 @@ struct BaselineApplicationsUsageView: View {
                 // Create a map of applications to users only from the selected division
                 var divisionUsersPerApp: [String: Set<String>] = [:]
                 
-                for record in combinedRecords {
+                for record in records {
                     guard selectedOTAP.contains(record.otap) else { continue }
                     guard record.division == selectedDivision else { continue }
                     
@@ -507,7 +516,7 @@ struct BaselineApplicationsUsageView: View {
             var usersWithoutApps = Set<String>()
             var allUsers = Set<String>()
 
-            for record in combinedRecords {
+            for record in records {
                 // Only process records that match the selected OTAP values
                 guard selectedOTAP.contains(record.otap) else { continue }
                 
@@ -539,7 +548,7 @@ struct BaselineApplicationsUsageView: View {
             }
 
             // Calculate user with most applications
-            let userApplicationCounts = Dictionary(grouping: combinedRecords.filter { record in
+            let userApplicationCounts = Dictionary(grouping: records.filter { record in
                 selectedOTAP.contains(record.otap) && 
                 (selectedDivision == "All" || record.division == selectedDivision)
             }, by: { $0.systemAccount })

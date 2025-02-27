@@ -32,7 +32,13 @@ struct DepartmentProgressView: View {
         case name, users, departments, packageStatus, testResult
     }
     
-    private let environments = ["All", "P", "A", "OT"]
+    private var environments: [String] {
+        var envSet = Set(records.compactMap { $0.otap })
+            .filter { !$0.isEmpty }
+        envSet.insert("All")
+        return Array(envSet).sorted()
+    }
+    
     private let platforms = ["All", "SAAS", "VDI", "Local"]
     
     // Available divisions and departments
@@ -100,17 +106,6 @@ struct DepartmentProgressView: View {
         }
     }
     
-    private var statusFilter: some View {
-        VStack(alignment: .leading) {
-            Text("Status:")
-                .font(.subheadline)
-            Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
-                .toggleStyle(.checkbox)
-            Toggle("Exclude users who have left", isOn: $excludeLeftUsers)
-                .toggleStyle(.checkbox)
-        }
-    }
-    
     private var platformFilter: some View {
         VStack(alignment: .leading) {
             Text("Platform:")
@@ -124,18 +119,35 @@ struct DepartmentProgressView: View {
         }
     }
     
+    private var statusFilter: some View {
+        VStack(alignment: .leading) {
+            Text("Status:")
+                .font(.subheadline)
+            Toggle("Exclude Sunset & Out of scope", isOn: $excludeNonActive)
+                .toggleStyle(.checkbox)
+            Toggle("Exclude users who have left", isOn: $excludeLeftUsers)
+                .toggleStyle(.checkbox)
+        }
+    }
+    
     private var filtersSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Select Department Simple")
                 .font(.headline)
             
+            // First row: Division and Department pickers
             HStack(spacing: 20) {
                 divisionPicker
                 departmentPicker
                 Spacer()
+            }
+            
+            // Second row: Environment, Platform, and Status filters
+            HStack(spacing: 40) {
                 environmentFilter
-                statusFilter
                 platformFilter
+                statusFilter
+                Spacer()
             }
         }
         .frame(width: 1090)
@@ -310,6 +322,10 @@ struct DepartmentProgressView: View {
             (selectedEnvironments.contains("All") || selectedEnvironments.contains(record.otap))
         }
         
+        // Create a set of all "Will be" targets before filtering
+        let willBeTargets = Set(records.compactMap { $0.willBe }
+            .filter { !$0.isEmpty && $0 != "N/A" })
+        
         // Then filter for display based on selected department and user filters
         let filteredRecords = records.filter { record in
             // Basic filters
@@ -324,22 +340,33 @@ struct DepartmentProgressView: View {
             let inOutScope = (record.inScopeOutScopeDivision ?? "").lowercased()
             let isOutOfScope = excludeNonActive && (inOutScope == "out" || inOutScope.hasPrefix("out "))
             
-            // Will be filter - exclude applications that will be migrated to another application
+            // Will be filter - include the application if:
+            // 1. excludeNonActive is false (show all), OR
+            // 2. The app is a "Will be" target, OR
+            // 3. The app doesn't have a "Will be" value
             let willBe = record.willBe ?? ""
-            let willBeFilter = !excludeNonActive || willBe.isEmpty || willBe == "N/A"
+            let willBeFilter = !excludeNonActive || 
+                             willBeTargets.contains(record.applicationName) ||
+                             (willBe.isEmpty || willBe == "N/A")
             
             return basicFilter && leaveFilter && !isOutOfScope && willBeFilter
         }
         
-        // Group all division records by application name for department counting
-        let divisionGroupedByApp = Dictionary(grouping: divisionRecords) { $0.applicationName }
-        
         // Group filtered records by application name for display
         var groupedByApp = Dictionary(grouping: filteredRecords) { $0.applicationName }
         
-        // Create a set of all "Will be" targets
-        let willBeTargets = Set(records.compactMap { $0.willBe }
-            .filter { !$0.isEmpty && $0 != "N/A" })
+        // Group all division records by application name for department counting
+        let divisionGroupedByApp = Dictionary(grouping: divisionRecords) { $0.applicationName }
+        
+        // Add all "Will be" target applications that aren't already in the list
+        for willBeTarget in willBeTargets {
+            if groupedByApp[willBeTarget] == nil {
+                // Find any record for this target application
+                if let targetRecord = records.first(where: { $0.applicationName == willBeTarget }) {
+                    groupedByApp[willBeTarget] = [targetRecord]
+                }
+            }
+        }
         
         // If we're excluding non-active apps, add the "will be" target applications
         if excludeNonActive {
