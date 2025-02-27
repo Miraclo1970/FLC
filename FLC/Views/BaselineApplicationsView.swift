@@ -20,7 +20,13 @@ struct BaselineApplicationsView: View {
     
     // OTAP filter states
     @State private var selectedOTAP: Set<String> = ["P"]
-    private let otapOptions = ["A", "OT", "P", "Prullenbak", "TW", "VDI"]
+    @State private var records: [CombinedRecord] = []
+    
+    private var otapOptions: [String] {
+        Array(Set(records.compactMap { $0.otap }))
+            .filter { !$0.isEmpty }
+            .sorted()
+    }
     
     var hasDownloadPermission: Bool = true
     
@@ -374,6 +380,7 @@ struct BaselineApplicationsView: View {
             print("Total problematic lines: \(noHRMatchLines + pastLeaveDateLines)")
             
             await MainActor.run {
+                records = combinedRecords  // Store the records for the dynamic OTAP options
                 lastADImportDate = adImportDate
                 lastHRImportDate = hrImportDate
                 totalApplications = applications.count

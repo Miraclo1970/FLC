@@ -12,7 +12,11 @@ struct ChecklistAppUserView: View {
     @State private var divisions: [String] = []
     @State private var departments: [String] = []
     @State private var selectedOTAP: Set<String> = ["P"]
-    private let otapOptions = ["A", "OT", "P", "Prullenbak", "TW", "VDI"]
+    private var otapOptions: [String] {
+        Array(Set(records.compactMap { $0.otap }))
+            .filter { !$0.isEmpty }
+            .sorted()
+    }
     
     // Additional filters
     @State private var excludeOutScope = true

@@ -29,7 +29,12 @@ struct DivisionProgressView: View {
     @State private var isExporting = false
     @State private var exportError: String?
     
-    private let environments = ["All", "P", "A", "OT"]
+    private var environments: [String] {
+        var envSet = Set(records.compactMap { $0.otap })
+            .filter { !$0.isEmpty }
+        envSet.insert("All")
+        return Array(envSet).sorted()
+    }
     
     private var divisions: [String] {
         Array(Set(records.compactMap { $0.division }))

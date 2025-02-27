@@ -21,6 +21,20 @@ struct OrganisationProgressView: View {
     @State private var isExporting = false
     @State private var exportError: String?
     
+    // OTAP filter
+    @State private var selectedOTAP: Set<String> = ["P"]
+    
+    // Additional filters
+    @State private var excludeOutScope = true
+    @State private var excludeWillBeAndSunset = true
+    @State private var excludeNoHROrLeftUsers = true
+    
+    private var otapOptions: [String] {
+        Array(Set(records.compactMap { $0.otap }))
+            .filter { !$0.isEmpty }
+            .sorted()
+    }
+    
     private var divisions: [String] {
         Array(Set(records.compactMap { $0.division }))
             .filter { !$0.isEmpty }
@@ -177,6 +191,69 @@ struct OrganisationProgressView: View {
                 Text("Organisation Progress")
                     .font(.headline)
                     .padding(.bottom, 8)
+                
+                // OTAP Filter
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("OTAP Filter")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    
+                    HStack(spacing: 15) {
+                        ForEach(otapOptions, id: \.self) { option in
+                            Toggle(isOn: Binding(
+                                get: { selectedOTAP.contains(option) },
+                                set: { isSelected in
+                                    if isSelected {
+                                        selectedOTAP.insert(option)
+                                    } else {
+                                        selectedOTAP.remove(option)
+                                    }
+                                    Task {
+                                        await loadData()
+                                    }
+                                }
+                            )) {
+                                Text(option)
+                                    .font(.system(size: 14, weight: .medium))
+                            }
+                            .toggleStyle(.checkbox)
+                        }
+                    }
+                }
+                .padding()
+                .background(RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(NSColor.controlBackgroundColor)))
+                
+                // Additional Filters
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Additional Filters")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    
+                    Toggle("Exclude out scope & out scope division", isOn: $excludeOutScope)
+                        .onChange(of: excludeOutScope) { _, _ in
+                            Task {
+                                await loadData()
+                            }
+                        }
+                    
+                    Toggle("Exclude sunset and show only Will be app", isOn: $excludeWillBeAndSunset)
+                        .onChange(of: excludeWillBeAndSunset) { _, _ in
+                            Task {
+                                await loadData()
+                            }
+                        }
+                    
+                    Toggle("Exclude users who have left", isOn: $excludeNoHROrLeftUsers)
+                        .onChange(of: excludeNoHROrLeftUsers) { _, _ in
+                            Task {
+                                await loadData()
+                            }
+                        }
+                }
+                .padding()
+                .background(RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(NSColor.controlBackgroundColor)))
                 
                 ScrollView {
                     VStack(spacing: 8) {
@@ -363,21 +440,37 @@ struct OrganisationProgressView: View {
     }
     
     private func calculateStats(for records: [CombinedRecord]) -> OrganisationSummary {
-        let uniqueApps = Set(records.map { $0.applicationName }).count
-        let uniqueUsers = Set(records.compactMap { $0.systemAccount }).count
-        
-        // First, filter out applications that are out of scope or have a "will be" value
-        let activeRecords = records.filter { record in
-            let willBe = record.willBe ?? ""
-            let inOutScope = record.inScopeOutScopeDivision?.lowercased() ?? ""
-            return (willBe.isEmpty || willBe == "N/A") && inOutScope != "out"
+        // Apply additional filters
+        let filteredRecords = records.filter { record in
+            // OTAP filter
+            let otapMatch = selectedOTAP.contains(record.otap)
+            
+            // Out scope filter
+            let outScopeMatch = !excludeOutScope || 
+                (record.inScopeOutScopeDivision?.lowercased() != "out" &&
+                 !(record.inScopeOutScopeDivision?.lowercased().starts(with: "out ") ?? false))
+            
+            // Will be and sunset filter
+            let willBeMatch = !excludeWillBeAndSunset || {
+                let willBe = record.willBe ?? ""
+                return willBe.isEmpty || willBe == "N/A"
+            }()
+            
+            // Left users filter
+            let leftUserMatch = !excludeNoHROrLeftUsers ||
+                (record.leaveDate == nil || record.leaveDate! > Date())
+            
+            return otapMatch && outScopeMatch && willBeMatch && leftUserMatch
         }
+
+        let uniqueApps = Set(filteredRecords.map { $0.applicationName }).count
+        let uniqueUsers = Set(filteredRecords.compactMap { $0.systemAccount }).count
         
         // Get migration cluster readiness from the first record
-        let migrationClusterReadiness = records.first?.migrationClusterReadiness
+        let migrationClusterReadiness = filteredRecords.first?.migrationClusterReadiness
         
         // Group by application name
-        let groupedByApp = Dictionary(grouping: activeRecords) { $0.applicationName }
+        let groupedByApp = Dictionary(grouping: filteredRecords) { $0.applicationName }
         
         // Calculate package progress
         var totalPackagePoints = 0.0
@@ -428,11 +521,11 @@ struct OrganisationProgressView: View {
         // Calculate combined progress as average of preparation and execution
         let combinedProgress = (preparationProgress + executionProgress) / 2.0
         
-        let packageReadyDate = records.compactMap { $0.applicationPackageReadinessDate }.max()
-        let testReadyDate = records.compactMap { $0.applicationTestReadinessDate }.max()
+        let packageReadyDate = filteredRecords.compactMap { $0.applicationPackageReadinessDate }.max()
+        let testReadyDate = filteredRecords.compactMap { $0.applicationTestReadinessDate }.max()
         
         return OrganisationSummary(
-            division: records.first?.division ?? "",
+            division: filteredRecords.first?.division ?? "",
             applications: uniqueApps,
             users: uniqueUsers,
             packageProgress: packageProgress,
